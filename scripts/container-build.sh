@@ -19,6 +19,23 @@ cd "$repo"
 mkdir -p dist
 tarball="dist/artifacts-$variant.tar"
 
+# The build version (platform-compatibility spec). The container has no .git, so it is resolved
+# here: LUME_VERSION_NAME without its leading "v"s (a release tag), else the short commit
+# (+ "-dirty" with uncommitted changes to tracked files), else "dev". LUME_VERSION_CODE is the
+# commit count, used for anything that is not a release.
+version="$(printf '%s' "${LUME_VERSION_NAME:-}" | sed 's/^v*//')"
+version_code="${LUME_VERSION_CODE:-}"
+if [[ -z "$version" ]]; then
+  if hash="$(git rev-parse --short HEAD 2>/dev/null)"; then
+    version="$hash"
+    if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then version="$hash-dirty"; fi
+    [[ -n "$version_code" ]] || version_code="$(git rev-list --count HEAD)"
+  else
+    version="dev"
+  fi
+fi
+echo "Version: $version"
+
 # Limits so the fat-LTO build fits in the ~7 GB a default WSL VM has.
 jobs="${CARGO_BUILD_JOBS:-4}"
 heap="${GRADLE_HEAP:-1536m}"
@@ -95,7 +112,8 @@ fi
   --build-arg "VARIANT=$variant" \
   --build-arg "CARGO_BUILD_JOBS=$jobs" \
   --build-arg "GRADLE_HEAP=$heap" \
-  --build-arg "LUME_VERSION_NAME=${LUME_VERSION_NAME:-}" \
+  --build-arg "LUME_VERSION_NAME=$version" \
+  --build-arg "LUME_VERSION_CODE=$version_code" \
   "${secrets[@]}" \
   --target artifacts \
   --output "type=tar,dest=$(path_for_runtime "$repo/$tarball")" \
@@ -106,7 +124,6 @@ fi
 tar -xmf "$tarball" -C dist
 rm -f "$tarball"
 
-version="${LUME_VERSION_NAME:-$(sed -n 's/^def lumeVersion = .*: "\(.*\)"/\1/p' android/app/build.gradle | head -n1)}"
 for f in dist/app-*.apk dist/app-*.aab; do
   [[ -e "$f" ]] || continue
   extension="${f##*.}"

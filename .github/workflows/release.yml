@@ -31,7 +31,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
           cargo install cargo-ndk --version "${CARGO_NDK_VERSION}" --locked
       - name: Version from the tag
-        run: echo "LUME_VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+        run: echo "LUME_VERSION_NAME=$(echo "$GITHUB_REF_NAME" | sed 's/^v*//')" >> "$GITHUB_ENV"
       - name: Signing key (when the secrets exist)
         env:
           KEYSTORE_BASE64: ${{ secrets.LUME_KEYSTORE_BASE64 }}
@@ -61,7 +61,8 @@ jobs:
         run: |
           abis=$(sed -n 's/^ABIs: //p' dist/verify.txt)
           {
-            echo "## Lume ${LUME_VERSION_NAME}"
+            echo "## Lume v${LUME_VERSION_NAME}"
+            echo "Source code: https://github.com/douglaspands/lume-tv-launcher"
             echo
             echo "One APK for every supported TV: Android picks the native library that matches the CPU."
             echo
@@ -87,8 +88,8 @@ jobs:
           # files and the notes go into it instead of failing.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/lume-*.apk dist/lume-*.aab --clobber
-            gh release edit "$GITHUB_REF_NAME" --title "Lume ${LUME_VERSION_NAME}" --notes-file dist/notes.md
+            gh release edit "$GITHUB_REF_NAME" --title "Lume v${LUME_VERSION_NAME}" --notes-file dist/notes.md
           else
             gh release create "$GITHUB_REF_NAME" dist/lume-*.apk dist/lume-*.aab \
-              --title "Lume ${LUME_VERSION_NAME}" --notes-file dist/notes.md $prerelease
+              --title "Lume v${LUME_VERSION_NAME}" --notes-file dist/notes.md $prerelease
           fi
