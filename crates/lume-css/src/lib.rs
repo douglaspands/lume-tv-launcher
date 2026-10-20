@@ -37,10 +37,21 @@ pub const COMPONENTS: &[&str] = &[
     "breadcrumb",
     "settings-item",
     "toast",
+    "brand",
+    "page-title",
+    "page-subtitle",
+    "card-heading",
+    "about-heading",
+    "about-body",
+    "about-license",
 ];
 
 /// Smallest font size (in logical px) that does not produce a warning.
-pub const MIN_FONT_SIZE: f32 = 14.0;
+pub const MIN_FONT_SIZE: f32 = 16.0;
+
+/// The type scale: the only font sizes (in logical px) that do not produce a warning. All are
+/// even, so the text lands on whole pixels at 1.5x (1080p).
+pub const FONT_SCALE: &[f32] = &[16.0, 18.0, 20.0, 22.0, 28.0, 40.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum State {
@@ -549,6 +560,11 @@ impl<'a> Parser<'a> {
                                 self.warn(
                                     d.line,
                                     format!("font-size of {px}px is below {MIN_FONT_SIZE}px and is hard to read on a TV"),
+                                );
+                            } else if !FONT_SCALE.contains(&px) {
+                                self.warn(
+                                    d.line,
+                                    format!("font-size of {px}px is not in the type scale {FONT_SCALE:?}; the nearest size is used"),
                                 );
                             }
                         }

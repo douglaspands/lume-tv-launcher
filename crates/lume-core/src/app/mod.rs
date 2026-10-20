@@ -16,6 +16,18 @@ mod settings;
 mod tests;
 mod topbar;
 
+/// Fails when a layout measure is off the 4-unit ruler (see "Régua de layout" in the
+/// `design-system` spec).
+#[cfg(test)]
+fn assert_on_ruler(measures: &[(&str, f32)]) {
+    for (name, value) in measures {
+        assert!(
+            value % 4.0 == 0.0,
+            "{name} = {value} is off the 4-unit ruler"
+        );
+    }
+}
+
 pub use painter::Painter;
 
 use crate::app_icons::{AppIcons, Art};

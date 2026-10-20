@@ -306,3 +306,18 @@ APK `lume-0.2.1-release-debugsigned.apk` (3,34 MB), instalado nas duas TVs.
   além do da saída. PSS na TCL com o painel: 28,6 MB (orçamento 45 MB).
 - **Android 9**: sem emulador Android TV 9 neste ambiente, então a validação em API 28 (instalação, engrenagem e botão escondido
   quando a ação não resolve) **continua em aberto**; o único risco é a ação de entradas, que no Android 9 não exige `<queries>`.
+
+## Escala tipográfica e régua (2026-10-20)
+
+APK de release da change `escala-tipografica` (3,40 MB; a fonte de ícones, agora desenhada pelo script a partir dos SVGs do Lucide com traço 1,75, tem 30 KB).
+
+| | TCL 55C715 (1080p) | AIWA (720p, `low_ram`) | Orçamento |
+|---|---|---|---|
+| Quadros de 33 ms ou mais na navegação (12 teclas) | 0 em 116 intervalos | 0 em 116 intervalos | ≤ 1% |
+| PSS em primeiro plano, 30 s parado | 25,0 MB | não medido | ≤ 45 MB |
+| PSS em segundo plano, 6 a 20 s (Graphics 0, `dormant`) | 19,9 MB | não medido | ≤ 20 MB (**no limite**) |
+
+- No Android 11 o `dumpsys SurfaceFlinger --list` mostra três nomes para o Lume (com prefixo hexadecimal, `ActivityRecord{...}` e o simples); o `--latency` só tem os quadros no nome simples, `app.lume.tv/app.lume.tv.LumeActivity#N`.
+- O PSS fica na linha `TOTAL PSS:` do `dumpsys meminfo app.lume.tv`; a coluna "TOTAL" da tabela de cima não é o PSS.
+- A AIWA passou a responder "Service dumps disabled due to hung system process" ao `dumpsys meminfo`: o sistema dela desliga os relatórios quando um processo do sistema trava. Reiniciar a TV deve resolver; refazer a medida depois.
+- `am start -a android.settings.SETTINGS` pode abrir um painel por cima sem tirar o Lume da tela; para medir o segundo plano, abrir um app de verdade (`monkey -p com.android.vending -c android.intent.category.LEANBACK_LAUNCHER 1`).

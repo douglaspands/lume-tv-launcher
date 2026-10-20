@@ -9,9 +9,11 @@ pub const LEFT: f32 = 64.0;
 pub const WIDTH: f32 = 1152.0;
 const BREADCRUMB_BASELINE: f32 = 52.0;
 const TITLE_BASELINE: f32 = 116.0;
-const SUBTITLE_BASELINE: f32 = 154.0;
+const SUBTITLE_BASELINE: f32 = 152.0;
 /// Where the content of a secondary screen starts: 58 below the subtitle's baseline.
 pub const CONTENT_TOP: f32 = 212.0;
+/// Space on each side of the "›" between two steps of the breadcrumb.
+const SEPARATOR_GAP: f32 = 8.0;
 
 /// Draws the logo, the path (`Settings › Home screen`, none on the Settings screen itself) and the
 /// title.
@@ -47,7 +49,7 @@ pub fn draw_header(
         x += p.text.measure(crumb, &text_style);
         if !last {
             let separator = "›";
-            x += 10.0;
+            x += SEPARATOR_GAP;
             p.text.draw(
                 p.list,
                 separator,
@@ -56,13 +58,10 @@ pub fn draw_header(
                 &text_style,
                 muted.color,
             );
-            x += p.text.measure(separator, &text_style) + 10.0;
+            x += p.text.measure(separator, &text_style) + SEPARATOR_GAP;
         }
     }
-    let mut title_style = p.style(&THEME.section_title, StateFlags::NONE);
-    title_style.font_size = 40.0;
-    title_style.font_weight = 800;
-    title_style.letter_spacing = -0.8;
+    let title_style = p.style(&THEME.page_title, StateFlags::NONE);
     let shown = p
         .text
         .ellipsize(title, &Painter::text_style(&title_style), 900.0)
@@ -76,8 +75,7 @@ pub fn draw_header(
         title_style.color,
     );
     if let Some(subtitle) = subtitle {
-        let mut style = p.style(&THEME.breadcrumb, StateFlags::NONE);
-        style.font_size = 18.0;
+        let style = p.style(&THEME.page_subtitle, StateFlags::NONE);
         let shown = p
             .text
             .ellipsize(subtitle, &Painter::text_style(&style), WIDTH)
@@ -90,5 +88,23 @@ pub fn draw_header(
             &Painter::text_style(&style),
             style.color,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_layout_is_on_the_ruler() {
+        super::super::assert_on_ruler(&[
+            ("LEFT", LEFT),
+            ("WIDTH", WIDTH),
+            ("BREADCRUMB_BASELINE", BREADCRUMB_BASELINE),
+            ("TITLE_BASELINE", TITLE_BASELINE),
+            ("SUBTITLE_BASELINE", SUBTITLE_BASELINE),
+            ("CONTENT_TOP", CONTENT_TOP),
+            ("SEPARATOR_GAP", SEPARATOR_GAP),
+        ]);
     }
 }

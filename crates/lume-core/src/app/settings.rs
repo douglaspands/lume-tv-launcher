@@ -8,9 +8,9 @@ use crate::icons;
 use crate::licenses;
 use crate::render::Rect;
 use crate::stats;
-use crate::text::{Align, TextStyle};
+use crate::text::Align;
 use crate::theme::Paint;
-use crate::theme::{vars, StateFlags, THEME};
+use crate::theme::{vars, ComputedStyle, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
 /// Where the source code lives, shown on the About screen.
@@ -21,8 +21,8 @@ const COLUMN_WIDTH: f32 = (WIDTH - 48.0) / 2.0;
 const ITEM_WIDTH: f32 = COLUMN_WIDTH;
 const ITEMS_TOP: f32 = page::CONTENT_TOP;
 const ITEM_PITCH: f32 = 88.0;
-const ABOUT_TEXT_TOP: f32 = 190.0;
-const ABOUT_VIEW_TOP: f32 = 150.0;
+const ABOUT_TEXT_TOP: f32 = 192.0;
+const ABOUT_VIEW_TOP: f32 = 152.0;
 const ABOUT_STEP: f32 = 96.0;
 const PANEL_X: f32 = LEFT + COLUMN_WIDTH + 48.0;
 const PANEL_WIDTH: f32 = COLUMN_WIDTH;
@@ -30,6 +30,18 @@ const PANEL_HEIGHT: f32 = 312.0;
 
 pub(super) const ITEM_HOME_SCREEN: u32 = ids::SETTINGS_BASE;
 pub(super) const ITEM_ABOUT: u32 = ids::SETTINGS_BASE + 2;
+
+/// The line height of running text on the ruler (see the `design-system` spec): 32 for captions,
+/// 40 for body and labels, 44 for the primary size and above.
+fn line_height(font_size: f32) -> f32 {
+    if font_size <= 16.0 {
+        32.0
+    } else if font_size <= 20.0 {
+        40.0
+    } else {
+        44.0
+    }
+}
 
 impl LumeApp {
     pub(super) fn open_settings(&mut self) {
@@ -104,18 +116,8 @@ impl LumeApp {
         let style = p.style(&THEME.panel, StateFlags::NONE);
         p.draw_box(panel, &style);
         let inner = Rect::new(panel.x + 32.0, panel.y + 24.0, panel.w - 64.0, 20.0);
-        let heading = TextStyle {
-            size: 15.0,
-            weight: 800,
-            letter_spacing: 1.2,
-        };
-        p.text_with(
-            &t.get(StringId::StatsTitle),
-            inner,
-            Align::Start,
-            &heading,
-            vars::TEXT_MUTED,
-        );
+        let heading = p.style(&THEME.card_heading, StateFlags::NONE);
+        p.text(&t.get(StringId::StatsTitle), inner, Align::Start, &heading);
 
         let stats = self.stats.as_ref();
         let rows = [
@@ -201,26 +203,30 @@ impl LumeApp {
 
         // Build the text, then limit the scrolling to its length.
         let lines = licenses::lines();
-        let mut blocks: Vec<(String, f32, bool)> = vec![
+        let heading = p.style(&THEME.about_heading, StateFlags::NONE);
+        let body = p.style(&THEME.about_body, StateFlags::NONE);
+        let license = p.style(&THEME.about_license, StateFlags::NONE);
+        let mut blocks: Vec<(String, &ComputedStyle)> = vec![
             (
                 t.format(
                     StringId::AboutVersion,
                     &[Arg::Str(&lume_version::display())],
                 ),
-                24.0,
-                true,
+                &heading,
             ),
-            (t.get(StringId::AboutLicense).into_owned(), 20.0, false),
+            (t.get(StringId::AboutLicense).into_owned(), &body),
             (
                 t.format(StringId::AboutSource, &[Arg::Str(SOURCE_URL)]),
-                20.0,
-                false,
+                &body,
             ),
-            (String::new(), 16.0, false),
-            (t.get(StringId::AboutThirdParty).into_owned(), 24.0, true),
+            (String::new(), &license),
+            (t.get(StringId::AboutThirdParty).into_owned(), &heading),
         ];
-        blocks.extend(lines.into_iter().map(|line| (line, 16.0, false)));
-        let heights: Vec<f32> = blocks.iter().map(|(_, size, _)| size * 1.9).collect();
+        blocks.extend(lines.into_iter().map(|line| (line, &license)));
+        let heights: Vec<f32> = blocks
+            .iter()
+            .map(|(_, style)| line_height(style.font_size))
+            .collect();
         let total: f32 = heights.iter().sum();
         let view = (visible.bottom() - ABOUT_VIEW_TOP).max(1.0);
         let max_scroll = (ABOUT_TEXT_TOP + total + 40.0 - ABOUT_VIEW_TOP - view).max(0.0);
@@ -234,15 +240,9 @@ impl LumeApp {
             visible.bottom() - ABOUT_VIEW_TOP,
         ));
         let mut y = ABOUT_TEXT_TOP - scroll;
-        for ((text, size, heading), height) in blocks.iter().zip(&heights) {
-            let mut style = p.style(&THEME.breadcrumb, StateFlags::NONE);
-            style.font_size = *size;
-            if *heading {
-                style.color = vars::TEXT;
-                style.font_weight = 700;
-            }
+        for ((text, style), height) in blocks.iter().zip(&heights) {
             let rect = Rect::new(LEFT, y, WIDTH, *height);
-            p.text(text, rect, Align::Start, &style);
+            p.text(text, rect, Align::Start, style);
             y += height;
         }
         p.list.pop_clip();
@@ -258,5 +258,26 @@ impl LumeApp {
             None,
             0.0,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_layout_is_on_the_ruler() {
+        super::super::assert_on_ruler(&[
+            ("COLUMN_WIDTH", COLUMN_WIDTH),
+            ("ITEM_PITCH", ITEM_PITCH),
+            ("ABOUT_TEXT_TOP", ABOUT_TEXT_TOP),
+            ("ABOUT_VIEW_TOP", ABOUT_VIEW_TOP),
+            ("ABOUT_STEP", ABOUT_STEP),
+            ("PANEL_X", PANEL_X),
+            ("PANEL_HEIGHT", PANEL_HEIGHT),
+        ]);
+        for size in crate::theme::FONT_SCALE {
+            super::super::assert_on_ruler(&[("line_height", line_height(size))]);
+        }
     }
 }
