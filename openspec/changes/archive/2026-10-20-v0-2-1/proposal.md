@@ -21,6 +21,8 @@ Na TV a engrenagem leva às configurações do próprio Lume, mas quem usa a TV 
 
 - `device-stats`: painel de memória, disco e CPU na tela de Configurações do Lume, lido só com a tela visível.
 
+- `design-system`: o design system do frontend (tokens, tipografia, medidas, componentes, foco e regras de desenho) como regra que toda mudança visual segue.
+
 ### Modified Capabilities
 
 - `launcher-shell`: barra superior (botão de entradas, engrenagem para o Android) e tela de Configurações do Lume (sem o item do Android, acessada só pelo tile, com o painel de estatísticas à direita).
