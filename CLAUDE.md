@@ -19,7 +19,7 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 ## Estado
 
 v0.2.0 mesclada na `main` por squash (2026-10-20). v0.2.1 (entradas, engrenagem, painel de estatísticas, design system) arquivada em
-`openspec/changes/archive/2026-10-20-v0-2-1`, na branch `feat/v0-2-1`, com PR aberta para a `main`. Remoto: `origin` (GitHub `douglaspands/tv-lume-launcher`).
+`openspec/changes/archive/2026-10-20-v0-2-1`, na branch `feat/v0-2-1`, com PR aberta para a `main`. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
 Pendências conhecidas, que dependem do autor: assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com

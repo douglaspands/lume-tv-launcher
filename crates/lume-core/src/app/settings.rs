@@ -14,7 +14,7 @@ use crate::theme::{vars, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
 /// Where the source code lives, shown on the About screen.
-pub const SOURCE_URL: &str = "https://github.com/lume-launcher/lume";
+pub const SOURCE_URL: &str = "https://github.com/douglaspands/lume-tv-launcher";
 /// The version of the app, from the Cargo package.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
