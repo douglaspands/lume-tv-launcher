@@ -42,6 +42,7 @@ TEXT_UNICODES = (
 # Lucide icon names used by the UI, mapped to Rust constant names.
 ICONS = {
     "settings": "SETTINGS",
+    "log-in": "INPUTS",
     "chevron-up": "CHEVRON_UP",
     "chevron-down": "CHEVRON_DOWN",
     "chevron-left": "CHEVRON_LEFT",

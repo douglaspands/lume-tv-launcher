@@ -414,10 +414,10 @@ use super::editor::{
 };
 
 fn open_settings(rig: &mut Rig) {
-    // Up to the top bar, then right to the gear.
-    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
-    assert_eq!(rig.focused(), Some(ids::GEAR));
-    rig.press(Key::Ok);
+    // The Apps tab, then the "Lume" tile.
+    open_apps(rig);
+    rig.press(Key::Down);
+    press_on(rig, ids::GRID_SETTINGS);
     assert_eq!(rig.app.screen(), &Screen::Settings);
 }
 
@@ -444,55 +444,60 @@ fn focus_on(rig: &mut Rig, id: FocusId) {
 }
 
 #[test]
-fn the_gear_opens_the_settings_with_the_focus_on_the_first_item() {
+fn the_lume_settings_start_on_the_first_item_and_list_two() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
-    rig.press(Key::Down);
-    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
     rig.press(Key::Down);
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 2));
-    assert!(
-        !rig.app.focus.move_focus(Direction::Down),
-        "three items only"
-    );
+    assert!(!rig.app.focus.move_focus(Direction::Down), "two items only");
 }
 
 #[test]
-fn back_from_the_settings_returns_to_the_tab_it_came_from() {
+fn back_from_the_settings_returns_to_the_lume_tile() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
     rig.press(Key::Back);
-    // The way to the gear passes over the Apps tab, which shows it (without OK) and stays.
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), Some(ids::GRID_SETTINGS));
+}
+
+#[test]
+fn the_gear_opens_the_android_settings() {
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
     assert_eq!(rig.focused(), Some(ids::GEAR));
-    // From the Home tab, with the gear reached by going left from the Apps tab and back.
+    assert_eq!(rig.press(Key::Ok), [Effect::OpenAndroidSettings]);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+}
+
+#[test]
+fn the_inputs_button_sits_left_of_the_gear_and_opens_the_inputs() {
     let mut rig = Rig::new();
-    rig.press_all(&[Key::Up, Key::Right, Key::Right, Key::Left, Key::Left]);
-    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
-    rig.press_all(&[Key::Right, Key::Right]);
-    // From the Apps tab.
-    let mut rig = Rig::new();
-    open_apps(&mut rig);
+    rig.app.inputs_available = true;
+    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
+    assert_eq!(rig.focused(), Some(ids::INPUTS));
+    assert_eq!(rig.press(Key::Ok), [Effect::OpenInputs]);
     rig.press(Key::Right);
     assert_eq!(rig.focused(), Some(ids::GEAR));
-    rig.press(Key::Ok);
-    rig.press(Key::Back);
-    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    rig.press(Key::Left);
+    assert_eq!(rig.focused(), Some(ids::INPUTS));
 }
 
 #[test]
-fn android_settings_open_from_the_settings_screen() {
+fn without_an_inputs_panel_the_button_is_not_there() {
     let mut rig = Rig::new();
-    open_settings(&mut rig);
-    rig.press(Key::Down);
-    assert_eq!(rig.press(Key::Ok), [Effect::OpenAndroidSettings]);
+    rig.app.inputs_available = false;
+    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
+    assert_eq!(rig.focused(), Some(ids::GEAR));
+    rig.advance(1000);
+    assert!(!rig.app.focus.focus(ids::INPUTS));
 }
 
 #[test]
 fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
-    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.about_scroll, 0.0);
     rig.press(Key::Down);
@@ -508,7 +513,12 @@ fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
 fn the_editor_opens_from_the_settings_and_done_returns_to_the_home_screen() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
-    assert_eq!(rig.focused(), Some(DONE));
+    assert_eq!(
+        rig.focused(),
+        Some(FAVORITE_BUTTON_BASE + 1),
+        "the first favorite has the focus"
+    );
+    focus_on(&mut rig, DONE);
     let effects = rig.press(Key::Ok);
     assert_eq!(effects, [Effect::SaveConfig]);
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
@@ -516,11 +526,27 @@ fn the_editor_opens_from_the_settings_and_done_returns_to_the_home_screen() {
 }
 
 #[test]
-fn back_in_the_editor_works_like_done() {
+fn back_in_the_editor_returns_to_the_settings_and_then_to_the_lume_tile() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
     let effects = rig.press(Key::Back);
-    assert_eq!(effects, [Effect::SaveConfig]);
+    assert_eq!(effects, [Effect::SaveConfig], "the changes are kept");
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE));
+    // The way out retraces the way in: the "Lume" tile of the Apps tab.
+    rig.press(Key::Back);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), Some(ids::GRID_SETTINGS));
+}
+
+#[test]
+fn back_in_the_editor_opened_from_the_home_screen_goes_home() {
+    let mut rig = Rig::new();
+    rig.app.config.favorites.clear();
+    rig.press(Key::Home);
+    rig.press(Key::Ok);
+    assert_eq!(rig.app.screen(), &Screen::Editor);
+    assert_eq!(rig.press(Key::Back), [Effect::SaveConfig]);
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
 }
 
@@ -696,7 +722,7 @@ fn the_editor_scrolls_to_keep_the_focus_visible() {
         .collect();
     open_editor(&mut rig);
     assert_eq!(rig.app.scroll_y, 0.0);
-    focus_on(&mut rig, RESTORE);
+    focus_on(&mut rig, DONE);
     rig.advance(1000);
     assert!(
         rig.app.scroll_y > 100.0,
@@ -708,8 +734,8 @@ fn the_editor_scrolls_to_keep_the_focus_visible() {
         rect.bottom() - rig.app.scroll_y <= 720.0,
         "the focused button is on screen"
     );
-    // Back to the top.
-    focus_on(&mut rig, DONE);
+    // Back to the first favorite: the page returns to the top.
+    focus_on(&mut rig, FAVORITE_BUTTON_BASE + 1);
     rig.advance(1000);
     assert_eq!(rig.app.scroll_y, 0.0);
 }
@@ -999,19 +1025,29 @@ impl Rig {
 }
 
 #[test]
-fn the_editor_focus_goes_from_done_to_the_favorites_and_back() {
+fn down_from_the_favorites_goes_to_done_and_restore_is_to_its_left() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
-    assert_eq!(rig.focused(), Some(DONE));
+    // Down from the cards (and then from the "Add app" chips) lands on "Done", at the right.
     rig.press(Key::Down);
-    // "Done" is at the right: the nearest card button is on the last card.
-    let first = rig.focused().unwrap();
     assert!(
-        (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&first),
-        "{first}"
+        rig.focused().is_some_and(|id| id >= ADD_APP_BASE),
+        "the chips come first"
     );
-    rig.press(Key::Up);
+    rig.press_all(&[Key::Down, Key::Down]);
     assert_eq!(rig.focused(), Some(DONE));
+    // "Restore defaults" is at the opposite side: Left from "Done", and back with Right.
+    rig.press(Key::Left);
+    assert_eq!(rig.focused(), Some(RESTORE));
+    let restore_x = rig.app.focus.current().unwrap().rect.x;
+    rig.press(Key::Right);
+    assert_eq!(rig.focused(), Some(DONE));
+    let done = rig.app.focus.current().unwrap().rect;
+    assert!(restore_x < 100.0, "at the left margin");
+    assert!(done.right() > 1100.0, "at the right margin");
+    // Up from "Done" returns to the "Add app" chips.
+    rig.press(Key::Up);
+    assert!(rig.focused().is_some_and(|id| id >= ADD_APP_BASE));
     // The first card cannot move left: that button takes no focus.
     assert!(!rig.app.focus.focus(FAVORITE_BUTTON_BASE));
 }
@@ -1024,10 +1060,11 @@ fn from_an_empty_home_the_add_favorites_item_opens_the_editor_at_the_favorites()
     assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
     rig.press(Key::Ok);
     assert_eq!(rig.app.screen(), &Screen::Editor);
-    assert_eq!(rig.focused(), Some(DONE));
-    // Nothing to reorder yet: only "Add app" chips follow "Done".
-    rig.press(Key::Down);
+    // Nothing to reorder yet: the focus starts on the first "Add app" chip.
     assert!(rig.focused().is_some_and(|id| id >= ADD_APP_BASE));
+    // Down through the chip lines: the last one lands on "Done".
+    rig.press_all(&[Key::Down, Key::Down, Key::Down]);
+    assert_eq!(rig.focused(), Some(DONE));
 }
 
 // ---- wallpaper --------------------------------------------------------------------------------
@@ -1532,14 +1569,13 @@ fn back_from_the_settings_opened_by_the_lume_tile_returns_to_the_tile() {
 }
 
 #[test]
-fn from_the_lume_settings_screen_the_android_settings_item_returns_there() {
+fn coming_back_from_the_android_settings_keeps_the_gear_focused() {
     let mut rig = Rig::new();
-    open_settings(&mut rig);
-    rig.press(Key::Down);
+    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
     assert_eq!(rig.press(Key::Ok), [Effect::OpenAndroidSettings]);
     leave_and_come_back(&mut rig);
-    assert_eq!(rig.app.screen(), &Screen::Settings);
-    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), Some(ids::GEAR));
 }
 
 #[test]
@@ -1866,4 +1902,67 @@ fn the_name_under_the_focused_tile_is_white_and_the_others_are_muted() {
     };
     assert_eq!(style(0.0), crate::theme::vars::TEXT_MUTED);
     assert_eq!(style(1.0), crate::theme::vars::TEXT);
+}
+
+// ---- TV statistics panel ---------------------------------------------------------------------
+
+fn sample_stats() -> crate::stats::Stats {
+    crate::stats::Stats::parse("2000000\t800000\t12000000000\t7000000000\tstat,100,1000").unwrap()
+}
+
+#[test]
+fn the_statistics_are_read_only_while_the_settings_are_on_screen() {
+    let mut rig = Rig::new();
+    assert_eq!(rig.app.stats_deadline(rig.now), None, "the home screen");
+    open_apps(&mut rig);
+    assert_eq!(rig.app.stats_deadline(rig.now), None, "the apps screen");
+    rig.press(Key::Down);
+    press_on(&mut rig, ids::GRID_SETTINGS);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    assert_eq!(
+        rig.app.stats_deadline(rig.now),
+        Some(rig.now),
+        "due at once"
+    );
+
+    rig.app.apply_stats(sample_stats(), rig.now);
+    assert_eq!(rig.app.stats_deadline(rig.now), Some(rig.now + 2000));
+    assert_eq!(
+        rig.app.cpu_use, None,
+        "the first reading has nothing to compare with"
+    );
+
+    // Leaving for the About screen, the editor or the background stops the readings.
+    rig.press_all(&[Key::Down, Key::Ok]);
+    assert_eq!(rig.app.screen(), &Screen::About);
+    assert_eq!(rig.app.stats_deadline(rig.now), None);
+    rig.press(Key::Back);
+    assert!(rig.app.stats_deadline(rig.now).is_some());
+    rig.app.went_to_background();
+    assert_eq!(rig.app.stats_deadline(rig.now), None);
+}
+
+#[test]
+fn the_panel_never_asks_for_frames_by_itself() {
+    let mut rig = Rig::new();
+    rig.press(Key::Down);
+    open_settings(&mut rig);
+    rig.app.apply_stats(sample_stats(), rig.now);
+    rig.advance(3000);
+    // The frame deadline (the clock's minute) is far away: the 2 s reading is the platform's
+    // timer, and a reading that changes nothing visible draws nothing.
+    let deadline = rig.app.next_deadline(rig.now).unwrap();
+    assert!(deadline - rig.now > 2000, "{deadline} vs {}", rig.now);
+}
+
+#[test]
+fn the_cpu_comes_from_two_readings() {
+    let mut rig = Rig::new();
+    open_settings(&mut rig);
+    rig.app.apply_stats(sample_stats(), 0);
+    let later =
+        crate::stats::Stats::parse("2000000\t800000\t12000000000\t7000000000\tstat,400,2000")
+            .unwrap();
+    rig.app.apply_stats(later, 2000);
+    assert!((rig.app.cpu_use.unwrap() - 0.3).abs() < 1e-6);
 }

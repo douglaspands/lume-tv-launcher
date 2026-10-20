@@ -238,6 +238,14 @@ impl Shell {
         self.dirty = true;
     }
 
+    /// Whether the system has a TV inputs panel, which decides if the top bar has its button.
+    pub fn set_inputs_available(&mut self, available: bool) {
+        if available != self.app.inputs_available {
+            self.app.inputs_available = available;
+            self.dirty = true;
+        }
+    }
+
     /// Wall time, time zone and 12/24-hour setting.
     pub fn set_clock(&mut self, clock: WallClock) {
         if clock != self.app.clock {
@@ -328,6 +336,33 @@ impl Shell {
         self.app
             .next_deadline(now_ms)
             .map(|at| Duration::from_millis(at.saturating_sub(now_ms)))
+    }
+
+    /// How long until the TV statistics are due, when they are being read (the settings are on
+    /// screen). Nothing is read during an animation, so the frames stay on time.
+    pub fn stats_timeout(&self, now_ms: u64) -> Option<Duration> {
+        if !self.is_active() || self.is_busy(now_ms) {
+            return None;
+        }
+        self.app
+            .stats_deadline(now_ms)
+            .map(|at| Duration::from_millis(at.saturating_sub(now_ms)))
+    }
+
+    /// Whether a statistics reading is due now.
+    pub fn stats_due(&self, now_ms: u64) -> bool {
+        self.stats_timeout(now_ms) == Some(Duration::ZERO)
+    }
+
+    /// The platform could not read the statistics: the next try comes after the usual interval.
+    pub fn stats_failed(&mut self, now_ms: u64) {
+        self.app.stats_retry(now_ms);
+    }
+
+    /// A statistics reading from the platform.
+    pub fn set_stats(&mut self, stats: crate::stats::Stats, now_ms: u64) {
+        self.app.apply_stats(stats, now_ms);
+        self.dirty = true;
     }
 
     /// Whether the screen is changing right now (a key was just handled, or an animation runs).
@@ -496,8 +531,14 @@ mod tests {
         let mut shell = start(&dir);
         shell.wake(1280, 720);
         shell.build_frame(0).unwrap();
-        // Open the editor and move the first favorite right: Up, Right, Right, Ok, Ok.
-        for key in [Key::Up, Key::Right, Key::Right, Key::Ok, Key::Ok] {
+        // Open the editor and move the first favorite right: the Apps tab, the Lume tile, its
+        // settings, "Tela Início".
+        for key in [Key::Up, Key::Right, Key::Ok, Key::Down] {
+            shell.key(key, 0);
+            shell.build_frame(0).unwrap();
+        }
+        assert!(shell.app_mut_for_test().focus_for_test(2999));
+        for key in [Key::Ok, Key::Ok] {
             shell.key(key, 0);
             shell.build_frame(0).unwrap();
         }

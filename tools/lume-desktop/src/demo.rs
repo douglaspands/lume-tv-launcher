@@ -88,7 +88,29 @@ pub fn app_with(setup: &Setup) -> LumeApp {
         utc_offset_secs: 0,
         is_24h: setup.is_24h,
     };
-    LumeApp::new(catalog, usage, config, translator, clock)
+    let mut app = LumeApp::new(catalog, usage, config, translator, clock);
+    app.inputs_available = true;
+    app
+}
+
+/// Feeds the settings panel the numbers of a made-up TV, as the platform would every 2 seconds.
+pub fn feed_stats(app: &mut LumeApp, now_ms: u64) {
+    use lume_core::stats::{CpuReading, Stats};
+    if app.stats_deadline(now_ms).is_some_and(|at| at <= now_ms) {
+        app.apply_stats(
+            Stats {
+                memory_total_kb: 2_000_000,
+                memory_available_kb: 820_000,
+                disk_total: 12_000_000_000,
+                disk_free: 7_300_000_000,
+                cpu: CpuReading::Freq {
+                    current: 3_600_000,
+                    max: 8_000_000,
+                },
+            },
+            now_ms,
+        );
+    }
 }
 
 /// Parses names such as `down`, `right` and `ok`.

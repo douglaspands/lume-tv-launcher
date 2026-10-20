@@ -101,22 +101,14 @@ fn the_apps_screen_text_has_4_5_to_1_over_the_brightest_wallpaper_pixel() {
 
 #[test]
 fn the_settings_and_about_screens_are_dimmed_too() {
-    let Some(settings) = render(&[Key::Up, Key::Right, Key::Right, Key::Ok]) else {
+    let Some(settings) = render(&[Key::Up, Key::Right, Key::Down, Key::Ok]) else {
         return;
     };
-    let about = render(&[
-        Key::Up,
-        Key::Right,
-        Key::Right,
-        Key::Ok,
-        Key::Down,
-        Key::Down,
-        Key::Ok,
-    ])
-    .unwrap();
+    let about = render(&[Key::Up, Key::Right, Key::Down, Key::Ok, Key::Down, Key::Ok]).unwrap();
     for (name, pixels) in [("settings", settings), ("about", about)] {
-        // The right half below the header has no text on these screens.
-        let background = brightest(&pixels, (800, 160, W, H), &[]);
+        // The right half below the header has no text on these screens, except the statistics
+        // card (which has its own surface) on the settings: look below it.
+        let background = brightest(&pixels, (800, 500, W, H), &[]);
         let ratio = contrast(vars::TEXT_MUTED, background);
         assert!(
             ratio >= 4.5,

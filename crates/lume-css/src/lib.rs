@@ -24,6 +24,8 @@ pub const COMPONENTS: &[&str] = &[
     "clock",
     "icon-button",
     "button",
+    "button-secondary",
+    "button-danger",
     "section-title",
     "tile",
     "tile-label",

@@ -22,7 +22,7 @@ impl LumeApp {
         // The focus moves over the icons at rest, so a key press does not depend on how far the
         // Magnification has got.
         let rest = dock::layout(items.len(), 0.0, 0.0, center, bottom);
-        let bar = topbar::row(&tabs, Tab::Home);
+        let bar = topbar::row(&tabs, Tab::Home, self.inputs_available);
         let mut dock_row = Row::new(
             items
                 .iter()
@@ -62,6 +62,7 @@ impl LumeApp {
             home_label: &self.translator.get(StringId::TabHome),
             apps_label: &self.translator.get(StringId::TabApps),
             clock: &self.clock,
+            inputs: self.inputs_available,
             focus: &progress,
         }
         .draw(p);
@@ -70,7 +71,7 @@ impl LumeApp {
     pub(super) fn activate_home(&mut self, id: u32) -> Vec<Effect> {
         match id {
             ids::FAVORITES_ADD => {
-                self.open_editor();
+                self.open_editor(true);
                 vec![]
             }
             id if id >= ids::FAVORITE_BASE => {

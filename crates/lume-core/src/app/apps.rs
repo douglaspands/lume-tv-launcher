@@ -76,7 +76,7 @@ impl LumeApp {
             &self.translator.get(StringId::TabApps),
         );
 
-        let mut rows = vec![topbar::row(&tabs, Tab::Apps)];
+        let mut rows = vec![topbar::row(&tabs, Tab::Apps, self.inputs_available)];
         for (index, line) in cells.chunks(COLUMNS).enumerate() {
             let mut row = Row::new(line.iter().map(|c| Focusable::new(c.id, c.rect)).collect());
             if index == 0 {
@@ -175,6 +175,7 @@ impl LumeApp {
             home_label: &self.translator.get(StringId::TabHome),
             apps_label: &self.translator.get(StringId::TabApps),
             clock: &self.clock,
+            inputs: self.inputs_available,
             focus: &progress,
         }
         .draw(p);

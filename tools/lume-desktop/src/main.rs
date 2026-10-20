@@ -58,12 +58,12 @@ fn main() {
             };
             let mut app = demo::app_with(&setup);
             // The keys that lead to each screen from the Home tab.
-            let to_settings = "up,right,right,right,ok";
+            let to_settings = "up,right,down,down,right,ok";
             let route = match screen.as_str() {
                 "apps" => "up,right,ok",
                 "settings" => to_settings,
-                "about" => "up,right,right,right,ok,down,down,ok",
-                "editor" => "up,right,right,right,ok,ok",
+                "about" => "up,right,down,down,right,ok,down,ok",
+                "editor" => "up,right,down,down,right,ok,ok",
                 _ => "",
             };
             let mut keys = demo::parse_keys(route).unwrap_or_else(|e| fail(&e));

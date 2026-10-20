@@ -1,4 +1,4 @@
-//! The top bar: logo, tabs, settings button and clock.
+//! The top bar: logo, tabs, inputs and settings buttons and clock.
 
 use super::painter::{fade, Painter};
 use super::{ids, Tab};
@@ -21,6 +21,8 @@ const TAB_BASELINE: f32 = 51.0;
 const TABS_X: f32 = 228.0;
 const TAB_GAP: f32 = 36.0;
 const GEAR: Rect = Rect::new(1096.0, 20.0, 48.0, 48.0);
+/// The inputs button sits one button (48 px) and a gap (8 px) to the left of the gear.
+const INPUTS: Rect = Rect::new(1040.0, 20.0, 48.0, 48.0);
 const CLOCK_RIGHT: f32 = 1216.0;
 const CLOCK_BASELINE: f32 = 52.0;
 
@@ -51,12 +53,15 @@ impl TabLayout {
 }
 
 /// The focus row of the top bar. The active tab is where the focus lands from below.
-pub fn row(tabs: &TabLayout, active: Tab) -> Row {
-    let items = vec![
+pub fn row(tabs: &TabLayout, active: Tab, inputs: bool) -> Row {
+    let mut items = vec![
         Focusable::new(ids::TAB_HOME, tabs.rect(Tab::Home)),
         Focusable::new(ids::TAB_APPS, tabs.rect(Tab::Apps)),
-        Focusable::new(ids::GEAR, GEAR),
     ];
+    if inputs {
+        items.push(Focusable::new(ids::INPUTS, INPUTS));
+    }
+    items.push(Focusable::new(ids::GEAR, GEAR));
     Row::new(items).with_entry_up(match active {
         Tab::Home => ids::TAB_HOME,
         Tab::Apps => ids::TAB_APPS,
@@ -69,6 +74,8 @@ pub struct TopBar<'a> {
     pub home_label: &'a str,
     pub apps_label: &'a str,
     pub clock: &'a WallClock,
+    /// Whether the inputs button is shown.
+    pub inputs: bool,
     /// Focus progress (0.0 to 1.0) of the tabs and the gear, by id.
     pub focus: &'a dyn Fn(u32) -> f32,
 }
@@ -76,7 +83,7 @@ pub struct TopBar<'a> {
 impl TopBar<'_> {
     /// How much the focus is in the top bar (tabs or gear), 0.0 to 1.0, animated with the focus.
     fn bar_focus(&self) -> f32 {
-        [ids::TAB_HOME, ids::TAB_APPS, ids::GEAR]
+        [ids::TAB_HOME, ids::TAB_APPS, ids::INPUTS, ids::GEAR]
             .into_iter()
             .map(|id| (self.focus)(id))
             .fold(0.0f32, f32::max)
@@ -154,6 +161,13 @@ impl TopBar<'_> {
                     crate::theme::Paint::Solid(fade(color, weight)),
                 );
             }
+        }
+
+        if self.inputs {
+            let progress = (self.focus)(ids::INPUTS);
+            let button = p.focus_style(&THEME.icon_button, progress);
+            p.draw_box(INPUTS, &button);
+            p.icon(icons::INPUTS, INPUTS, 27.0, button.color);
         }
 
         let progress = (self.focus)(ids::GEAR);
