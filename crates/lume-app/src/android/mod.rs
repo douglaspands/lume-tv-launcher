@@ -97,13 +97,15 @@ fn android_main(app: AndroidApp) {
     };
     let bridge = Bridge::new(&app);
     let package = bridge.package_name();
-    let shell = Shell::start(
+    let mut shell = Shell::start(
         &files,
         &package,
         &bridge.locales(),
         bridge.clock(),
         &mut || bridge.scan_all(None),
     );
+
+    shell.set_inputs_available(bridge.inputs_available());
 
     let mut runtime = Runtime {
         app: app.clone(),
@@ -132,7 +134,14 @@ impl Runtime {
             let timeout = if self.icons_pending && !busy {
                 Some(Duration::ZERO)
             } else {
-                self.shell.next_timeout(self.now_ms())
+                // The statistics are read only while the settings are on screen.
+                [
+                    self.shell.next_timeout(self.now_ms()),
+                    self.shell.stats_timeout(self.now_ms()),
+                ]
+                .into_iter()
+                .flatten()
+                .min()
             };
             let app = self.app.clone();
             app.poll_events(timeout, |event| self.on_event(event));
@@ -144,6 +153,15 @@ impl Runtime {
             self.shell.tick_clock(unix_seconds());
             if self.graphics.is_some() && self.shell.frame_due(self.now_ms()) {
                 self.draw();
+            }
+            let now = self.now_ms();
+            if self.shell.stats_due(now) {
+                if let Some(stats) = self.bridge.stats() {
+                    self.shell.set_stats(stats, now);
+                } else {
+                    // Try again in a while instead of on every turn of the loop.
+                    self.shell.stats_failed(now);
+                }
             }
             // Loading an icon takes tens of milliseconds: it waits for the animation to end, or the
             // frames would be late and the movement would stutter.
@@ -319,6 +337,11 @@ impl Runtime {
             Effect::OpenAndroidSettings => {
                 if !self.bridge.open_android_settings() {
                     log::warn!("the Android settings could not be opened");
+                }
+            }
+            Effect::OpenInputs => {
+                if !self.bridge.open_inputs() {
+                    log::warn!("the TV inputs panel could not be opened");
                 }
             }
             // The shell already saved these.

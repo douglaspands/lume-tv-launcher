@@ -1,5 +1,6 @@
 package app.lume.tv;
 
+import android.app.ActivityManager;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
@@ -18,12 +19,17 @@ import android.graphics.Shader;
 import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.Environment;
 import android.os.LocaleList;
+import android.os.StatFs;
 import android.provider.Settings;
 import android.text.format.DateFormat;
+import android.util.Log;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -86,6 +92,12 @@ public final class LumeBridge {
                     return start(context, argument);
                 case "settings":
                     return openSettings(context);
+                case "inputs":
+                    return inputsAvailable(context);
+                case "open-inputs":
+                    return openInputs(context);
+                case "stats":
+                    return stats(context);
                 case "locales":
                     return LocaleList.getDefault().toLanguageTags();
                 case "clock":
@@ -553,6 +565,81 @@ public final class LumeBridge {
             return "ok";
         } catch (ActivityNotFoundException | SecurityException e) {
             return "missing";
+        }
+    }
+
+    private static final String ACTION_VIEW_INPUTS = "com.android.tv.action.VIEW_INPUTS";
+
+    /** "1" when the system has a TV inputs panel, "0" otherwise. */
+    private static String inputsAvailable(Context context) {
+        Intent intent = new Intent(ACTION_VIEW_INPUTS);
+        return intent.resolveActivity(context.getPackageManager()) != null ? "1" : "0";
+    }
+
+    private static String openInputs(Context context) {
+        Intent intent = new Intent(ACTION_VIEW_INPUTS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+            return "ok";
+        } catch (ActivityNotFoundException | SecurityException e) {
+            return "missing";
+        }
+    }
+
+    private static boolean statsLogged = false;
+
+    /**
+     * Memory, data disk and CPU, for the settings panel: five tab-separated fields, namely total and
+     * available memory in KB, total and free disk in bytes, and the CPU reading (see {@link #cpu}).
+     */
+    private static String stats(Context context) {
+        ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+        ((ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE)).getMemoryInfo(memory);
+        StatFs disk = new StatFs(Environment.getDataDirectory().getPath());
+        String cpu = cpu();
+        if (!statsLogged) {
+            statsLogged = true;
+            Log.i("lume", "stats: cpu source " + cpu.split(",")[0]);
+        }
+        return (memory.totalMem / 1024) + "\t" + (memory.availMem / 1024) + "\t"
+                + disk.getTotalBytes() + "\t" + disk.getAvailableBytes() + "\t" + cpu;
+    }
+
+    /**
+     * The CPU reading: "stat,busy,total" in jiffies from /proc/stat, or, where the system blocks it
+     * (Android 8 and later usually do), "freq,current,max" in kHz summed over the cores, or "-".
+     */
+    private static String cpu() {
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/stat"))) {
+            String[] fields = reader.readLine().trim().split("\\s+");
+            long total = 0;
+            for (int i = 1; i < fields.length; i++) {
+                total += Long.parseLong(fields[i]);
+            }
+            long idle = Long.parseLong(fields[4]) + Long.parseLong(fields[5]);
+            return "stat," + (total - idle) + "," + total;
+        } catch (IOException | RuntimeException e) {
+            // Fall through to the frequencies.
+        }
+        long current = 0;
+        long max = 0;
+        for (int core = 0; core < 16; core++) {
+            String base = "/sys/devices/system/cpu/cpu" + core + "/cpufreq/";
+            long cur = readNumber(base + "scaling_cur_freq");
+            long top = readNumber(base + "cpuinfo_max_freq");
+            if (cur >= 0 && top > 0) {
+                current += cur;
+                max += top;
+            }
+        }
+        return max > 0 ? "freq," + current + "," + max : "-";
+    }
+
+    private static long readNumber(String path) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+            return Long.parseLong(reader.readLine().trim());
+        } catch (IOException | RuntimeException e) {
+            return -1;
         }
     }
 

@@ -172,6 +172,20 @@ impl Bridge {
         self.call("settings", "").as_deref() == Some("ok")
     }
 
+    /// Memory, disk and CPU of the TV, for the settings panel.
+    pub fn stats(&self) -> Option<lume_core::stats::Stats> {
+        lume_core::stats::Stats::parse(&self.call("stats", "")?)
+    }
+
+    /// Whether the system has a TV inputs panel to open.
+    pub fn inputs_available(&self) -> bool {
+        self.call("inputs", "").as_deref() == Some("1")
+    }
+
+    pub fn open_inputs(&self) -> bool {
+        self.call("open-inputs", "").as_deref() == Some("ok")
+    }
+
     /// Every launchable app. Icons are fetched only for apps that need a color derived from them:
     /// not the well-known ones and not the ones already in `known`.
     pub fn scan_all(&self, known: Option<&Catalog>) -> Vec<Discovered> {
