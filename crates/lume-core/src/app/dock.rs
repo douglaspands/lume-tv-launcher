@@ -273,7 +273,14 @@ impl LumeApp {
         let mut bubble = style;
         bubble.opacity = amplitude;
         p.draw_box(rect, &bubble);
-        let inner = Rect::new(rect.x + style.padding[3], rect.y, rect.w - padding, rect.h);
+        // One px of slack on each side: `rect.w - padding` can come out a rounding error short of
+        // the measured text, and the line would then be ellipsized although the bubble fits it.
+        let inner = Rect::new(
+            rect.x + style.padding[3] - 1.0,
+            rect.y,
+            rect.w - padding + 2.0,
+            rect.h,
+        );
         let mut text = style;
         text.color = fade(text.color, amplitude);
         p.text(label, inner, Align::Center, &text);

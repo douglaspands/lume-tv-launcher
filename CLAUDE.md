@@ -1,22 +1,30 @@
 # lume: guia para quem retoma o projeto
 
-lume é uma tela inicial (launcher) rápida e leve para Android TV, escrita em Rust (interface, tema, renderização OpenGL ES 2.0)
+Lume é uma tela inicial (launcher) rápida e leve para Android TV, escrita em Rust (interface, tema, renderização OpenGL ES 2.0)
 com uma camada fina de Java (`LumeActivity` e `LumeBridge`, só onde o Android exige). Orçamentos e decisões ficam nas specs.
 
 ## Onde está a verdade
 
 - `openspec/specs/`: o comportamento atual, por capacidade (home-screen, apps-screen, launcher-shell, wallpaper, theming, resource-efficiency...).
-- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`). Nenhuma change está ativa.
+- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`). Nenhuma change está ativa.
 - `docs/handoff-dock-aurora.md`: decisões do v0.2.0, armadilhas já resolvidas, como rodar e testar.
 - `docs/device-notes.md`: medidas na TV de referência (memória, quadros, CPU, tempos).
 - `docs/theme-format.md`, `docs/wallpaper.md`, `docs/translations.md`: formato do tema, papel de parede e traduções.
 
+## Design system
+
+A spec `openspec/specs/design-system/` é a regra visual: tokens, tipografia, medidas, componentes, foco e movimento.
+Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`; divergiu, atualize a spec no mesmo change.
+
 ## Estado
 
-v0.2.0 concluída e mesclada na `main` por squash (2026-10-20). Não há remoto git configurado; nada foi publicado.
-Pendências conhecidas, que dependem do autor: keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
-verificação em emulador Android TV e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
-gasta cerca de 400 ms só na troca de janelas, o lume 75 a 110 ms; a proposta é medir só a parte do lume, até 150 ms).
+v0.2.0 mesclada na `main` por squash (2026-10-20). v0.2.1 (entradas, engrenagem, painel de estatísticas, design system) arquivada em
+`openspec/changes/archive/2026-10-20-v0-2-1`, na branch `feat/v0-2-1`, com PR aberta para a `main`. Remoto: `origin` (GitHub `douglaspands/tv-lume-launcher`).
+Pendências conhecidas, que dependem do autor: assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
+`cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
+verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
+imagem `system-images;android-28;android-tv;x86`, para validar o Android 9, tarefa 5.3 da `v0-2-1`, encerrada sem essa validação e deixada para uma spec futura de testes) e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
+gasta cerca de 400 ms só na troca de janelas, o Lume 75 a 110 ms; a proposta é medir só a parte do Lume, até 150 ms).
 
 ## Como trabalhar aqui
 
@@ -32,12 +40,13 @@ gasta cerca de 400 ms só na troca de janelas, o lume 75 a 110 ms; a proposta é
 cargo test --workspace && cargo clippy --workspace --all-targets   # deve ficar limpo; cargo fmt --all
 cargo run -p lume-desktop -- --size 1920x1080 --locale en --keys right --screenshot home h.png   # telas: home apps settings about editor
 scripts/container-build.sh release       # APK em dist/ (runtime: wslc, docker, podman, nesta ordem; LUME_CONTAINER força outro)
-/usr/bin/python3 scripts/verify-apk.py dist/lume-0.2.0-release-debugsigned.apk   # limite 6 MB
+/usr/bin/python3 scripts/verify-apk.py dist/lume-0.2.1-release-debugsigned.apk   # limite 6 MB
 ```
 
 ## TV de referência (testes por adb)
 
-TCL 55C715 (2 GB de RAM, 4 núcleos), `adb -s 192.168.0.6:5555`; o autor autorizou testar nela.
+TCL 55C715 (2 GB de RAM, 4 núcleos), `adb -s 192.168.0.6:5555`; o autor autorizou testar nela. A TCL roda o firmware global (Android 11); o firmware original do Brasil é Android 9.
+Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`), `adb -s 192.168.0.3:5555`. Comparação em `docs/device-notes.md`.
 
 - Instalar: `adb uninstall app.lume.tv` antes (a chave de debug muda a cada build no container), depois `adb install dist/<apk>` e
   `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity`.
@@ -53,8 +62,8 @@ TCL 55C715 (2 GB de RAM, 4 núcleos), `adb -s 192.168.0.6:5555`; o autor autoriz
 - Abas: mover o foco para uma aba troca a tela sem OK, com fade de 180 ms. Sublinhado azul com o foco na barra, branco com o foco no conteúdo.
 - Cores por papel (`--primary` azul `#4DB3FF`, `--secondary`); todo contorno de foco é azul primário; o nome do app em foco fica branco.
 - Grade de Apps: 6 colunas, ordem alfabética pelo nome mostrado (muda com o idioma do sistema). O tile "Lume" é um app como os outros
-  (retangular, logo) e abre as Configurações do lume. A marca se escreve "Lume" na interface.
-- Home com o lume visível leva à aba Início; voltando de um app aberto pelo lume, restaura tela, foco e rolagem (uma vez).
+  (retangular, logo) e abre as Configurações do Lume (só por ele). Na barra superior, o botão de entradas abre o menu de entradas da TV (escondido se a ação não resolve) e a engrenagem abre as configurações do Android. A marca se escreve "Lume" na interface.
+- Home com o Lume visível leva à aba Início; voltando de um app aberto pelo Lume, restaura tela, foco e rolagem (uma vez).
 
 ## Armadilhas já resolvidas
 
@@ -64,7 +73,7 @@ TCL 55C715 (2 GB de RAM, 4 núcleos), `adb -s 192.168.0.6:5555`; o autor autoriz
 - Métodos Java chamados só pelo Rust (JNI) precisam de `-keep` em `android/app/proguard-rules.pro`.
 - Carregar ícones durante uma animação trava o dock: o laço só carrega quando `Shell::is_busy` é falso.
 - `entry_down`/`entry_up` de `Row` são do destino do foco, não da origem.
-- O Android da TCL encerra o processo do lume em segundo plano quando um app pesado abre; o retorno é então uma abertura a frio.
+- O Android da TCL encerra o processo do Lume em segundo plano quando um app pesado abre; o retorno é então uma abertura a frio.
 
 ## Orçamentos (spec `resource-efficiency`)
 

@@ -1,10 +1,10 @@
-# lume
+# Lume
 
-**Uma tela inicial rápida e leve para Android TV.** O lume substitui o launcher que veio na sua TV por um launcher simples, feito para o controle remoto, que usa pouquíssima memória, deixando mais memória para os seus apps de streaming.
+**Uma tela inicial rápida e leve para Android TV.** O Lume substitui o launcher que veio na sua TV por um launcher simples, feito para o controle remoto, que usa pouquíssima memória, deixando mais memória para os seus apps de streaming.
 
 [English](README.md) | Português
 
-> **Situação:** o lume está em desenvolvimento. A versão 0.1.0 ainda não foi lançada, então ainda não há download. Os passos abaixo são o que você fará quando ela sair.
+> **Situação:** o Lume está em desenvolvimento. A versão 0.1.0 ainda não foi lançada, então ainda não há download. Os passos abaixo são o que você fará quando ela sair.
 
 <p align="center">
   <img src="docs/screenshots/home-pt-BR.png" alt="Tela Início com o dock" width="49%">
@@ -21,7 +21,7 @@
 - Uma tela "Apps" com tudo o que está instalado na TV.
 - Tudo funciona com o controle remoto comum (setas, OK, Voltar, Home).
 - Português (Brasil) e inglês, seguindo o idioma da TV.
-- Nenhum acesso à internet: o lume nunca se conecta à rede e não pede permissões perigosas.
+- Nenhum acesso à internet: o Lume nunca se conecta à rede e não pede permissões perigosas.
 
 **O que você precisa**
 
@@ -31,11 +31,11 @@
 
 ---
 
-## Instalar o lume na TV
+## Instalar o Lume na TV
 
 Você vai enviar o app do computador para a TV com uma ferramenta pequena chamada **adb**. Só precisa fazer isso uma vez.
 
-### 1. Baixe o lume
+### 1. Baixe o Lume
 
 1. Abra a página **Releases** deste projeto no GitHub.
 2. Na versão mais nova, baixe o arquivo com nome parecido com **`lume-0.1.0.apk`**.
@@ -82,17 +82,17 @@ Vai aparecer uma mensagem na TV perguntando *"Permitir a depuração USB?"*. Esc
 adb devices
 ```
 
-Você deve ver a sua TV com a palavra `device` ao lado. Agora instale o lume (use o caminho real do arquivo que você baixou):
+Você deve ver a sua TV com a palavra `device` ao lado. Agora instale o Lume (use o caminho real do arquivo que você baixou):
 
 ```
 adb install "C:\Users\Voce\Downloads\lume-0.1.0.apk"
 ```
 
-Quando aparecer `Success`, o lume está instalado.
+Quando aparecer `Success`, o Lume está instalado.
 
-### 6. Faça do lume a sua tela inicial
+### 6. Faça do Lume a sua tela inicial
 
-1. Aperte o botão **Home** do controle. O Android pode perguntar qual app usar como tela inicial: escolha **lume** e **Sempre**.
+1. Aperte o botão **Home** do controle. O Android pode perguntar qual app usar como tela inicial: escolha **Lume** e **Sempre**.
 2. Se nada foi perguntado, ou se o Home ainda abre o launcher antigo, rode:
 
    ```
@@ -107,7 +107,7 @@ Quando aparecer `Success`, o lume está instalado.
 
 ### Voltar ao launcher original
 
-Remova o lume e, se você desligou o launcher original, ligue-o de novo:
+Remova o Lume e, se você desligou o launcher original, ligue-o de novo:
 
 ```
 adb shell pm enable com.google.android.tvlauncher
@@ -121,15 +121,15 @@ adb uninstall app.lume.tv
 | `adb: command not found` / `'adb' não é reconhecido` | Você não está na pasta platform-tools. Abra o terminal dentro dela (passo 2). |
 | `failed to connect` / `unable to connect` | Confira o endereço da TV, se TV e computador estão na mesma rede e se a depuração está ligada. Tente desligar e ligar a TV. |
 | `device unauthorized` | Olhe a tela da TV e aceite o aviso, depois rode `adb devices` de novo. |
-| `INSTALL_FAILED_OLDER_SDK` | A sua TV tem Android anterior ao 9. O lume não roda nela. |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Há outra versão do lume instalada. Rode `adb uninstall app.lume.tv` e instale de novo. |
+| `INSTALL_FAILED_OLDER_SDK` | A sua TV tem Android anterior ao 9. O Lume não roda nela. |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | Há outra versão do Lume instalada. Rode `adb uninstall app.lume.tv` e instale de novo. |
 | O Home abre o launcher antigo | Repita o passo 6, opções 2 e 3. |
 
 ---
 
 ## Para desenvolvedores
 
-O lume é escrito em Rust. Ele desenha toda a interface com OpenGL ES 2.0 (sem Views, WebView, AndroidX ou Kotlin) e libera toda a memória de GPU enquanto outro app está em primeiro plano.
+O Lume é escrito em Rust. Ele desenha toda a interface com OpenGL ES 2.0 (sem Views, WebView, AndroidX ou Kotlin) e libera toda a memória de GPU enquanto outro app está em primeiro plano.
 
 ### Estrutura do repositório
 
@@ -237,7 +237,7 @@ As traduções são arquivos `strings.xml` padrão do Android em `android/app/sr
 
 ### Papel de parede
 
-O lume desenha uma fotografia de aurora boreal atrás de todas as telas. Como ela é processada no build, como trocá-la e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
+O Lume desenha uma fotografia de aurora boreal atrás de todas as telas. Como ela é processada no build, como trocá-la e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contribuição, licença e marca
 

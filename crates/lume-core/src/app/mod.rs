@@ -37,6 +37,7 @@ pub mod ids {
     pub const TAB_HOME: FocusId = 1;
     pub const TAB_APPS: FocusId = 2;
     pub const GEAR: FocusId = 3;
+    pub const INPUTS: FocusId = 4;
     pub const FAVORITES_ADD: FocusId = 999;
     pub const FAVORITE_BASE: FocusId = 1000;
     pub const GRID_BASE: FocusId = 2000;
@@ -71,6 +72,7 @@ pub enum Effect {
         activity: String,
     },
     OpenAndroidSettings,
+    OpenInputs,
     /// The home configuration changed and must be written to disk.
     SaveConfig,
     /// The usage history changed and must be written to disk.
@@ -131,10 +133,15 @@ pub struct LumeApp {
     pub translator: Translator,
     pub clock: WallClock,
     screen: Screen,
-    /// The tab to return to when leaving the settings.
-    settings_return: Tab,
+    /// Whether the system has a TV inputs panel: the top bar shows its button only then.
+    pub inputs_available: bool,
     editor: editor::EditorState,
     about_scroll: f32,
+    /// The last TV statistics read while the settings were on screen, and the CPU use from them.
+    stats: Option<crate::stats::Stats>,
+    cpu_use: Option<f32>,
+    /// When the statistics are due again (`None`: right away).
+    stats_at: Option<u64>,
     focus: Focus,
     anim: Animations<Anim>,
     scroll_y: f32,
@@ -166,6 +173,9 @@ pub struct LumeApp {
 /// lume back (the system may deliver it after the window is already there).
 const RETURN_WINDOW_MS: u64 = 2000;
 
+/// How often the TV statistics are read while the settings are on screen.
+const STATS_INTERVAL_MS: u64 = 2000;
+
 impl LumeApp {
     pub fn new(
         catalog: Catalog,
@@ -182,9 +192,12 @@ impl LumeApp {
             translator,
             clock,
             screen: Screen::Main(Tab::Home),
-            settings_return: Tab::Home,
+            inputs_available: false,
             editor: editor::EditorState::default(),
             about_scroll: 0.0,
+            stats: None,
+            cpu_use: None,
+            stats_at: None,
             focus: Focus::new(),
             anim: Animations::new(),
             scroll_y: 0.0,
@@ -216,7 +229,8 @@ impl LumeApp {
     pub fn tab(&self) -> Tab {
         match self.screen {
             Screen::Main(tab) => tab,
-            _ => self.settings_return,
+            // The settings, About and editor screens all come from the Apps tab.
+            _ => Tab::Apps,
         }
     }
 
@@ -242,10 +256,12 @@ impl LumeApp {
             self.return_point = None;
         }
         let effects = self.dispatch_key(key);
-        if effects
-            .iter()
-            .any(|e| matches!(e, Effect::OpenApp { .. } | Effect::OpenAndroidSettings))
-        {
+        if effects.iter().any(|e| {
+            matches!(
+                e,
+                Effect::OpenApp { .. } | Effect::OpenAndroidSettings | Effect::OpenInputs
+            )
+        }) {
             self.return_point = Some(ReturnPoint {
                 screen: self.screen,
                 focus: self.focus.current_id(),
@@ -309,10 +325,8 @@ impl LumeApp {
             Screen::Editor => return self.activate_editor(id),
         }
         match id {
-            ids::GEAR => {
-                self.open_settings();
-                vec![]
-            }
+            ids::GEAR => vec![Effect::OpenAndroidSettings],
+            ids::INPUTS => vec![Effect::OpenInputs],
             ids::TAB_HOME => {
                 self.select_tab(Tab::Home);
                 vec![]
@@ -477,6 +491,28 @@ impl LumeApp {
             consider(*until);
         }
         deadline
+    }
+
+    /// Whether the settings are on screen and so the TV statistics are being read.
+    pub fn wants_stats(&self) -> bool {
+        self.foreground && self.screen == Screen::Settings
+    }
+
+    /// When the next statistics reading is due, while the settings are on screen.
+    pub fn stats_deadline(&self, now_ms: u64) -> Option<u64> {
+        self.wants_stats().then(|| self.stats_at.unwrap_or(now_ms))
+    }
+
+    /// A reading failed: ask again after the usual interval.
+    pub fn stats_retry(&mut self, now_ms: u64) {
+        self.stats_at = Some(now_ms + STATS_INTERVAL_MS);
+    }
+
+    /// Takes a statistics reading. The panel is redrawn by the caller.
+    pub fn apply_stats(&mut self, stats: crate::stats::Stats, now_ms: u64) {
+        self.cpu_use = crate::stats::cpu_use(self.stats.map(|s| s.cpu), stats.cpu);
+        self.stats = Some(stats);
+        self.stats_at = Some(now_ms + STATS_INTERVAL_MS);
     }
 
     /// Whether an animation is running at `now_ms` (a frame is due every few milliseconds).

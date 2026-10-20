@@ -102,7 +102,7 @@
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background: var(--surface-icon);
+  background: rgba(0, 0, 0, 0);
   color: var(--text);
   transition: var(--focus-time);
 }
@@ -116,23 +116,71 @@
   color: var(--text-disabled);
 }
 
+/* Buttons. The primary one is the action of the screen: faded like an inactive tab until it has the
+   focus, then filled with the primary color (its blue focus ring stands off the fill by 4px, so it
+   reads against the dark background like every other focus ring). The secondary one is the quiet alternative; the danger one confirms what cannot be
+   undone. */
 .button {
   height: 48px;
   padding: 0 28px;
   gap: 10px;
   border-radius: var(--radius);
-  background: var(--text);
-  color: var(--bg);
+  background: var(--control);
+  color: var(--text-muted);
   font-size: 18px;
   font-weight: 700;
   transition: var(--focus-time);
 }
 .button:focus {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
+  background: var(--primary);
+  color: var(--on-primary);
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
   transform: scale(1.04);
 }
 .button:disabled {
+  opacity: 0.4;
+}
+
+.button-secondary {
+  height: 48px;
+  padding: 0 28px;
+  gap: 10px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  outline: 2px solid var(--border);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.button-secondary:focus {
+  background: var(--surface-focus);
+  outline: 3px solid var(--primary);
+  outline-offset: 0px;
+  transform: scale(1.04);
+}
+.button-secondary:disabled {
+  opacity: 0.4;
+}
+
+.button-danger {
+  height: 48px;
+  padding: 0 28px;
+  gap: 10px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  font-size: 18px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.button-danger:focus {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+  transform: scale(1.04);
+}
+.button-danger:disabled {
   opacity: 0.4;
 }
 
@@ -148,11 +196,10 @@
 .dock-label {
   padding: 8px 18px;
   border-radius: 12px;
-  background: rgba(15, 23, 30, 0.9);
+  background: rgba(0, 0, 0, 0);
   color: var(--text);
   font-size: 18px;
   font-weight: 700;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 /* Rows and tiles */
@@ -184,9 +231,13 @@
   font-weight: 500;
 }
 
-/* The name under the focused tile lights up, like the active tab. */
+/* The name under the focused tile behaves like the active tab: white and bold. */
+.tile-label {
+  transition: var(--focus-time);
+}
 .tile-label:focus {
   color: var(--text);
+  font-weight: 700;
 }
 
 /* Settings */
@@ -196,15 +247,17 @@
   gap: 16px;
   border-radius: var(--radius);
   background: var(--surface-row);
-  color: var(--text);
+  color: var(--text-muted);
   font-size: 22px;
   font-weight: 700;
   transition: var(--focus-time);
 }
+/* Like the primary button: faded until it has the focus, then it lights up. */
 .settings-item:focus {
-  background: var(--surface-focus);
-  outline: var(--focus-ring);
-  outline-offset: 0px;
+  background: var(--primary);
+  color: var(--on-primary);
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
 }
 
 .breadcrumb {

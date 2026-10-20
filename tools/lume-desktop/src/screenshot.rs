@@ -115,6 +115,7 @@ pub fn render_app(
                 text: scene.text,
                 display: *scene.display,
             };
+            crate::demo::feed_stats(app, now);
             app.draw(&mut painter, now);
         });
     };
@@ -129,6 +130,9 @@ pub fn render_app(
     }
     // Let every animation finish before the picture that is kept.
     now += 2000;
+    frame(&mut session, app, now);
+    // A glyph first drawn in a pass that rebuilds the atlas can still be missing from that pass: one more
+    // frame, with everything already in the atlas, is the one that is kept.
     frame(&mut session, app, now);
     let pixels = session.render();
     session.finish();

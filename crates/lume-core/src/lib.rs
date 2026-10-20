@@ -13,6 +13,7 @@ pub mod licenses;
 pub mod logo;
 pub mod render;
 pub mod shell;
+pub mod stats;
 pub mod storage;
 pub mod text;
 pub mod theme;

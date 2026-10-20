@@ -16,7 +16,10 @@ jobs:
   cla:
     runs-on: ubuntu-24.04
     steps:
+      # BYPASS (provisional): the signature flow is not set up yet (no `cla-signatures` branch), so this
+      # step cannot fail the check. Remove `continue-on-error` when the CLA is in force; see CLAUDE.md.
       - name: CLA Assistant
+        continue-on-error: true
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
         uses: contributor-assistant/github-action@v2.6.1
         env:

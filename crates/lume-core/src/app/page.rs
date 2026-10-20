@@ -8,10 +8,13 @@ use crate::theme::{vars, StateFlags, THEME};
 pub const LEFT: f32 = 64.0;
 pub const WIDTH: f32 = 1152.0;
 const BREADCRUMB_BASELINE: f32 = 52.0;
-const TITLE_BASELINE: f32 = 99.0;
-const SUBTITLE_BASELINE: f32 = 130.0;
+const TITLE_BASELINE: f32 = 116.0;
+const SUBTITLE_BASELINE: f32 = 154.0;
+/// Where the content of a secondary screen starts: 58 below the subtitle's baseline.
+pub const CONTENT_TOP: f32 = 212.0;
 
-/// Draws the logo, the path (`Settings › Home screen › Edit`) and the title.
+/// Draws the logo, the path (`Settings › Home screen`, none on the Settings screen itself) and the
+/// title.
 /// `scroll_y` moves everything up when the page scrolls.
 pub fn draw_header(
     p: &mut Painter,
@@ -77,7 +80,7 @@ pub fn draw_header(
         style.font_size = 18.0;
         let shown = p
             .text
-            .ellipsize(subtitle, &Painter::text_style(&style), 960.0)
+            .ellipsize(subtitle, &Painter::text_style(&style), WIDTH)
             .into_owned();
         p.text.draw(
             p.list,

@@ -20,25 +20,71 @@ pub const CONFIRM_RESTORE: FocusId = 4900;
 pub const CONFIRM_CANCEL: FocusId = 4901;
 
 const CHIP_HEIGHT: f32 = 42.0;
+const CHIP_GAP: f32 = 16.0;
+/// Space inside the favorites panel, around its content.
+const PANEL_PADDING: f32 = 32.0;
 const CARD_WIDTH: f32 = 168.0;
 const CARD_NAME_HEIGHT: f32 = 56.0;
 const CARD_CONTROLS_HEIGHT: f32 = 60.0;
-const CARD_GAP: f32 = 18.0;
-const TOP: f32 = 162.0;
+const CARD_GAP: f32 = 24.0;
+/// Where the panel starts: 64 below the title (see `page::CONTENT_TOP`).
+const TOP: f32 = page::CONTENT_TOP;
 const BOTTOM_PADDING: f32 = 120.0;
+const BUTTON_HEIGHT: f32 = 48.0;
+/// How far below the top of the panel the first line of cards reaches.
+const FIRST_CARDS_DEPTH: f32 = 200.0;
+const BUTTON_MIN_WIDTH: f32 = 160.0;
+/// Space between the favorites panel and the buttons under it.
+const BUTTONS_GAP: f32 = 40.0;
+
+/// The three buttons of the design system (see the `design-system` spec).
+#[derive(Clone, Copy)]
+enum ButtonKind {
+    /// The action of the screen.
+    Primary,
+    /// The quiet alternative.
+    Secondary,
+    /// What cannot be undone.
+    Danger,
+}
+
+impl ButtonKind {
+    fn component(self) -> &'static crate::theme::ComponentTheme {
+        match self {
+            ButtonKind::Primary => &THEME.button,
+            ButtonKind::Secondary => &THEME.button_secondary,
+            ButtonKind::Danger => &THEME.button_danger,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct EditorState {
     /// The "Restore defaults" confirmation is open.
     pub confirm: bool,
+    /// It was opened from the Home screen ("Add favorites"), not from the settings: Back goes
+    /// home again instead of to the settings.
+    pub from_home: bool,
 }
 
 impl LumeApp {
-    pub(super) fn open_editor(&mut self) {
+    pub(super) fn open_editor(&mut self, from_home: bool) {
         self.screen = Screen::Editor;
-        self.editor = EditorState::default();
+        self.editor = EditorState {
+            from_home,
+            ..EditorState::default()
+        };
         self.scroll_to_top();
-        self.pending_focus = Some(PendingFocus::Id(DONE));
+        // The first thing to change: the first favorite (its "move right"), or the first app to
+        // add when there is no favorite.
+        let first = if !self.config.favorites.is_empty() {
+            FAVORITE_BUTTON_BASE + 1
+        } else if !self.addable_apps().is_empty() {
+            ADD_APP_BASE
+        } else {
+            DONE
+        };
+        self.pending_focus = Some(PendingFocus::Id(first));
         self.focus.set_rows(vec![]);
     }
 
@@ -61,8 +107,8 @@ impl LumeApp {
         let rect = focused.and_then(|id| layout.rects.get(&id).copied());
         let view_height = p.display.visible_rect().bottom().max(720.0);
         self.reveal_vertical(rect, layout.content_height, 0.0, view_height);
-        if focused == Some(DONE) {
-            // The first element brings the whole page back to the top, with its header.
+        if rect.is_some_and(|r| r.y < TOP + FIRST_CARDS_DEPTH) {
+            // The first line of cards brings the whole page back to the top, with its header.
             self.scroll_to(0.0);
         }
         let scroll_y = self.current_scroll_y();
@@ -79,49 +125,60 @@ impl LumeApp {
                 &[
                     &t.get(StringId::SettingsTitle),
                     &t.get(StringId::SettingsHomeScreen),
-                    &t.get(StringId::EditorBreadcrumbEdit),
                 ],
-                &t.get(StringId::EditorTitle),
+                &t.get(StringId::SettingsHomeScreen),
                 Some(&t.get(StringId::EditorInstruction)),
                 scroll_y,
             );
         }
 
-        // "Done" at the top right.
-        let done_label = t.get(StringId::EditorDone).into_owned();
-        let button_style = p.style(&THEME.button, StateFlags::NONE);
-        let done_width =
-            p.measure(&done_label, &button_style) + 2.0 * button_style.padding[1].max(28.0);
-        let done = Rect::new(
-            LEFT + WIDTH - done_width.max(160.0),
-            82.0,
-            done_width.max(160.0),
-            52.0,
-        );
-        layout.row(vec![Focusable::new(DONE, done)]);
-        layout.rects.insert(DONE, done);
-        if draw && !self.editor.confirm {
-            self.draw_button(p, done.translate(0.0, -scroll_y), &done_label, DONE);
-        }
-
         let y = self.favorites_panel(p, &mut layout, TOP, scroll_y, draw);
 
-        // "Restore defaults" at the bottom right.
-        let y = y + 24.0 + 24.0;
-        let label = t.get(StringId::EditorRestoreDefaults).into_owned();
-        let width = p.measure(&label, &button_style) + 2.0 * 28.0;
-        let restore = Rect::new(LEFT + WIDTH - width, y, width, 50.0);
-        layout.row(vec![Focusable::new(RESTORE, restore)]);
+        // "Restore defaults" at the left and "Done" at the right, on the line under the panel: at
+        // opposite sides, so one is never reached by accident on the way to the other. Down from
+        // the favorites lands on "Done".
+        let y = y + BUTTONS_GAP;
+        let done_label = t.get(StringId::EditorDone).into_owned();
+        let restore_label = t.get(StringId::EditorRestoreDefaults).into_owned();
+        let button_style = p.style(&THEME.button, StateFlags::NONE);
+        let width_of = |p: &mut Painter, label: &str| {
+            (p.measure(label, &button_style) + 2.0 * 28.0).max(BUTTON_MIN_WIDTH)
+        };
+        let done_width = width_of(p, &done_label);
+        let restore_width = width_of(p, &restore_label);
+        let done = Rect::new(LEFT + WIDTH - done_width, y, done_width, BUTTON_HEIGHT);
+        let restore = Rect::new(LEFT, y, restore_width, BUTTON_HEIGHT);
         layout.rects.insert(RESTORE, restore);
+        layout.rects.insert(DONE, done);
+        layout.rows.push(
+            Row::new(vec![
+                Focusable::new(RESTORE, restore),
+                Focusable::new(DONE, done),
+            ])
+            .with_entry_down(DONE),
+        );
         if draw && !self.editor.confirm {
             p.list.fill(
-                Rect::new(LEFT, y - 12.0 - scroll_y, WIDTH, 2.0),
+                Rect::new(LEFT, y - 20.0 - scroll_y, WIDTH, 2.0),
                 1.0,
                 Paint::Solid(vars::SURFACE),
             );
-            self.draw_outlined_button(p, restore.translate(0.0, -scroll_y), &label, RESTORE);
+            self.draw_button(
+                p,
+                restore.translate(0.0, -scroll_y),
+                &restore_label,
+                RESTORE,
+                ButtonKind::Secondary,
+            );
+            self.draw_button(
+                p,
+                done.translate(0.0, -scroll_y),
+                &done_label,
+                DONE,
+                ButtonKind::Primary,
+            );
         }
-        layout.content_height = y + 50.0 + BOTTOM_PADDING;
+        layout.content_height = y + BUTTON_HEIGHT + BOTTOM_PADDING;
 
         if self.editor.confirm {
             // The dialog traps the focus.
@@ -150,13 +207,13 @@ impl LumeApp {
         let favorites = self.config.favorites.clone();
         let card_lines = favorites.len().div_ceil(per_line);
 
-        let heading_y = top + 24.0;
-        let cards_top = heading_y + 40.0;
+        let heading_y = top + PANEL_PADDING;
+        let cards_top = heading_y + 48.0;
         let mut y = cards_top;
         if card_lines > 0 {
             y += card_lines as f32 * card_height + (card_lines as f32 - 1.0) * CARD_GAP;
         }
-        y += 24.0;
+        y += PANEL_PADDING;
 
         let addable = self.addable_apps();
         let full = self.config.favorites_full();
@@ -173,9 +230,9 @@ impl LumeApp {
             &widths,
             chips_x,
             LEFT + WIDTH - 32.0,
-            12.0,
+            CHIP_GAP,
             inner_left,
-            CHIP_HEIGHT + 12.0,
+            CHIP_HEIGHT + CHIP_GAP,
             y,
         );
         let chip_lines = if addable.is_empty() {
@@ -183,8 +240,10 @@ impl LumeApp {
         } else {
             positions.last().map_or(1, |q| q.line + 1)
         };
-        let panel_bottom =
-            y + chip_lines as f32 * CHIP_HEIGHT + (chip_lines as f32 - 1.0) * 12.0 + 24.0;
+        let panel_bottom = y
+            + chip_lines as f32 * CHIP_HEIGHT
+            + (chip_lines as f32 - 1.0) * CHIP_GAP
+            + PANEL_PADDING;
         let panel = Rect::new(LEFT, top, WIDTH, panel_bottom - top);
 
         if draw {
@@ -318,9 +377,17 @@ impl LumeApp {
 
     // ---- drawing of the pieces --------------------------------------------------------------
 
-    fn draw_button(&mut self, p: &mut Painter, rect: Rect, label: &str, id: FocusId) {
+    /// A button of the design system: `kind` picks the component of the theme.
+    fn draw_button(
+        &mut self,
+        p: &mut Painter,
+        rect: Rect,
+        label: &str,
+        id: FocusId,
+        kind: ButtonKind,
+    ) {
         let progress = self.focus_progress(id);
-        let style = p.focus_style(&THEME.button, progress);
+        let style = p.focus_style(kind.component(), progress);
         p.draw_box(rect, &style);
         p.text(
             label,
@@ -328,23 +395,6 @@ impl LumeApp {
             Align::Center,
             &style,
         );
-    }
-
-    fn draw_outlined_button(&mut self, p: &mut Painter, rect: Rect, label: &str, id: FocusId) {
-        let progress = self.focus_progress(id);
-        let rest = p.style(&THEME.button, StateFlags::NONE);
-        let mut style =
-            crate::ui::style::mix(&rest, &p.style(&THEME.button, StateFlags::FOCUS), progress);
-        style.background = Some(Paint::Solid(crate::ui::style::mix_color(
-            vars::SURFACE,
-            vars::SURFACE_FOCUS,
-            progress,
-        )));
-        style.color = vars::TEXT;
-        let scaled = rect.scaled_about_center(style.scale);
-        p.list.draw_box(scaled, &style);
-        p.list.ring(scaled, style.border_radius, 2.0, vars::BORDER);
-        p.text(label, scaled, Align::Center, &style);
     }
 
     fn draw_round_button(
@@ -499,9 +549,9 @@ impl LumeApp {
         let button_style = p.style(&THEME.button, StateFlags::NONE);
         let confirm_w = (p.measure(&confirm_label, &button_style) + 56.0).max(140.0);
         let cancel_w = (p.measure(&cancel_label, &button_style) + 56.0).max(140.0);
-        let y = dialog.bottom() - 32.0 - 50.0;
-        let cancel = Rect::new(dialog.right() - 32.0 - cancel_w, y, cancel_w, 50.0);
-        let confirm = Rect::new(cancel.x - 16.0 - confirm_w, y, confirm_w, 50.0);
+        let y = dialog.bottom() - 32.0 - BUTTON_HEIGHT;
+        let cancel = Rect::new(dialog.right() - 32.0 - cancel_w, y, cancel_w, BUTTON_HEIGHT);
+        let confirm = Rect::new(cancel.x - 16.0 - confirm_w, y, confirm_w, BUTTON_HEIGHT);
         if draw {
             p.list.fill(
                 visible,
@@ -556,8 +606,20 @@ impl LumeApp {
                 );
                 line_y += 26.0;
             }
-            self.draw_button(p, confirm, &confirm_label, CONFIRM_RESTORE);
-            self.draw_outlined_button(p, cancel, &cancel_label, CONFIRM_CANCEL);
+            self.draw_button(
+                p,
+                confirm,
+                &confirm_label,
+                CONFIRM_RESTORE,
+                ButtonKind::Danger,
+            );
+            self.draw_button(
+                p,
+                cancel,
+                &cancel_label,
+                CONFIRM_CANCEL,
+                ButtonKind::Secondary,
+            );
         }
         let rows = vec![Row::new(vec![
             Focusable::new(CONFIRM_RESTORE, confirm),
@@ -636,7 +698,15 @@ impl LumeApp {
             self.pending_focus = Some(PendingFocus::Id(RESTORE));
             return vec![];
         }
-        self.finish_editing()
+        if self.editor.from_home {
+            return self.finish_editing();
+        }
+        // One step back: the Lume settings, on the item that opened this screen. Back from there
+        // goes on to the "Lume" tile, so the way out retraces the way in.
+        self.screen = Screen::Settings;
+        self.scroll_to_top();
+        self.pending_focus = Some(PendingFocus::Id(super::settings::ITEM_HOME_SCREEN));
+        vec![Effect::SaveConfig]
     }
 }
 

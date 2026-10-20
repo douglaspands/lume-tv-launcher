@@ -498,6 +498,8 @@ mod tests {
             ("editor-row", &THEME.editor_row),
             ("chip", &THEME.chip),
             ("button", &THEME.button),
+            ("button-secondary", &THEME.button_secondary),
+            ("button-danger", &THEME.button_danger),
             ("icon-button", &THEME.icon_button),
         ] {
             let focused = THEME.resolve(component, StateFlags::FOCUS);
@@ -506,6 +508,18 @@ mod tests {
                 .unwrap_or_else(|| panic!("{name} has no focus outline"));
             assert_eq!(outline.color, vars::PRIMARY, "{name}");
         }
+    }
+
+    #[test]
+    fn the_primary_button_is_faded_until_it_has_the_focus() {
+        let rest = THEME.resolve(&THEME.button, StateFlags::NONE);
+        assert_eq!(rest.background, Some(Paint::Solid(vars::CONTROL)));
+        assert_eq!(rest.color, vars::TEXT_MUTED);
+        let focus = THEME.resolve(&THEME.button, StateFlags::FOCUS);
+        assert_eq!(focus.background, Some(Paint::Solid(vars::PRIMARY)));
+        assert_eq!(focus.color, vars::ON_PRIMARY);
+        // The ring stands off the fill, so the primary color still shows against the background.
+        assert!(focus.outline_offset >= 4.0);
     }
 
     #[test]

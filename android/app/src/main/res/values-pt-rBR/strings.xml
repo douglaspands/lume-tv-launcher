@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">lume</string>
+    <string name="app_name">Lume</string>
     <string name="tagline">seu início na TV</string>
 
     <!-- Barra superior -->
@@ -14,14 +14,19 @@
     <!-- Tela Apps -->
     <string name="apps_title">Todos os apps</string>
 
-    <!-- Configurações do lume -->
+    <!-- Configurações do Lume -->
     <string name="settings_title">Configurações</string>
     <string name="settings_home_screen">Tela Início</string>
-    <string name="settings_android">Configurações do Android</string>
-    <string name="settings_about">Sobre o lume</string>
+    <string name="settings_about">Sobre o Lume</string>
+
+    <!-- Painel de status da TV -->
+    <string name="stats_title">STATUS DA TV</string>
+    <string name="stats_memory">Memória</string>
+    <string name="stats_disk">Armazenamento</string>
+    <string name="stats_cpu">CPU</string>
 
     <!-- Sobre -->
-    <string name="about_title">Sobre o lume</string>
+    <string name="about_title">Sobre o Lume</string>
     <string name="about_version">Versão %1$s</string>
     <string name="about_license">Licenciado sob GPL-3.0-or-later</string>
     <string name="about_source">Código-fonte: %1$s</string>

@@ -56,6 +56,7 @@ impl Viewer {
                 text: scene.text,
                 display: *scene.display,
             };
+            crate::demo::feed_stats(lume, now);
             lume.draw(&mut painter, now);
         });
         let pixels = self.session.render();
@@ -83,6 +84,7 @@ impl Viewer {
                     println!("open app {package} ({activity})")
                 }
                 Effect::OpenAndroidSettings => println!("open the Android settings"),
+                Effect::OpenInputs => println!("open the TV inputs"),
                 Effect::SaveConfig => println!("save the configuration"),
                 Effect::SaveUsage => println!("save the usage history"),
             }
