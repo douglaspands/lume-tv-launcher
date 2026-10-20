@@ -139,7 +139,7 @@ Ao trocar de aba (Início e Apps), o conteúdo da aba nova SHALL aparecer com um
 - **THEN** a tela volta a pedir quadros só para o relógio
 
 ### Requirement: Tela de Configurações do Lume
-A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de Apps, com os itens "Tela Início" (abre o modo edição) e "Sobre o Lume". Ela SHALL NOT ter item para as configurações do Android, nem ser aberta pela engrenagem. A tela SHALL exibir, à direita dos itens, o painel de estatísticas da TV (capacidade `device-stats`). A tela SHALL exibir o caminho "Configurações" e, no canto inferior direito, a versão instalada (ex.: "Versão 0.2.1"). As telas abaixo dela SHALL exibir o caminho de navegação a partir de "Configurações" (ex.: "Configurações › Tela Início"). Voltar SHALL retraçar o caminho de entrada, um passo por vez: da tela de edição para a tela "Configurações" (com o foco em "Tela Início") e dela para o tile "Lume" da aba Apps. Voltar da tela SHALL devolver o foco ao tile "Lume" na aba Apps.
+A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de Apps, com os itens "Tela Início" (abre o modo edição) e "Sobre o Lume". Ela SHALL NOT ter item para as configurações do Android, nem ser aberta pela engrenagem. A tela SHALL exibir, à direita dos itens, o painel de estatísticas da TV (capacidade `device-stats`). A tela SHALL exibir o caminho "Configurações" e, no canto inferior direito, a versão do build instalado (capacidade `platform-compatibility`, requisito "Versão do build"). Uma versão de release SHALL aparecer com "v" na frente (ex.: "Versão v0.3.0"); uma versão de build local ou `dev` SHALL aparecer como é (ex.: "Versão 4d8438b-dirty"). As telas abaixo dela SHALL exibir o caminho de navegação a partir de "Configurações" (ex.: "Configurações › Tela Início"). Voltar SHALL retraçar o caminho de entrada, um passo por vez: da tela de edição para a tela "Configurações" (com o foco em "Tela Início") e dela para o tile "Lume" da aba Apps. Voltar da tela SHALL devolver o foco ao tile "Lume" na aba Apps.
 
 #### Scenario: Abrir pelo tile
 - **WHEN** o foco está no tile "Lume" da grade de Apps e o usuário pressiona OK
@@ -152,6 +152,14 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 #### Scenario: Caminho e versão
 - **WHEN** a tela "Configurações" do Lume é exibida
 - **THEN** o caminho "Configurações" aparece no topo, e a versão instalada no canto inferior direito
+
+#### Scenario: Versão de release com "v"
+- **WHEN** o build instalado veio da tag `v0.3.0` e a tela "Configurações" ou a tela Sobre é exibida
+- **THEN** a versão aparece como "v0.3.0", com um "v" só
+
+#### Scenario: Versão de build local
+- **WHEN** o build instalado foi gerado localmente no commit `4d8438b` com mudanças não commitadas
+- **THEN** a versão aparece como "4d8438b-dirty", sem "v"
 
 #### Scenario: Sem item do Android
 - **WHEN** a tela "Configurações" do Lume é exibida
@@ -171,7 +179,7 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 
 #### Scenario: Tela Sobre
 - **WHEN** o usuário escolhe "Sobre o Lume"
-- **THEN** é exibida uma tela com a versão do app, a licença (GPL-3.0-or-later), o endereço do código-fonte e as licenças de terceiros (fonte, ícones e bibliotecas)
+- **THEN** é exibida uma tela com a versão do build (a mesma do canto da tela "Configurações"), a licença (GPL-3.0-or-later), o endereço do código-fonte `https://github.com/douglaspands/lume-tv-launcher` e as licenças de terceiros (fonte, ícones e bibliotecas)
 
 ### Requirement: Nome do app com L maiúsculo
 O nome do app SHALL ser escrito "Lume" em todo texto que o usuário lê: o rótulo do app no sistema, a barra superior, o tile da grade, a tela Sobre e as telas de configurações, em todos os idiomas fornecidos. Identificadores técnicos (pacote, biblioteca nativa, tag de log) SHALL NOT mudar.
