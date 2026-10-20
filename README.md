@@ -4,7 +4,7 @@
 
 English | [Português](README.pt-BR.md)
 
-> **Status:** Lume is in development. Version 0.1.0 has not been released yet, so there is no download yet. The steps below are what you will do once it is out.
+> **Status:** Lume is in development. The current release is **version 0.3.0**, published on the [Releases page](https://github.com/douglaspands/lume-tv-launcher/releases). The steps below show how to install it.
 
 <p align="center">
   <img src="docs/screenshots/home-en.png" alt="Home screen with the dock" width="49%">
@@ -38,7 +38,7 @@ You will send the app to the TV from your computer with a small tool called **ad
 ### 1. Download Lume
 
 1. Open the [**Releases** page](https://github.com/douglaspands/lume-tv-launcher/releases) of this project on GitHub.
-2. Under the newest version, download the file named like **`lume-0.1.0.apk`**.
+2. Under the newest version, download the file named like **`lume-0.3.0.apk`**.
 3. Remember where you saved it (for example, your Downloads folder).
 
 ### 2. Get adb on your computer
@@ -85,7 +85,7 @@ adb devices
 You should see your TV with the word `device` next to it. Now install Lume (use the real path of the file you downloaded):
 
 ```
-adb install "C:\Users\You\Downloads\lume-0.1.0.apk"
+adb install "C:\Users\You\Downloads\lume-0.3.0.apk"
 ```
 
 When you see `Success`, Lume is installed.
@@ -195,7 +195,7 @@ export LUME_KEY_PASSWORD=...
 scripts/container-build.sh release    # dist/lume-<version>-release-debugsigned.apk
 ```
 
-Keep the keystore outside the repository and back it up: the same key must sign every update. `The version comes from the build, not from a file: a release tag `v0.3.0` gives `0.3.0` (`LUME_VERSION_NAME=v0.3.0` does the same), and a local build uses the short git commit (`4d8438b`, with `-dirty` for uncommitted changes to tracked files; `dev` without git), so the file is named `dist/lume-4d8438b-release-debugsigned.apk`.
+Keep the keystore outside the repository and back it up: the same key must sign every update. The version comes from the build, not from a file: a release tag `v0.3.0` gives `0.3.0` (`LUME_VERSION_NAME=v0.3.0` does the same), and a local build uses the short git commit (`4d8438b`, with `-dirty` for uncommitted changes to tracked files; `dev` without git), so the file is named `dist/lume-4d8438b-release-debugsigned.apk`.
 
 **Checking an APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` checks the size (6 MB), the ABIs, the 16 KB alignment of the native libraries, and that the app asks for neither `INTERNET` nor `QUERY_ALL_PACKAGES`.
 
