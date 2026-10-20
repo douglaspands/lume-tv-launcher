@@ -1,7 +1,7 @@
 //! The Apps tab: every installed app in a grid.
 
 use super::painter::Painter;
-use super::topbar::{self, TabLayout, TopBar};
+use super::topbar::{self, BarLayout, TopBar};
 use super::{ids, Effect, LumeApp, Tab};
 use crate::i18n::StringId;
 use crate::render::Rect;
@@ -15,9 +15,9 @@ const GAP: f32 = 24.0;
 const TILE_WIDTH: f32 = (WIDTH - (COLUMNS as f32 - 1.0) * GAP) / COLUMNS as f32;
 const TILE_HEIGHT: f32 = TILE_WIDTH * 9.0 / 16.0;
 /// Distance between the tops of two grid rows: the tile and its name below it.
-const ROW_PITCH: f32 = TILE_HEIGHT + 51.75;
-const TITLE_BASELINE: f32 = 119.0;
-const GRID_TOP: f32 = 143.0;
+const ROW_PITCH: f32 = 148.0;
+const TITLE_BASELINE: f32 = 116.0;
+const GRID_TOP: f32 = 144.0;
 const BOTTOM_PADDING: f32 = 40.0;
 const CLIP_TOP: f32 = 76.0;
 const VIEW_TOP: f32 = 88.0;
@@ -70,10 +70,11 @@ impl LumeApp {
 
     pub(super) fn draw_apps(&mut self, p: &mut Painter) {
         let cells = self.grid_cells();
-        let tabs = TabLayout::new(
+        let tabs = BarLayout::new(
             p,
             &self.translator.get(StringId::TabHome),
             &self.translator.get(StringId::TabApps),
+            &self.clock,
         );
 
         let mut rows = vec![topbar::row(&tabs, Tab::Apps, self.inputs_available)];
@@ -203,6 +204,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_layout_is_on_the_ruler() {
+        // The tile height is derived from 16:9 (96.75) and is the one registered exception.
+        super::super::assert_on_ruler(&[
+            ("WIDTH", WIDTH),
+            ("GAP", GAP),
+            ("TILE_WIDTH", TILE_WIDTH),
+            ("ROW_PITCH", ROW_PITCH),
+            ("TITLE_BASELINE", TITLE_BASELINE),
+            ("GRID_TOP", GRID_TOP),
+            ("BOTTOM_PADDING", BOTTOM_PADDING),
+            ("CLIP_TOP", CLIP_TOP),
+            ("VIEW_TOP", VIEW_TOP),
+        ]);
+    }
+
+    #[test]
     fn six_columns_fill_the_content_width_without_a_leftover() {
         let last_right = topbar::MARGIN + (COLUMNS - 1) as f32 * (TILE_WIDTH + GAP) + TILE_WIDTH;
         assert!(
@@ -225,6 +242,6 @@ mod tests {
 
     #[test]
     fn a_row_keeps_the_same_strip_for_the_name_as_before() {
-        assert!((ROW_PITCH - 148.5).abs() < 0.01, "{ROW_PITCH}");
+        assert_eq!(ROW_PITCH, 148.0);
     }
 }

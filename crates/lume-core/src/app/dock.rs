@@ -13,7 +13,7 @@ use crate::theme::{vars, Color, Paint, StateFlags, THEME};
 /// Side of an icon at rest, in logical units.
 pub const BASE: f32 = 64.0;
 /// Space between two icons at rest.
-pub const GAP: f32 = 14.0;
+pub const GAP: f32 = 16.0;
 /// Space between the bar's edge and the icons.
 pub const PADDING: f32 = 16.0;
 /// Scale of the focused icon.
@@ -290,6 +290,17 @@ impl LumeApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_layout_is_on_the_ruler() {
+        super::super::assert_on_ruler(&[
+            ("BASE", BASE),
+            ("GAP", GAP),
+            ("PADDING", PADDING),
+            ("LABEL_GAP", LABEL_GAP),
+            ("LABEL_HEIGHT", LABEL_HEIGHT),
+        ]);
+    }
 
     const CENTER: f32 = 640.0;
     const BOTTOM: f32 = 700.0;

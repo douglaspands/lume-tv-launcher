@@ -19,7 +19,7 @@ pub(super) const ADD_APP_BASE: FocusId = 4600;
 pub const CONFIRM_RESTORE: FocusId = 4900;
 pub const CONFIRM_CANCEL: FocusId = 4901;
 
-const CHIP_HEIGHT: f32 = 42.0;
+const CHIP_HEIGHT: f32 = 40.0;
 const CHIP_GAP: f32 = 16.0;
 /// Space inside the favorites panel, around its content.
 const PANEL_PADDING: f32 = 32.0;
@@ -250,17 +250,13 @@ impl LumeApp {
             let style = p.style(&THEME.panel, StateFlags::NONE);
             p.draw_box(panel.translate(0.0, -scroll_y), &style);
             let heading = t.get(StringId::EditorFavoritesOrder).into_owned();
-            let heading_style = TextStyle {
-                size: 15.0,
-                weight: 800,
-                letter_spacing: 1.2,
-            };
+            let heading_style = p.style(&THEME.card_heading, StateFlags::NONE);
             p.text.draw(
                 p.list,
                 &heading,
                 inner_left,
                 heading_y + 17.0 - scroll_y,
-                &heading_style,
+                &Painter::text_style(&heading_style),
                 vars::PRIMARY,
             );
             let hint = t.get(StringId::EditorUseArrows).into_owned();
@@ -782,4 +778,27 @@ fn wrap(p: &mut Painter, text: &str, style: &TextStyle, max_width: f32) -> Vec<S
         lines.push(current);
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_layout_is_on_the_ruler() {
+        super::super::assert_on_ruler(&[
+            ("CHIP_HEIGHT", CHIP_HEIGHT),
+            ("CHIP_GAP", CHIP_GAP),
+            ("PANEL_PADDING", PANEL_PADDING),
+            ("CARD_WIDTH", CARD_WIDTH),
+            ("CARD_NAME_HEIGHT", CARD_NAME_HEIGHT),
+            ("CARD_CONTROLS_HEIGHT", CARD_CONTROLS_HEIGHT),
+            ("CARD_GAP", CARD_GAP),
+            ("BOTTOM_PADDING", BOTTOM_PADDING),
+            ("BUTTON_HEIGHT", BUTTON_HEIGHT),
+            ("FIRST_CARDS_DEPTH", FIRST_CARDS_DEPTH),
+            ("BUTTON_MIN_WIDTH", BUTTON_MIN_WIDTH),
+            ("BUTTONS_GAP", BUTTONS_GAP),
+        ]);
+    }
 }

@@ -1011,7 +1011,7 @@ fn the_focused_gear_has_a_blue_ring() {
 impl Rig {
     /// Where the label of `tab` starts in the top bar.
     fn app_tab_text_x(&mut self, tab: Tab) -> f32 {
-        let tabs = topbar::TabLayout::new(
+        let tabs = topbar::BarLayout::new(
             &mut Painter {
                 list: &mut DisplayList::new(),
                 text: &mut self.text,
@@ -1019,6 +1019,7 @@ impl Rig {
             },
             &self.app.translator.get(crate::i18n::StringId::TabHome),
             &self.app.translator.get(crate::i18n::StringId::TabApps),
+            &self.app.clock,
         );
         tabs.text[tab as usize].0
     }
@@ -1222,7 +1223,7 @@ fn text_on_the_dimmed_screens_has_4_5_to_1_over_the_brightest_part_of_the_wallpa
 #[test]
 fn the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home() {
     let mut rig = Rig::new();
-    let tabs = topbar::TabLayout::new(
+    let tabs = topbar::BarLayout::new(
         &mut Painter {
             list: &mut DisplayList::new(),
             text: &mut rig.text,
@@ -1230,6 +1231,7 @@ fn the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home() {
         },
         &rig.app.translator.get(crate::i18n::StringId::TabHome),
         &rig.app.translator.get(crate::i18n::StringId::TabApps),
+        &rig.app.clock,
     );
     let (home, apps) = (tabs.rect(Tab::Home), tabs.rect(Tab::Apps));
     let tab_area = Rect::new(home.x, home.y, apps.right() - home.x, home.h);

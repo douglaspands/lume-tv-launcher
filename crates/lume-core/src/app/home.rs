@@ -2,7 +2,7 @@
 
 use super::dock;
 use super::painter::Painter;
-use super::topbar::{self, TabLayout, TopBar};
+use super::topbar::{self, BarLayout, TopBar};
 use super::{ids, Effect, LumeApp, Tab};
 use crate::display::CANVAS_WIDTH;
 use crate::i18n::StringId;
@@ -13,10 +13,11 @@ impl LumeApp {
         let items = self.dock_items();
         let bottom = Self::dock_bottom(p);
         let center = CANVAS_WIDTH / 2.0;
-        let tabs = TabLayout::new(
+        let tabs = BarLayout::new(
             p,
             &self.translator.get(StringId::TabHome),
             &self.translator.get(StringId::TabApps),
+            &self.clock,
         );
 
         // The focus moves over the icons at rest, so a key press does not depend on how far the
