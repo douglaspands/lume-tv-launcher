@@ -110,7 +110,10 @@ impl Shell {
         let display = Display::new(width, height);
         match &mut self.text {
             Some(text) => text.set_scale(display.scale),
-            None => self.text = Some(TextEngine::new(display.scale)),
+            None => {
+                self.text = Some(TextEngine::new(display.scale));
+                self.app.came_to_foreground();
+            }
         }
         self.display = Some(display);
         self.dirty = true;
@@ -118,6 +121,7 @@ impl Shell {
 
     /// Another app is in front: drops the glyph atlas and every other buffer used for drawing.
     pub fn sleep(&mut self) {
+        self.app.went_to_background();
         self.app.icons.clear();
         if let Some(text) = &mut self.text {
             text.release();
@@ -157,6 +161,36 @@ impl Shell {
                 }
                 found
             })
+    }
+
+    /// Up to `limit` favorites (package and activity) that have no dock icon in the icon texture
+    /// yet and that the platform has not already failed to load, in dock order. Dock cells of apps
+    /// that stopped being favorites are given back first. Only the favorites are ever asked for.
+    pub fn dock_icons_wanted(
+        &mut self,
+        skip: &std::collections::HashSet<String>,
+        limit: usize,
+    ) -> Vec<(String, String)> {
+        if !self.is_active() {
+            return Vec::new();
+        }
+        let favorites = self.app.config.favorites.clone();
+        self.app.icons.release_dock_except(&favorites);
+        favorites
+            .iter()
+            .filter_map(|p| self.app.catalog.get(p))
+            .filter(|app| !self.app.icons.has_dock(&app.package) && !skip.contains(&app.package))
+            .map(|app| (app.package.clone(), app.activity.clone()))
+            .take(limit)
+            .collect()
+    }
+
+    /// Reserves the dock cell of `package`; the platform uploads its icon to the returned region
+    /// (`[x, y, width, height]`).
+    pub fn reserve_dock_icon(&mut self, package: &str) -> Option<[u32; 4]> {
+        let region = self.app.icons.reserve_dock(package)?;
+        self.dirty = true;
+        Some(region)
     }
 
     /// Reserves the texture cell of `package` for its banner or icon; the platform uploads the pixels to the
@@ -294,6 +328,12 @@ impl Shell {
         self.app
             .next_deadline(now_ms)
             .map(|at| Duration::from_millis(at.saturating_sub(now_ms)))
+    }
+
+    /// Whether the screen is changing right now (a key was just handled, or an animation runs).
+    /// Slow work that can wait, like loading icons, should wait for this to end.
+    pub fn is_busy(&self, now_ms: u64) -> bool {
+        self.is_active() && (self.dirty || self.app.is_animating(now_ms))
     }
 
     /// Whether the screen must be redrawn at `now_ms`.
@@ -484,7 +524,7 @@ mod tests {
         let mut shell = start(&dir);
         shell.wake(1280, 720);
         shell.build_frame(0).unwrap();
-        // The carousel button opens the first slide.
+        // The first favorite has the focus at the start.
         let effects = shell.key(Key::Ok, 10);
         assert_eq!(
             effects,
@@ -524,7 +564,7 @@ mod tests {
         assert!(shell.build_frame(20).is_some());
         assert_eq!(
             shell.app().focused(),
-            Some(ids::HERO_BUTTON),
+            Some(ids::FAVORITE_BASE),
             "the screen is where it was"
         );
     }
@@ -616,12 +656,11 @@ mod tests {
     }
 
     #[test]
-    fn uninstalling_removes_the_app_from_favorites_and_the_carousel() {
+    fn uninstalling_removes_the_app_from_the_favorites() {
         let dir = dir("uninstall");
         let mut shell = start(&dir);
         shell.apply_changes(&[], &[NETFLIX.to_string()], NOW_SECS);
         assert_eq!(shell.app().config.favorites, [YOUTUBE]);
-        assert_eq!(shell.app().config.carousel_apps, [YOUTUBE]);
         assert_eq!(
             HomeConfig::load(&dir.join(CONFIG_FILE)).unwrap().favorites,
             [YOUTUBE],
@@ -684,6 +723,66 @@ mod tests {
     }
 
     #[test]
+    fn dock_icons_are_wanted_only_for_favorites_one_batch_at_a_time_and_only_while_active() {
+        let dir = dir("dock-icons");
+        let mut shell = start(&dir);
+        let none = std::collections::HashSet::new();
+        assert!(shell.dock_icons_wanted(&none, 5).is_empty(), "dormant");
+        shell.wake(1280, 720);
+        let favorites = shell.app().config.favorites.clone();
+        assert_eq!(favorites, [NETFLIX, YOUTUBE]);
+        // Only the favorites, a few at a time, in dock order.
+        let first = shell.dock_icons_wanted(&none, 1);
+        assert_eq!(first, [(NETFLIX.to_string(), format!("{NETFLIX}.Main"))]);
+        let region = shell.reserve_dock_icon(NETFLIX).unwrap();
+        assert_eq!(region[2..], [crate::app_icons::DOCK_CELL; 2]);
+        let next = shell.dock_icons_wanted(&none, 5);
+        assert_eq!(
+            next.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
+            [YOUTUBE]
+        );
+        // The ones the platform failed on are not asked for again.
+        let failed = std::collections::HashSet::from([YOUTUBE.to_string()]);
+        assert!(shell.dock_icons_wanted(&failed, 5).is_empty());
+    }
+
+    #[test]
+    fn a_dock_cell_goes_back_when_the_app_stops_being_a_favorite() {
+        let dir = dir("dock-release");
+        let mut shell = start(&dir);
+        let none = std::collections::HashSet::new();
+        shell.wake(1280, 720);
+        shell.reserve_dock_icon(NETFLIX).unwrap();
+        shell.reserve_dock_icon(YOUTUBE).unwrap();
+        assert!(shell.dock_icons_wanted(&none, 5).is_empty(), "all loaded");
+        shell.app_mut_for_test().config.remove_favorite(0);
+        assert!(shell.dock_icons_wanted(&none, 5).is_empty());
+        assert!(
+            !shell.app().icons.has_dock(NETFLIX),
+            "its cell was given back"
+        );
+        assert!(shell.app().icons.has_dock(YOUTUBE));
+    }
+
+    #[test]
+    fn the_dock_icons_go_away_when_lume_sleeps() {
+        let dir = dir("dock-sleep");
+        let mut shell = start(&dir);
+        shell.wake(1280, 720);
+        shell.reserve_dock_icon(NETFLIX).unwrap();
+        assert!(shell.app().icons.has_dock(NETFLIX));
+        shell.sleep();
+        assert!(!shell.app().icons.has_dock(NETFLIX));
+        shell.wake(1280, 720);
+        let none = std::collections::HashSet::new();
+        assert_eq!(
+            shell.dock_icons_wanted(&none, 5).len(),
+            2,
+            "loaded again at the next wake"
+        );
+    }
+
+    #[test]
     fn icons_are_wanted_favorites_first_and_only_while_active() {
         let dir = dir("icons");
         let mut shell = start(&dir);
@@ -722,7 +821,7 @@ mod tests {
         let mut shell = start(&dir);
         shell.wake(1280, 720);
         shell.build_frame(0);
-        shell.key(Key::Down, 1_000);
+        shell.key(Key::Right, 1_000);
         shell.build_frame(1_000);
         // The focus animation takes a few hundred milliseconds: the loop sleeps one frame at a
         // time and must draw each time it wakes up.

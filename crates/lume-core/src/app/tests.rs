@@ -117,21 +117,21 @@ impl Rig {
 }
 
 #[test]
-fn the_app_starts_on_the_carousel_button() {
+fn the_app_starts_on_the_first_favorite() {
     let rig = Rig::new();
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
 }
 
 #[test]
-fn down_goes_from_the_carousel_to_the_favorites_and_right_moves_along_them() {
+fn right_moves_along_the_favorites_and_down_does_nothing() {
     let mut rig = Rig::new();
-    rig.press(Key::Down);
-    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
     rig.press_all(&[Key::Right, Key::Right]);
     assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 2));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 2));
     rig.press(Key::Up);
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
+    assert_eq!(rig.focused(), Some(ids::TAB_HOME));
 }
 
 #[test]
@@ -139,24 +139,24 @@ fn moving_the_focus_animates_the_old_and_new_elements() {
     let mut rig = Rig::new();
     rig.advance(1000);
     assert_eq!(
-        rig.app.focus_progress(ids::HERO_BUTTON),
+        rig.app.focus_progress(ids::FAVORITE_BASE),
         1.0,
         "the first element is fully focused"
     );
-    rig.app.handle_key(Key::Down, rig.now);
+    rig.app.handle_key(Key::Right, rig.now);
     rig.advance(10);
     rig.advance(60);
     let (old, new) = (
-        rig.app.focus_progress(ids::HERO_BUTTON),
         rig.app.focus_progress(ids::FAVORITE_BASE),
+        rig.app.focus_progress(ids::FAVORITE_BASE + 1),
     );
     assert!(
         old < 1.0 && old > 0.0 && new > 0.0 && new < 1.0,
         "mid-animation: {old} {new}"
     );
     rig.advance(1000);
-    assert_eq!(rig.app.focus_progress(ids::HERO_BUTTON), 0.0);
-    assert_eq!(rig.app.focus_progress(ids::FAVORITE_BASE), 1.0);
+    assert_eq!(rig.app.focus_progress(ids::FAVORITE_BASE), 0.0);
+    assert_eq!(rig.app.focus_progress(ids::FAVORITE_BASE + 1), 1.0);
     assert!(
         rig.app.next_deadline(rig.now).is_some(),
         "the clock still ticks"
@@ -164,7 +164,7 @@ fn moving_the_focus_animates_the_old_and_new_elements() {
 }
 
 fn open_apps(rig: &mut Rig) {
-    // From the carousel: up to the top bar, right to "Apps", OK.
+    // From the favorites: up to the top bar, right to "Apps", OK.
     rig.press_all(&[Key::Up]);
     assert_eq!(rig.focused(), Some(ids::TAB_HOME));
     rig.press_all(&[Key::Right, Key::Ok]);
@@ -193,20 +193,20 @@ fn up_from_the_first_row_goes_to_the_active_tab_and_right_then_ok_opens_apps() {
 #[test]
 fn back_on_the_home_root_scrolls_to_the_top_without_closing() {
     let mut rig = Rig::new();
-    rig.press_all(&[Key::Down, Key::Right]);
+    rig.press(Key::Right);
     assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
     let effects = rig.press(Key::Back);
     assert!(effects.is_empty(), "lume stays open");
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
     assert_eq!(
         rig.focused(),
-        Some(ids::HERO_BUTTON),
-        "the focus returns to the carousel"
+        Some(ids::FAVORITE_BASE),
+        "the focus returns to the first favorite"
     );
     assert_eq!(rig.app.scroll_y, 0.0);
     // A second Back changes nothing.
     assert!(rig.press(Key::Back).is_empty());
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn back_in_the_apps_tab_returns_to_home() {
     rig.press(Key::Down);
     rig.press(Key::Back);
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
 }
 
 #[test]
@@ -228,17 +228,17 @@ fn the_home_button_returns_to_the_start_of_the_home_tab() {
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
     assert_eq!(
         rig.focused(),
-        Some(ids::HERO_BUTTON),
+        Some(ids::FAVORITE_BASE),
         "the first element of the content"
     );
     // Pressing Home again on the home tab keeps everything where it is.
     rig.press_all(&[Key::Down, Key::Right]);
     rig.press(Key::Home);
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
 }
 
 #[test]
-fn the_apps_grid_is_alphabetical_and_ends_with_the_settings_tile() {
+fn the_apps_grid_is_alphabetical_with_lume_among_the_apps() {
     let mut rig = Rig::new();
     open_apps(&mut rig);
     let labels: Vec<&str> = rig
@@ -260,31 +260,24 @@ fn the_apps_grid_is_alphabetical_and_ends_with_the_settings_tile() {
             "YouTube"
         ]
     );
-    let cells = rig
-        .app
-        .focus
-        .rows()
+    let rows = rig.app.focus.rows();
+    let ids_in_order: Vec<u32> = rows
+        .iter()
+        .skip(1)
+        .flat_map(|r| r.items.iter().map(|i| i.id))
+        .collect();
+    assert_eq!(ids_in_order.len(), 8, "the seven apps and lume");
+    assert_eq!(
+        ids_in_order[3],
+        ids::GRID_SETTINGS,
+        "lume comes between Jogos and Netflix"
+    );
+    let cells = rows
         .iter()
         .skip(1)
         .map(|r| r.items.len())
         .collect::<Vec<_>>();
-    assert_eq!(
-        cells,
-        [5, 3],
-        "5 columns, and the settings tile makes the 8th item"
-    );
-    assert_eq!(
-        rig.app
-            .focus
-            .rows()
-            .last()
-            .unwrap()
-            .items
-            .last()
-            .unwrap()
-            .id,
-        ids::GRID_SETTINGS
-    );
+    assert_eq!(cells, [6, 2], "6 columns");
 }
 
 #[test]
@@ -292,13 +285,14 @@ fn the_grid_does_not_wrap_at_the_end_of_a_row() {
     let mut rig = Rig::new();
     open_apps(&mut rig);
     rig.press(Key::Down);
-    rig.press_all(&[Key::Right; 4]);
+    rig.press_all(&[Key::Right; 5]);
+    // Chrome, Disney+, Jogos, Lume, Netflix, Prime Video: the 6th is the 5th app (index 4).
     assert_eq!(rig.focused(), Some(ids::GRID_BASE + 4));
     rig.press(Key::Right);
     assert_eq!(
         rig.focused(),
         Some(ids::GRID_BASE + 4),
-        "stays on the 5th column"
+        "stays on the 6th column"
     );
 }
 
@@ -307,11 +301,12 @@ fn down_into_a_short_last_row_lands_on_its_last_item() {
     let mut rig = Rig::new();
     open_apps(&mut rig);
     rig.press(Key::Down);
-    rig.press_all(&[Key::Right; 3]);
+    rig.press_all(&[Key::Right; 4]);
+    // Column 5 of the first row is Netflix (index 3, as lume sits before it).
     assert_eq!(rig.focused(), Some(ids::GRID_BASE + 3));
     rig.press(Key::Down);
-    // The last row has Spotify... YouTube and "Settings": the nearest to column 4 is the last one.
-    assert_eq!(rig.focused(), Some(ids::GRID_SETTINGS));
+    // The last row has Spotify and YouTube: the nearest to column 5 is the last one.
+    assert_eq!(rig.focused(), Some(ids::GRID_BASE + 6));
 }
 
 #[test]
@@ -342,13 +337,14 @@ fn ok_on_a_tile_opens_the_app_and_records_it() {
 }
 
 #[test]
-fn ok_on_the_settings_tile_opens_the_android_settings() {
+fn ok_on_the_lume_tile_opens_the_lume_settings() {
     let mut rig = Rig::new();
     open_apps(&mut rig);
     rig.press(Key::Down);
-    rig.press_all(&[Key::Down, Key::Right, Key::Right, Key::Right]);
+    rig.press_all(&[Key::Right, Key::Right, Key::Right]);
     assert_eq!(rig.focused(), Some(ids::GRID_SETTINGS));
-    assert_eq!(rig.press(Key::Ok), [Effect::OpenAndroidSettings]);
+    assert_eq!(rig.press(Key::Ok), []);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
 }
 
 #[test]
@@ -381,214 +377,10 @@ fn the_clock_asks_for_a_frame_when_the_minute_turns() {
 #[test]
 fn an_idle_app_without_a_visible_clock_change_only_wakes_for_the_clock() {
     let mut rig = Rig::new();
-    // Focus the favorites so the carousel can rotate; with one slide per app it does.
     rig.press(Key::Down);
     rig.advance(5000);
     let deadline = rig.app.next_deadline(rig.now).unwrap();
     assert!(deadline <= rig.now + 60_000);
-}
-
-fn slide_titles(rig: &Rig) -> Vec<String> {
-    rig.app.slides.iter().map(|s| s.title.clone()).collect()
-}
-
-#[test]
-fn the_carousel_shows_one_slide_per_selected_installed_app() {
-    let rig = Rig::new();
-    assert_eq!(
-        slide_titles(&rig),
-        ["Netflix", "YouTube", "Prime Video", "Spotify", "Disney+"]
-    );
-    assert_eq!(rig.app.carousel.index, 0);
-}
-
-#[test]
-fn the_carousel_rotates_at_the_configured_interval() {
-    let mut rig = Rig::new();
-    rig.press(Key::Down); // the focus leaves the carousel
-    let start = rig.now;
-    assert_eq!(rig.app.carousel.index, 0);
-    rig.advance(4000);
-    assert_eq!(
-        rig.app.carousel.index,
-        0,
-        "not yet: {} ms since the change",
-        rig.now - start
-    );
-    rig.advance(1500);
-    assert_eq!(rig.app.carousel.index, 1, "after 5 seconds");
-    rig.advance(5100);
-    assert_eq!(rig.app.carousel.index, 2);
-    // After the last slide it goes back to the first.
-    rig.advance(5100);
-    rig.advance(5100);
-    assert_eq!(rig.app.carousel.index, 4);
-    rig.advance(5100);
-    assert_eq!(rig.app.carousel.index, 0);
-}
-
-#[test]
-fn the_rotation_follows_a_changed_interval() {
-    let mut rig = Rig::new();
-    rig.app.config.interval = crate::home::config::Interval::Seconds10;
-    rig.press(Key::Down);
-    rig.advance(6000);
-    assert_eq!(rig.app.carousel.index, 0);
-    rig.advance(5000);
-    assert_eq!(rig.app.carousel.index, 1);
-}
-
-#[test]
-fn the_carousel_pauses_while_it_has_the_focus() {
-    let mut rig = Rig::new();
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
-    rig.advance(30_000);
-    assert_eq!(
-        rig.app.carousel.index, 0,
-        "the slide does not change on its own"
-    );
-    assert_eq!(rig.app.carousel_deadline(), None);
-    // Leaving the carousel restarts the countdown from that moment.
-    rig.press(Key::Down);
-    rig.advance(4000);
-    assert_eq!(rig.app.carousel.index, 0);
-    rig.advance(1500);
-    assert_eq!(rig.app.carousel.index, 1);
-}
-
-#[test]
-fn left_and_right_change_the_slide_by_hand() {
-    let mut rig = Rig::new();
-    rig.press(Key::Right);
-    assert_eq!(rig.app.carousel.index, 1);
-    assert_eq!(
-        rig.focused(),
-        Some(ids::HERO_BUTTON),
-        "the focus stays on the button"
-    );
-    rig.press_all(&[Key::Right, Key::Right]);
-    assert_eq!(rig.app.carousel.index, 3);
-    rig.press_all(&[Key::Left, Key::Left, Key::Left, Key::Left]);
-    assert_eq!(
-        rig.app.carousel.index, 4,
-        "left from the first slide goes to the last"
-    );
-}
-
-#[test]
-fn a_slide_change_cross_fades() {
-    let mut rig = Rig::new();
-    rig.press(Key::Right);
-    rig.advance(100);
-    let fade = rig.app.anim.get(Anim::SlideFade, 1.0, rig.now);
-    assert!(fade > 0.0 && fade < 1.0, "fading: {fade}");
-    rig.advance(1000);
-    assert_eq!(rig.app.anim.get(Anim::SlideFade, 1.0, rig.now), 1.0);
-}
-
-#[test]
-fn ok_on_the_carousel_button_opens_the_slide_app() {
-    let mut rig = Rig::new();
-    rig.press_all(&[Key::Right, Key::Right]);
-    let effects = rig.press(Key::Ok);
-    assert_eq!(
-        effects[0],
-        Effect::OpenApp {
-            package: PRIME.into(),
-            activity: format!("{PRIME}.Main")
-        }
-    );
-}
-
-#[test]
-fn without_any_selected_app_the_welcome_slide_leads_to_the_apps_tab() {
-    let mut rig = Rig::with_catalog(catalog(&[("com.demo.chrome", "Chrome")]));
-    assert_eq!(slide_titles(&rig), ["Bem-vindo ao lume"]);
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
-    let effects = rig.press(Key::Ok);
-    assert!(effects.is_empty());
-    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
-}
-
-#[test]
-fn a_single_slide_never_rotates() {
-    let mut rig = Rig::with_catalog(catalog(&[(NETFLIX, "Netflix")]));
-    rig.press(Key::Down);
-    assert_eq!(rig.app.carousel_deadline(), None);
-    rig.advance(60_000);
-    assert_eq!(rig.app.carousel.index, 0);
-    rig.press_all(&[Key::Up, Key::Right]);
-    assert_eq!(rig.app.carousel.index, 0);
-}
-
-#[test]
-fn the_carousel_deadline_is_reported_to_the_event_loop() {
-    let mut rig = Rig::new();
-    rig.press(Key::Down);
-    let deadline = rig.app.carousel_deadline().unwrap();
-    assert_eq!(deadline, rig.app.carousel.since_ms + 5000);
-    assert!(rig.app.next_deadline(rig.now).unwrap() <= deadline);
-}
-
-#[test]
-fn opening_from_the_carousel_updates_the_context_line() {
-    let mut rig = Rig::new();
-    rig.press(Key::Ok);
-    // Another app is used more, so Netflix is not "most used".
-    rig.app.usage.record_open(YOUTUBE, NOW);
-    rig.app.usage.record_open(YOUTUBE, NOW);
-    rig.advance(7200 * 1000);
-    rig.app.clock.unix_secs += 7200;
-    rig.press(Key::Down);
-    rig.press(Key::Home);
-    assert_eq!(rig.app.slides[0].context, "Aberto há 2 horas");
-    assert_eq!(rig.app.slides[1].context, "Mais usado da semana");
-}
-
-#[test]
-fn the_favorites_row_scrolls_sideways_to_keep_the_focus_visible() {
-    let catalog = many_apps(12);
-    let mut rig = Rig::with_catalog(catalog.clone());
-    rig.app.config.favorites = catalog.apps().iter().map(|a| a.package.clone()).collect();
-    rig.advance(0);
-    rig.press(Key::Down);
-    assert_eq!(rig.app.favorites_scroll_x, 0.0);
-    // Five tiles fit; moving to the sixth scrolls the row.
-    rig.press_all(&[Key::Right; 5]);
-    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 5));
-    let scrolled = rig.app.favorites_scroll_x;
-    assert!(scrolled > 0.0, "scrolled by {scrolled}");
-    rig.advance(1000);
-    // The focused tile is fully inside the 64..1216 band now.
-    let tile = rig.app.focus.current().unwrap().rect;
-    assert!(
-        tile.right() - scrolled <= 1216.5 && tile.x - scrolled >= 63.5,
-        "{tile:?} scrolled by {scrolled}"
-    );
-    // Moving back to the first tile scrolls back.
-    rig.press_all(&[Key::Left; 5]);
-    assert_eq!(rig.app.favorites_scroll_x, 0.0);
-}
-
-#[test]
-fn the_favorites_row_ends_at_the_last_favorite() {
-    let catalog = many_apps(12);
-    let mut rig = Rig::with_catalog(catalog.clone());
-    rig.app.config.favorites = catalog.apps().iter().map(|a| a.package.clone()).collect();
-    rig.advance(0);
-    rig.press(Key::Down);
-    rig.press_all(&[Key::Right; 20]);
-    assert_eq!(
-        rig.focused(),
-        Some(ids::FAVORITE_BASE + 11),
-        "no wrapping at the end"
-    );
-    let max = 12.0 * (217.6 + 16.0) - 16.0 - 1152.0;
-    assert!(
-        (rig.app.favorites_scroll_x - max).abs() < 0.5,
-        "{} vs {max}",
-        rig.app.favorites_scroll_x
-    );
 }
 
 #[test]
@@ -607,60 +399,19 @@ fn an_empty_favorites_row_shows_a_single_add_tile() {
 }
 
 #[test]
-fn a_hidden_section_is_not_shown_or_focusable() {
-    let mut rig = Rig::new();
-    rig.app
-        .config
-        .set_section_visible(crate::home::config::Section::Carousel, false);
-    rig.advance(100);
-    // The content starts with the favorites row.
-    rig.press(Key::Home);
-    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
-    rig.app
-        .config
-        .set_section_visible(crate::home::config::Section::Favorites, false);
-    rig.app
-        .config
-        .set_section_visible(crate::home::config::Section::Carousel, true);
-    rig.press(Key::Home);
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
-    assert!(rig
-        .app
-        .focus
-        .rows()
-        .iter()
-        .all(|r| r.items.iter().all(|i| i.id < ids::FAVORITE_BASE)));
-}
-
-#[test]
-fn the_favorites_come_first_when_the_sections_are_swapped() {
-    let mut rig = Rig::new();
-    rig.app
-        .config
-        .move_section_down(crate::home::config::Section::Carousel);
-    rig.press(Key::Home);
-    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
-    rig.press(Key::Down);
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
-}
-
-#[test]
 fn removing_an_installed_app_updates_the_screens() {
     let mut rig = Rig::new();
     rig.app.catalog.apply(&[], &[YOUTUBE.to_string()]);
     rig.app.config.remove_uninstalled(&rig.app.catalog);
     rig.advance(100);
     assert_eq!(rig.app.config.favorites, [NETFLIX, PRIME, SPOTIFY, DISNEY]);
-    assert!(!slide_titles(&rig).contains(&"YouTube".to_string()));
 }
 
 // ---- settings and the home screen editor ---------------------------------------------------
 
 use super::editor::{
-    section_button, SectionAction, ADD_APP_BASE, CAROUSEL_APP_BASE, CONFIRM_CANCEL,
-    CONFIRM_RESTORE, DONE, FAVORITE_BUTTON_BASE, INTERVAL_BASE, RESTORE,
+    ADD_APP_BASE, CONFIRM_CANCEL, CONFIRM_RESTORE, DONE, FAVORITE_BUTTON_BASE, RESTORE,
 };
-use crate::home::config::{Interval, Section};
 
 fn open_settings(rig: &mut Rig) {
     // Up to the top bar, then right to the gear.
@@ -711,8 +462,14 @@ fn back_from_the_settings_returns_to_the_tab_it_came_from() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
     rig.press(Key::Back);
-    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    // The way to the gear passes over the Apps tab, which shows it (without OK) and stays.
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
     assert_eq!(rig.focused(), Some(ids::GEAR));
+    // From the Home tab, with the gear reached by going left from the Apps tab and back.
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Up, Key::Right, Key::Right, Key::Left, Key::Left]);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    rig.press_all(&[Key::Right, Key::Right]);
     // From the Apps tab.
     let mut rig = Rig::new();
     open_apps(&mut rig);
@@ -755,7 +512,7 @@ fn the_editor_opens_from_the_settings_and_done_returns_to_the_home_screen() {
     let effects = rig.press(Key::Ok);
     assert_eq!(effects, [Effect::SaveConfig]);
     assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
-    assert_eq!(rig.focused(), Some(ids::HERO_BUTTON));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
 }
 
 #[test]
@@ -774,101 +531,6 @@ fn the_add_favorites_tile_opens_the_editor() {
     rig.advance(0);
     rig.press_all(&[Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::Editor);
-}
-
-#[test]
-fn moving_a_section_down_shows_the_favorites_first() {
-    let mut rig = Rig::new();
-    open_editor(&mut rig);
-    let down = section_button(Section::Carousel, SectionAction::Down);
-    assert_eq!(press_on(&mut rig, down), [Effect::SaveConfig]);
-    assert_eq!(
-        rig.app.config.visible_sections().collect::<Vec<_>>(),
-        [Section::Favorites, Section::Carousel]
-    );
-    // The focus followed the section to its new row; "down" is disabled there, so it is on "up".
-    assert_eq!(
-        rig.focused(),
-        Some(section_button(Section::Carousel, SectionAction::Up))
-    );
-    rig.press(Key::Back);
-    assert_eq!(
-        rig.focused(),
-        Some(ids::FAVORITE_BASE),
-        "the home screen starts with the favorites"
-    );
-}
-
-#[test]
-fn the_edges_have_disabled_buttons() {
-    let mut rig = Rig::new();
-    open_editor(&mut rig);
-    let first_up = section_button(Section::Carousel, SectionAction::Up);
-    let last_down = section_button(Section::Favorites, SectionAction::Down);
-    let enabled = |rig: &Rig, id: FocusId| {
-        rig.app
-            .focus
-            .rows()
-            .iter()
-            .any(|r| r.items.iter().any(|i| i.id == id && i.enabled))
-    };
-    assert!(!enabled(&rig, first_up), "the first section cannot move up");
-    assert!(
-        !enabled(&rig, last_down),
-        "the last section cannot move down"
-    );
-    assert!(enabled(
-        &rig,
-        section_button(Section::Carousel, SectionAction::Down)
-    ));
-}
-
-#[test]
-fn hiding_a_section_removes_it_from_the_home_screen() {
-    let mut rig = Rig::new();
-    open_editor(&mut rig);
-    let hide = section_button(Section::Favorites, SectionAction::Hide);
-    assert_eq!(press_on(&mut rig, hide), [Effect::SaveConfig]);
-    assert!(!rig.app.config.is_visible(Section::Favorites));
-    rig.press(Key::Back);
-    rig.advance(100);
-    assert!(rig
-        .app
-        .focus
-        .rows()
-        .iter()
-        .all(|r| r.items.iter().all(|i| i.id < ids::FAVORITE_BASE)));
-}
-
-#[test]
-fn a_chip_changes_the_interval() {
-    let mut rig = Rig::new();
-    open_editor(&mut rig);
-    let ten_seconds = INTERVAL_BASE + 2;
-    assert_eq!(press_on(&mut rig, ten_seconds), [Effect::SaveConfig]);
-    assert_eq!(rig.app.config.interval, Interval::Seconds10);
-}
-
-#[test]
-fn the_last_carousel_app_cannot_be_removed() {
-    let mut rig = Rig::new();
-    rig.app.config.carousel_apps = vec![NETFLIX.to_string()];
-    open_editor(&mut rig);
-    let netflix_chip = CAROUSEL_APP_BASE; // Netflix is the first known app
-    let effects = press_on(&mut rig, netflix_chip);
-    assert!(effects.is_empty(), "nothing to save");
-    assert_eq!(rig.app.config.carousel_apps, [NETFLIX]);
-    assert!(
-        rig.app.now_ms < rig.app.editor.hint_until_ms,
-        "the hint is highlighted"
-    );
-    // Adding another app and then removing Netflix works.
-    assert_eq!(
-        press_on(&mut rig, CAROUSEL_APP_BASE + 1),
-        [Effect::SaveConfig]
-    );
-    assert_eq!(press_on(&mut rig, netflix_chip), [Effect::SaveConfig]);
-    assert_eq!(rig.app.config.carousel_apps, [YOUTUBE]);
 }
 
 #[test]
@@ -972,7 +634,6 @@ fn the_twelve_favorites_limit_disables_adding() {
 #[test]
 fn restoring_the_defaults_asks_first() {
     let mut rig = Rig::new();
-    rig.app.config.interval = Interval::Minute1;
     rig.app.config.remove_favorite(0);
     open_editor(&mut rig);
     assert_eq!(press_on(&mut rig, RESTORE), []);
@@ -982,11 +643,7 @@ fn restoring_the_defaults_asks_first() {
         Some(CONFIRM_CANCEL),
         "the safe choice has the focus"
     );
-    assert_eq!(
-        rig.app.config.interval,
-        Interval::Minute1,
-        "nothing changed yet"
-    );
+    assert_eq!(rig.app.config.favorites.len(), 4, "nothing changed yet");
     // Only the dialog's buttons can take the focus.
     assert!(rig.app.focus.rows().iter().all(|r| r
         .items
@@ -1002,7 +659,7 @@ fn restoring_the_defaults_asks_first() {
 #[test]
 fn cancelling_the_restore_changes_nothing() {
     let mut rig = Rig::new();
-    rig.app.config.interval = Interval::Minute1;
+    rig.app.config.remove_favorite(0);
     let before = rig.app.config.clone();
     open_editor(&mut rig);
     press_on(&mut rig, RESTORE);
@@ -1104,35 +761,6 @@ fn a_grid_tile_shows_the_icon_instead_of_its_name() {
 }
 
 #[test]
-fn a_favorite_shows_the_icon_and_keeps_its_name() {
-    let mut rig = Rig::new();
-    let before = rig.frame();
-    rig.app
-        .icons
-        .reserve(NETFLIX, crate::app_icons::Art::Icon)
-        .unwrap();
-    let after = rig.frame();
-    assert_eq!(images(&after), 1);
-    assert_eq!(glyphs(&after), glyphs(&before), "the name is still drawn");
-}
-
-#[test]
-fn a_banner_covers_the_tile_and_replaces_the_name_on_the_home_screen() {
-    let mut rig = Rig::new();
-    let before = rig.frame();
-    rig.app
-        .icons
-        .reserve(NETFLIX, crate::app_icons::Art::Banner)
-        .unwrap();
-    let after = rig.frame();
-    assert_eq!(images(&after), 1);
-    assert!(
-        glyphs(&after) < glyphs(&before),
-        "the banner has the name in it"
-    );
-}
-
-#[test]
 fn a_banner_in_the_grid_leaves_only_the_name_under_the_tile() {
     let mut rig = Rig::new();
     open_apps(&mut rig);
@@ -1172,29 +800,6 @@ fn an_idle_apps_grid_taller_than_the_screen_asks_for_no_frames() {
 }
 
 #[test]
-fn no_screen_but_home_keeps_the_carousel_timer_running() {
-    // The carousel rotates on a timer while the focus is off it; leaving the home screen must stop it.
-    let mut rig = Rig::new();
-    assert!(
-        rig.app.carousel_deadline().is_none(),
-        "focus is on the hero"
-    );
-    rig.press(Key::Down);
-    assert!(rig.app.carousel_deadline().is_some(), "rotating on Home");
-    rig.press_all(&[Key::Up, Key::Up, Key::Right, Key::Ok]);
-    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
-    assert!(
-        rig.app.carousel_deadline().is_none(),
-        "Apps does not rotate it"
-    );
-    rig.advance(30_000);
-    assert!(rig
-        .app
-        .next_deadline(rig.now)
-        .is_none_or(|at| at > rig.now + 1_000));
-}
-
-#[test]
 fn the_apps_grid_is_drawn_in_few_batches_however_many_tiles_it_has() {
     // Tiles are drawn in passes (boxes, images, text): alternating the programs tile by tile
     // made one draw call per kind for every tile, which a TV GPU takes a toll on.
@@ -1216,4 +821,1049 @@ fn the_apps_grid_is_drawn_in_few_batches_however_many_tiles_it_has() {
     let (small, large) = (batches(&mut few), batches(&mut many));
     assert_eq!(small, large, "ten more tiles must not add draw calls");
     assert!(large <= 16, "{large} draw calls");
+}
+
+// ---- top bar focus ------------------------------------------------------------------------------
+
+/// The blue underlines of the tabs: left edge and opacity of each.
+fn underlines(list: &DisplayList) -> Vec<(f32, f32)> {
+    list.cmds()
+        .iter()
+        .filter_map(|cmd| match cmd {
+            crate::render::Cmd::Rect(r)
+                if r.rect.y == 64.0
+                    && r.rect.w > 10.0
+                    && r.rect.h == crate::theme::vars::TAB_UNDERLINE
+                    && matches!(r.kind, crate::render::RectKind::Fill(_)) =>
+            {
+                Some((r.rect.x, r.opacity))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The rings drawn inside the top bar's tab row (tabs and gear).
+fn top_bar_rings(list: &DisplayList) -> Vec<crate::render::RectCmd> {
+    list.cmds()
+        .iter()
+        .filter_map(|cmd| match cmd {
+            crate::render::Cmd::Rect(r)
+                if r.rect.bottom() <= 88.0
+                    && matches!(r.kind, crate::render::RectKind::Ring { .. }) =>
+            {
+                Some(*r)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn underline_alpha(list: &DisplayList) -> Vec<(f32, u8)> {
+    list.cmds()
+        .iter()
+        .filter_map(|cmd| match cmd {
+            crate::render::Cmd::Rect(r)
+                if r.rect.y == 64.0
+                    && r.rect.w > 10.0
+                    && r.rect.h == crate::theme::vars::TAB_UNDERLINE =>
+            {
+                match r.kind {
+                    crate::render::RectKind::Fill(crate::theme::Paint::Solid(c)) => {
+                        Some((r.rect.x, c.a))
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_focused_tab_has_no_ring() {
+    let mut rig = Rig::new();
+    rig.press(Key::Up);
+    assert_eq!(rig.focused(), Some(ids::TAB_HOME));
+    rig.advance(1000);
+    assert!(top_bar_rings(&rig.frame()).is_empty());
+    rig.press(Key::Right);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::TAB_APPS));
+    assert!(top_bar_rings(&rig.frame()).is_empty());
+}
+
+#[test]
+fn the_underline_is_under_the_active_tab_when_the_focus_is_in_the_content() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    let list = rig.frame();
+    let lines = underline_alpha(&list);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0].1, 255);
+    let home = rig.app_tab_text_x(Tab::Home);
+    assert!((lines[0].0 - (home - 2.0)).abs() < 0.5);
+    assert_eq!(underlines(&list).len(), 1);
+}
+
+#[test]
+fn the_underline_follows_the_focus_on_the_tabs_and_the_screen_changes_with_it() {
+    let mut rig = Rig::new();
+    rig.press(Key::Up);
+    rig.advance(1000);
+    let lines = underline_alpha(&rig.frame());
+    assert_eq!(lines.len(), 1, "on the active tab: {lines:?}");
+    let home_x = rig.app_tab_text_x(Tab::Home) - 2.0;
+    assert!((lines[0].0 - home_x).abs() < 0.5);
+
+    // Focus on the other tab: the underline moves there and the screen changes at once, no OK.
+    rig.press(Key::Right);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::TAB_APPS));
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    let lines = underline_alpha(&rig.frame());
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    let apps_x = rig.app_tab_text_x(Tab::Apps) - 2.0;
+    assert!((lines[0].0 - apps_x).abs() < 0.5, "{lines:?}");
+
+    // The gear: the underline stays under the tab that is showing.
+    rig.press(Key::Right);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::GEAR));
+    let lines = underline_alpha(&rig.frame());
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!((lines[0].0 - apps_x).abs() < 0.5);
+
+    // Back to the first tab: it shows Home again, and the underline follows.
+    rig.press_all(&[Key::Left, Key::Left]);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::TAB_HOME));
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    let lines = underline_alpha(&rig.frame());
+    assert_eq!(lines.len(), 1);
+    assert!((lines[0].0 - home_x).abs() < 0.5);
+
+    // Down from a tab enters the content of the tab that is showing.
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+}
+
+#[test]
+fn the_underline_moves_with_a_transition() {
+    let mut rig = Rig::new();
+    rig.press(Key::Up);
+    rig.advance(1000);
+    rig.app.handle_key(Key::Right, rig.now);
+    rig.advance(10);
+    rig.advance(60);
+    let lines = underline_alpha(&rig.frame());
+    assert_eq!(lines.len(), 2, "both fade during the move: {lines:?}");
+    assert!(lines.iter().all(|(_, a)| *a > 0 && *a < 255), "{lines:?}");
+}
+
+#[test]
+fn the_focused_gear_has_a_blue_ring() {
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
+    assert_eq!(rig.focused(), Some(ids::GEAR));
+    rig.advance(1000);
+    let rings = top_bar_rings(&rig.frame());
+    assert_eq!(rings.len(), 1, "{rings:?}");
+    let crate::render::RectKind::Ring { color, .. } = rings[0].kind else {
+        unreachable!()
+    };
+    assert_eq!(
+        (color.r, color.g, color.b),
+        (
+            crate::theme::vars::ACCENT.r,
+            crate::theme::vars::ACCENT.g,
+            crate::theme::vars::ACCENT.b
+        )
+    );
+}
+
+impl Rig {
+    /// Where the label of `tab` starts in the top bar.
+    fn app_tab_text_x(&mut self, tab: Tab) -> f32 {
+        let tabs = topbar::TabLayout::new(
+            &mut Painter {
+                list: &mut DisplayList::new(),
+                text: &mut self.text,
+                display: self.display,
+            },
+            &self.app.translator.get(crate::i18n::StringId::TabHome),
+            &self.app.translator.get(crate::i18n::StringId::TabApps),
+        );
+        tabs.text[tab as usize].0
+    }
+}
+
+#[test]
+fn the_editor_focus_goes_from_done_to_the_favorites_and_back() {
+    let mut rig = Rig::new();
+    open_editor(&mut rig);
+    assert_eq!(rig.focused(), Some(DONE));
+    rig.press(Key::Down);
+    // "Done" is at the right: the nearest card button is on the last card.
+    let first = rig.focused().unwrap();
+    assert!(
+        (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&first),
+        "{first}"
+    );
+    rig.press(Key::Up);
+    assert_eq!(rig.focused(), Some(DONE));
+    // The first card cannot move left: that button takes no focus.
+    assert!(!rig.app.focus.focus(FAVORITE_BUTTON_BASE));
+}
+
+#[test]
+fn from_an_empty_home_the_add_favorites_item_opens_the_editor_at_the_favorites() {
+    let mut rig = Rig::new();
+    rig.app.config.favorites.clear();
+    rig.press(Key::Home);
+    assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
+    rig.press(Key::Ok);
+    assert_eq!(rig.app.screen(), &Screen::Editor);
+    assert_eq!(rig.focused(), Some(DONE));
+    // Nothing to reorder yet: only "Add app" chips follow "Done".
+    rig.press(Key::Down);
+    assert!(rig.focused().is_some_and(|id| id >= ADD_APP_BASE));
+}
+
+// ---- wallpaper --------------------------------------------------------------------------------
+
+/// A fill of the whole visible area: what the screens used to paint as their background.
+fn full_screen_fills(list: &DisplayList, visible: Rect) -> usize {
+    list.cmds()
+        .iter()
+        .filter(|cmd| {
+            matches!(cmd, crate::render::Cmd::Rect(r)
+                if matches!(r.kind, crate::render::RectKind::Fill(_))
+                    && r.rect.w >= visible.w
+                    && r.rect.h >= visible.h)
+        })
+        .count()
+}
+
+#[test]
+fn every_screen_starts_with_the_wallpaper_and_has_no_flat_background() {
+    let visible = Display::new(1280, 720).visible_rect();
+    let mut rig = Rig::new();
+    let mut lists = vec![("home", rig.frame())];
+    open_apps(&mut rig);
+    lists.push(("apps", rig.frame()));
+    let mut rig = Rig::new();
+    open_settings(&mut rig);
+    lists.push(("settings", rig.frame()));
+    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
+    assert_eq!(rig.app.screen(), &Screen::About);
+    lists.push(("about", rig.frame()));
+    let mut rig = Rig::new();
+    open_editor(&mut rig);
+    lists.push(("editor", rig.frame()));
+    for (name, list) in lists {
+        let Some(crate::render::Cmd::Wallpaper(quad)) = list.cmds().first() else {
+            panic!("{name}: the first command is not the wallpaper");
+        };
+        assert_eq!(quad.dest, visible, "{name}");
+        assert_eq!(
+            quad.uv,
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            "{name}: 16:9 uses it whole"
+        );
+        assert_eq!(
+            list.cmds()
+                .iter()
+                .filter(|c| matches!(c, crate::render::Cmd::Wallpaper(_)))
+                .count(),
+            1,
+            "{name}: drawn once"
+        );
+        // No flat background or dimming layer anywhere: the dimming is in the wallpaper's own draw.
+        assert_eq!(
+            full_screen_fills(&list, visible),
+            0,
+            "{name}: no full-screen fill over the wallpaper"
+        );
+    }
+}
+
+#[test]
+fn on_other_proportions_the_wallpaper_covers_the_whole_surface_without_stretching() {
+    for (w, h) in [(1920, 1200), (2560, 1080), (1024, 768)] {
+        let display = Display::new(w, h);
+        let mut list = DisplayList::new();
+        let mut text = TextEngine::new(display.scale);
+        let mut painter = Painter {
+            list: &mut list,
+            text: &mut text,
+            display,
+        };
+        painter.wallpaper(false);
+        let Some(crate::render::Cmd::Wallpaper(quad)) = list.cmds().first() else {
+            panic!()
+        };
+        assert_eq!(quad.dest, display.visible_rect(), "{w}x{h}");
+        // The shown part keeps the proportion of the surface: nothing is stretched.
+        let image = crate::wallpaper::current();
+        let shown = (quad.uv.w * image.width as f32) / (quad.uv.h * image.height as f32);
+        assert!(
+            (shown - w as f32 / h as f32).abs() < 1e-3,
+            "{w}x{h}: {shown}"
+        );
+        assert!(
+            quad.uv.x >= 0.0
+                && quad.uv.right() <= 1.0001
+                && quad.uv.y >= 0.0
+                && quad.uv.bottom() <= 1.0001
+        );
+    }
+}
+
+// ---- contrast over the wallpaper ----------------------------------------------------------------
+
+fn relative_luminance(rgb: [f32; 3]) -> f32 {
+    let linear = |c: f32| {
+        let c = c / 255.0;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2])
+}
+
+fn contrast(text: crate::theme::Color, background_luminance: f32) -> f32 {
+    let text = relative_luminance([text.r, text.g, text.b].map(f32::from));
+    (text.max(background_luminance) + 0.05) / (text.min(background_luminance) + 0.05)
+}
+
+/// The brightest texel of the wallpaper inside `area` (logical units of the 1280x720 canvas),
+/// after the layer `dim` (if any) is drawn over it.
+fn brightest_behind(area: Rect, dim: Option<crate::theme::Color>) -> f32 {
+    let wallpaper = crate::wallpaper::current();
+    let (sx, sy) = (
+        wallpaper.width as f32 / 1280.0,
+        wallpaper.height as f32 / 720.0,
+    );
+    let mut brightest = 0.0f32;
+    for y in (area.y * sy) as usize
+        ..((area.bottom() * sy).ceil() as usize).min(wallpaper.height as usize)
+    {
+        for x in (area.x * sx) as usize
+            ..((area.right() * sx).ceil() as usize).min(wallpaper.width as usize)
+        {
+            let i = (y * wallpaper.width as usize + x) * 3;
+            let mut pixel = [0, 1, 2].map(|c| f32::from(wallpaper.rgb[i + c]));
+            if let Some(dim) = dim {
+                let a = f32::from(dim.a) / 255.0;
+                let shade = [dim.r, dim.g, dim.b].map(f32::from);
+                for c in 0..3 {
+                    pixel[c] = pixel[c] * (1.0 - a) + shade[c] * a;
+                }
+            }
+            brightest = brightest.max(relative_luminance(pixel));
+        }
+    }
+    brightest
+}
+
+#[test]
+fn text_on_the_dimmed_screens_has_4_5_to_1_over_the_brightest_part_of_the_wallpaper() {
+    let everywhere = Rect::new(0.0, 0.0, 1280.0, 720.0);
+    let behind = brightest_behind(everywhere, Some(painter::TEXT_SCREEN_DIM));
+    // The dimmest text color used on those screens (tile names, breadcrumbs, hints).
+    let ratio = contrast(crate::theme::vars::TEXT_MUTED, behind);
+    assert!(
+        ratio >= 4.5,
+        "muted text: {ratio:.2}:1 over luminance {behind:.4}"
+    );
+    assert!(contrast(crate::theme::vars::TEXT, behind) >= 4.5);
+}
+
+#[test]
+fn the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home() {
+    let mut rig = Rig::new();
+    let tabs = topbar::TabLayout::new(
+        &mut Painter {
+            list: &mut DisplayList::new(),
+            text: &mut rig.text,
+            display: rig.display,
+        },
+        &rig.app.translator.get(crate::i18n::StringId::TabHome),
+        &rig.app.translator.get(crate::i18n::StringId::TabApps),
+    );
+    let (home, apps) = (tabs.rect(Tab::Home), tabs.rect(Tab::Apps));
+    let tab_area = Rect::new(home.x, home.y, apps.right() - home.x, home.h);
+    let muted = brightest_behind(tab_area, None);
+    let ratio = contrast(crate::theme::vars::TEXT_MUTED, muted);
+    assert!(
+        ratio >= 4.5,
+        "the inactive tab: {ratio:.2}:1 over luminance {muted:.4}"
+    );
+    // The white texts: the wordmark, the active tab, the gear and the clock.
+    for (name, area) in [
+        ("logo", Rect::new(64.0, 20.0, 120.0, 44.0)),
+        ("tabs", tab_area),
+        ("gear", Rect::new(1096.0, 20.0, 48.0, 48.0)),
+        ("clock", Rect::new(1150.0, 28.0, 70.0, 30.0)),
+    ] {
+        let ratio = contrast(crate::theme::vars::TEXT, brightest_behind(area, None));
+        assert!(ratio >= 4.5, "{name}: {ratio:.2}:1");
+    }
+}
+
+// ---- the dock -----------------------------------------------------------------------------------
+
+fn rings_in(list: &DisplayList, area: Rect) -> usize {
+    list.cmds()
+        .iter()
+        .filter(|cmd| {
+            matches!(cmd, crate::render::Cmd::Rect(r)
+                if matches!(r.kind, crate::render::RectKind::Ring { .. }) && area.intersects(&r.rect))
+        })
+        .count()
+}
+
+fn favorites_dock(rig: &mut Rig, count: usize) {
+    let packages: Vec<String> = rig
+        .app
+        .catalog
+        .apps()
+        .iter()
+        .take(count)
+        .map(|a| a.package.clone())
+        .collect();
+    rig.app.config.favorites = packages;
+    rig.press(Key::Home);
+    rig.advance(1000);
+}
+
+#[test]
+fn the_dock_shows_every_favorite_at_once_inside_the_safe_area() {
+    let mut rig = Rig::with_catalog(many_apps(14));
+    favorites_dock(&mut rig, 12);
+    let safe = Display::new(1280, 720).safe_area();
+    let row = &rig.app.focus.rows()[1];
+    assert_eq!(row.items.len(), 12);
+    assert!(row
+        .items
+        .iter()
+        .all(|i| i.rect.x >= safe.x && i.rect.right() <= safe.right()));
+    // Even the last one with the focus on it, at the peak of the Magnification.
+    rig.press_all(&[Key::Right; 11]);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 11));
+    let (position, amplitude) = rig.app.dock_motion();
+    let layout = dock::layout(12, position, amplitude, 640.0, safe.bottom());
+    assert!(layout
+        .items
+        .iter()
+        .all(|r| r.x >= safe.x && r.right() <= safe.right()));
+}
+
+#[test]
+fn the_magnification_follows_the_focus_with_an_animation_and_no_jump() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    let (position, amplitude) = rig.app.dock_motion();
+    assert_eq!(
+        (position, amplitude),
+        (0.0, 1.0),
+        "the first icon is magnified"
+    );
+    rig.press_all(&[Key::Right, Key::Right]);
+    rig.advance(1000);
+    assert_eq!(rig.app.dock_motion(), (2.0, 1.0));
+    // Right: the position slides from 2 to 3 in steps, never leaping.
+    rig.app.handle_key(Key::Right, rig.now);
+    rig.advance(10);
+    let mut last = rig.app.dock_motion().0;
+    assert!((2.0..3.0).contains(&last));
+    for _ in 0..12 {
+        rig.advance(16);
+        let now = rig.app.dock_motion().0;
+        assert!(now >= last && now - last < 0.5, "{last} -> {now}");
+        last = now;
+    }
+    rig.advance(500);
+    assert_eq!(rig.app.dock_motion(), (3.0, 1.0));
+}
+
+#[test]
+fn with_the_focus_outside_the_dock_every_icon_is_at_its_normal_size() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    rig.press(Key::Up);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::TAB_HOME));
+    let (position, amplitude) = rig.app.dock_motion();
+    assert_eq!(amplitude, 0.0);
+    let layout = dock::layout(5, position, amplitude, 640.0, 700.0);
+    assert!(layout.items.iter().all(|r| r.w == dock::BASE));
+    // Coming back magnifies the icon the focus lands on, without sliding from the old place.
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+    rig.advance(1000);
+    assert_eq!(rig.app.dock_motion(), (0.0, 1.0));
+}
+
+#[test]
+fn a_focused_dock_item_has_no_ring_around_it_only_the_bar_has_one() {
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Right, Key::Right]);
+    rig.advance(1000);
+    let list = rig.frame();
+    let dock_area = Rect::new(0.0, 400.0, 1280.0, 320.0);
+    assert_eq!(
+        rings_in(&list, dock_area),
+        1,
+        "the bar's own thin ring, and nothing on the icon"
+    );
+    // Nothing is drawn above the bar's top besides the name bubble: no outline on the icon.
+    assert!(top_bar_rings(&list).is_empty());
+}
+
+#[test]
+fn the_name_bubble_appears_with_the_focus_and_goes_with_it() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    let with_focus = glyphs(&rig.frame());
+    rig.press(Key::Up);
+    rig.advance(1000);
+    let without = glyphs(&rig.frame());
+    assert!(
+        with_focus > without,
+        "the name is drawn only while the focus is in the dock"
+    );
+    rig.press_all(&[Key::Down, Key::Right]);
+    rig.advance(1000);
+    assert!(
+        glyphs(&rig.frame()) > without,
+        "the bubble is back with the focus"
+    );
+}
+
+#[test]
+fn left_and_right_stop_at_the_ends_up_goes_to_the_active_tab_and_down_does_nothing() {
+    let mut rig = Rig::new();
+    rig.press(Key::Left);
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE),
+        "no step left of the first"
+    );
+    rig.press_all(&[Key::Right; 10]);
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE + 4),
+        "no step right of the last"
+    );
+    rig.press(Key::Down);
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE + 4),
+        "nothing below the dock"
+    );
+    rig.press(Key::Up);
+    assert_eq!(rig.focused(), Some(ids::TAB_HOME), "the active tab");
+    // From the top bar, down goes to the first icon of the screen that is showing.
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+    // Going to the gear passes over the Apps tab, which shows its grid: down from the gear lands on
+    // the grid's first tile.
+    rig.press_all(&[Key::Up, Key::Right, Key::Right, Key::Down]);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), Some(ids::GRID_BASE), "from the gear too");
+}
+
+#[test]
+fn ok_on_a_dock_icon_opens_its_app() {
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Right, Key::Right, Key::Right]);
+    let effects = rig.press(Key::Ok);
+    assert_eq!(
+        effects[0],
+        Effect::OpenApp {
+            package: SPOTIFY.into(),
+            activity: format!("{SPOTIFY}.Main")
+        }
+    );
+}
+
+#[test]
+fn the_empty_dock_has_a_single_add_favorites_item_that_opens_the_editor() {
+    let mut rig = Rig::new();
+    rig.app.config.favorites.clear();
+    rig.press(Key::Home);
+    rig.advance(1000);
+    let row = &rig.app.focus.rows()[1];
+    assert_eq!(row.items.len(), 1);
+    assert_eq!(row.items[0].id, ids::FAVORITES_ADD);
+    assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
+    rig.press(Key::Right);
+    assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
+    assert_eq!(rig.press(Key::Ok), []);
+    assert_eq!(rig.app.screen(), &Screen::Editor);
+}
+
+#[test]
+fn the_first_frame_is_drawn_with_colors_and_initials_before_any_icon_arrives() {
+    let mut rig = Rig::new();
+    let before = rig.frame();
+    assert_eq!(images(&before), 0, "no icon is loaded yet");
+    assert!(
+        glyphs(&before) > 5,
+        "the initials and the name are already there"
+    );
+    rig.app.icons.reserve_dock(NETFLIX).unwrap();
+    let after = rig.frame();
+    assert_eq!(images(&after), 1);
+    assert!(
+        glyphs(&after) < glyphs(&before),
+        "its initial gave way to the icon"
+    );
+}
+
+#[test]
+fn an_idle_home_asks_for_no_frame_but_the_clocks() {
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Right, Key::Right]);
+    rig.advance(1000);
+    let now = rig.now;
+    let deadline = rig.app.next_deadline(now).expect("the clock");
+    assert_eq!(
+        deadline,
+        now + rig.app.clock.millis_to_next_minute(),
+        "only the clock turning"
+    );
+    // And after a long wait the frame still has the same few things to draw.
+    let busy = rig.frame().len();
+    rig.advance(30_000);
+    assert_eq!(rig.frame().len(), busy);
+    assert_eq!(
+        rig.app.next_deadline(rig.now),
+        Some(rig.now + rig.app.clock.millis_to_next_minute())
+    );
+}
+
+// ---- coming back from an opened app ----------------------------------------------------------------
+
+/// What happens to lume when an app takes the screen and the user comes back with Home.
+fn leave_and_come_back(rig: &mut Rig) {
+    rig.app.went_to_background();
+    rig.app.came_to_foreground();
+    rig.press(Key::Home);
+}
+
+fn grid_id_of(rig: &Rig, package: &str) -> FocusId {
+    let index = rig
+        .app
+        .catalog
+        .apps()
+        .iter()
+        .position(|a| a.package == package)
+        .unwrap();
+    ids::GRID_BASE + index as u32
+}
+
+#[test]
+fn back_from_an_app_opened_in_the_apps_tab_returns_to_that_tab_and_icon() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    let youtube = grid_id_of(&rig, YOUTUBE);
+    focus_on(&mut rig, youtube);
+    let effects = rig.press(Key::Ok);
+    assert!(matches!(&effects[0], Effect::OpenApp { package, .. } if package == YOUTUBE));
+    // The user comes back with the Home button.
+    leave_and_come_back(&mut rig);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), Some(youtube));
+}
+
+#[test]
+fn back_from_an_app_opened_from_the_dock_returns_to_that_icon() {
+    let mut rig = Rig::new();
+    rig.press_all(&[Key::Right, Key::Right, Key::Right]);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 3));
+    rig.press(Key::Ok);
+    leave_and_come_back(&mut rig);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE + 3),
+        "not the first icon"
+    );
+}
+
+#[test]
+fn the_grid_scroll_is_kept_when_coming_back() {
+    let mut rig = Rig::with_catalog(many_apps(40));
+    open_apps(&mut rig);
+    rig.press_all(&[Key::Down; 6]);
+    rig.advance(1000);
+    let (focus, scroll) = (rig.focused().unwrap(), rig.app.scroll_y);
+    assert!(scroll > 0.0, "the grid scrolled");
+    rig.press(Key::Ok);
+    leave_and_come_back(&mut rig);
+    rig.advance(1000);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), Some(focus));
+    assert!(
+        (rig.app.scroll_y - scroll).abs() < 1.0,
+        "{} vs {scroll}",
+        rig.app.scroll_y
+    );
+    let rect = rig.app.focus.current().unwrap().rect;
+    assert!(rect.y - rig.app.scroll_y >= 76.0 && rect.bottom() - rig.app.scroll_y <= 720.0);
+}
+
+#[test]
+fn back_from_the_settings_opened_by_the_lume_tile_returns_to_the_tile() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    focus_on(&mut rig, ids::GRID_SETTINGS);
+    rig.press(Key::Ok);
+    rig.press(Key::Back);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+}
+
+#[test]
+fn from_the_lume_settings_screen_the_android_settings_item_returns_there() {
+    let mut rig = Rig::new();
+    open_settings(&mut rig);
+    rig.press(Key::Down);
+    assert_eq!(rig.press(Key::Ok), [Effect::OpenAndroidSettings]);
+    leave_and_come_back(&mut rig);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
+}
+
+#[test]
+fn any_other_key_forgets_the_place_so_home_goes_to_the_start() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.press(Key::Ok);
+    // lume came back by Back (no Home press): the screen is already as it was, and the user moves.
+    rig.press(Key::Right);
+    rig.press(Key::Home);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE),
+        "the usual Home press"
+    );
+}
+
+#[test]
+fn home_without_an_app_having_been_opened_goes_to_the_start() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press_all(&[Key::Down, Key::Right]);
+    rig.press(Key::Home);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+}
+
+#[test]
+fn the_place_is_used_once() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.press(Key::Ok);
+    leave_and_come_back(&mut rig);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    rig.advance(5000);
+    rig.press(Key::Home);
+    assert_eq!(
+        rig.app.screen(),
+        &Screen::Main(Tab::Home),
+        "the second press is the usual one"
+    );
+}
+
+#[test]
+fn an_app_that_could_not_be_opened_leaves_nothing_to_go_back_to() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.press(Key::Ok);
+    rig.app.app_not_found(rig.now);
+    rig.press(Key::Home);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+}
+
+#[test]
+fn home_pressed_while_lume_is_on_screen_goes_to_the_start_even_after_opening_an_app() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.press(Key::Ok);
+    // lume never left the screen (the app did not open, or the user came back some other way).
+    rig.press(Key::Home);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+}
+
+#[test]
+fn a_home_press_long_after_coming_back_is_the_usual_one() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.press(Key::Ok);
+    rig.app.went_to_background();
+    rig.app.came_to_foreground();
+    rig.advance(100); // the first frame back
+    rig.advance(5000);
+    rig.press(Key::Home);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+}
+
+#[test]
+fn a_home_press_that_arrives_just_after_the_first_frame_back_still_restores() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    let focus = rig.focused();
+    rig.press(Key::Ok);
+    rig.app.went_to_background();
+    rig.app.came_to_foreground();
+    rig.advance(100);
+    rig.press(Key::Home);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.focused(), focus);
+}
+
+/// The horizontal center of the name bubble above the dock icons, if it is drawn.
+fn bubble_center(list: &DisplayList) -> Option<f32> {
+    list.cmds().iter().find_map(|cmd| match cmd {
+        crate::render::Cmd::Rect(r)
+            if r.rect.h == 40.0
+                && r.rect.y > 400.0
+                && matches!(r.kind, crate::render::RectKind::Fill(_)) =>
+        {
+            Some(r.rect.center().0)
+        }
+        _ => None,
+    })
+}
+
+#[test]
+fn the_name_bubble_glides_with_the_focus_between_the_first_and_second_icon() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    let start = bubble_center(&rig.frame()).expect("the bubble is drawn");
+    rig.app.handle_key(Key::Right, rig.now);
+    let mut last = start;
+    let mut moved = 0.0f32;
+    let mut centers = Vec::new();
+    for _ in 0..16 {
+        rig.advance(16);
+        let center = bubble_center(&rig.frame()).expect("the bubble stays while moving");
+        // Frame by frame it only advances a little: no jump to the new icon, no going back.
+        assert!(center >= last - 0.01, "went back: {last} -> {center}");
+        moved = moved.max(center - last);
+        centers.push(center);
+        last = center;
+    }
+    assert!(
+        moved < 40.0,
+        "the biggest step in one frame was {moved}: {centers:?}"
+    );
+    assert!(
+        last - start > 60.0,
+        "it did get to the second icon: {start} -> {last}"
+    );
+}
+
+#[test]
+fn the_first_move_in_the_dock_slides_like_every_other_one() {
+    // The position 0 is the value the animations rest at: it must not be forgotten between frames,
+    // or the first move would start from the new place and jump instead of sliding.
+    let mut rig = Rig::new();
+    rig.advance(2000);
+    assert_eq!(rig.app.dock_motion(), (0.0, 1.0));
+    rig.app.handle_key(Key::Right, rig.now);
+    rig.advance(10);
+    rig.advance(30);
+    let (position, _) = rig.app.dock_motion();
+    assert!(position > 0.0 && position < 0.9, "sliding, at {position}");
+    rig.advance(1000);
+    assert_eq!(rig.app.dock_motion(), (1.0, 1.0));
+    // And back to the first icon slides too.
+    rig.app.handle_key(Key::Left, rig.now);
+    rig.advance(10);
+    rig.advance(30);
+    let (position, _) = rig.app.dock_motion();
+    assert!(
+        position > 0.1 && position < 1.0,
+        "sliding back, at {position}"
+    );
+}
+
+#[test]
+fn moving_the_focus_to_a_tab_shows_it_without_ok_and_ok_on_it_changes_nothing() {
+    let mut rig = Rig::new();
+    rig.press(Key::Up);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    rig.press(Key::Right);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps), "no OK needed");
+    assert_eq!(
+        rig.focused(),
+        Some(ids::TAB_APPS),
+        "the focus stays on the tab"
+    );
+    let labels_before = glyphs(&rig.frame());
+    assert!(rig.press(Key::Ok).is_empty());
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(glyphs(&rig.frame()), labels_before);
+    // And left shows Home again.
+    rig.press(Key::Left);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(rig.focused(), Some(ids::TAB_HOME));
+}
+
+#[test]
+fn the_apps_tab_scrolled_back_to_the_top_when_the_focus_arrives_on_it() {
+    let mut rig = Rig::with_catalog(many_apps(40));
+    open_apps(&mut rig);
+    rig.press_all(&[Key::Down; 6]);
+    rig.advance(1000);
+    assert!(rig.app.scroll_y > 0.0);
+    rig.press_all(&[Key::Up; 7]);
+    assert_eq!(rig.focused(), Some(ids::TAB_APPS));
+    rig.press(Key::Left);
+    rig.press(Key::Right);
+    rig.advance(1000);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(rig.app.scroll_y, 0.0);
+}
+
+/// The color of the (only) tab underline in the frame.
+fn underline_color(list: &DisplayList) -> crate::theme::Color {
+    list.cmds()
+        .iter()
+        .find_map(|cmd| match cmd {
+            crate::render::Cmd::Rect(r)
+                if r.rect.y == 64.0
+                    && r.rect.w > 10.0
+                    && r.rect.h == crate::theme::vars::TAB_UNDERLINE =>
+            {
+                match r.kind {
+                    crate::render::RectKind::Fill(crate::theme::Paint::Solid(c)) => Some(c),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .expect("an underline is drawn")
+}
+
+fn rgb(c: crate::theme::Color) -> [u8; 3] {
+    [c.r, c.g, c.b]
+}
+
+#[test]
+fn the_underline_is_blue_while_the_tabs_have_the_focus_and_white_when_it_goes_down() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    // The focus is in the dock: the tabs are not being controlled, the underline is white.
+    let white = crate::theme::vars::TEXT;
+    let blue = crate::theme::vars::ACCENT;
+    assert_eq!(rgb(underline_color(&rig.frame())), rgb(white));
+    // Up to the tabs: blue.
+    rig.press(Key::Up);
+    rig.advance(1000);
+    assert_eq!(rgb(underline_color(&rig.frame())), rgb(blue));
+    // Down again: white.
+    rig.press(Key::Down);
+    rig.advance(1000);
+    assert_eq!(rgb(underline_color(&rig.frame())), rgb(white));
+    // The gear belongs to the top bar too.
+    rig.press_all(&[Key::Up, Key::Right, Key::Right]);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::GEAR));
+    assert_eq!(rgb(underline_color(&rig.frame())), rgb(blue));
+}
+
+#[test]
+fn the_underline_fades_between_white_and_blue_with_the_focus() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    rig.app.handle_key(Key::Up, rig.now);
+    rig.advance(10);
+    rig.advance(60);
+    let c = underline_color(&rig.frame());
+    let (white, blue) = (crate::theme::vars::TEXT, crate::theme::vars::ACCENT);
+    assert!(
+        c.r < white.r && c.r > blue.r,
+        "between white and blue: {c:?}"
+    );
+}
+
+#[test]
+fn in_the_apps_grid_the_underline_is_white_too() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.advance(1000);
+    assert_eq!(rig.focused(), Some(ids::GRID_BASE));
+    assert_eq!(
+        rgb(underline_color(&rig.frame())),
+        rgb(crate::theme::vars::TEXT)
+    );
+}
+
+#[test]
+fn changing_the_tab_fades_the_new_content_in_and_then_goes_idle() {
+    let mut rig = Rig::new();
+    rig.press(Key::Up);
+    rig.advance(1000);
+    rig.app.handle_key(Key::Right, rig.now);
+    rig.advance(10);
+    let mid = rig.app.anim.get(super::Anim::TabFade, 1.0, rig.now);
+    assert!(mid > 0.0 && mid < 1.0, "mid-fade: {mid}");
+    assert!(
+        rig.app.is_animating(rig.now),
+        "frames are asked for while it fades"
+    );
+    // The content is drawn translucent; the top bar after it is not.
+    let list = rig.frame();
+    assert!(
+        list.cmds()
+            .iter()
+            .any(|c| matches!(c, crate::render::Cmd::Rect(r) if r.opacity < 1.0)),
+        "some content is translucent during the fade"
+    );
+    rig.advance(1000);
+    assert!(
+        !rig.app.is_animating(rig.now),
+        "nothing animates once it is done"
+    );
+}
+
+#[test]
+fn the_name_under_the_focused_tile_is_white_and_the_others_are_muted() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    rig.advance(1000);
+    let focused = rig.app.focus_progress(rig.focused().unwrap());
+    assert_eq!(focused, 1.0);
+    let mut style = |progress: f32| {
+        let p = Painter {
+            list: &mut DisplayList::new(),
+            text: &mut rig.text,
+            display: rig.display,
+        };
+        p.focus_style(&crate::theme::THEME.tile_label, progress)
+            .color
+    };
+    assert_eq!(style(0.0), crate::theme::vars::TEXT_MUTED);
+    assert_eq!(style(1.0), crate::theme::vars::TEXT);
 }

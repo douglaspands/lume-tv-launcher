@@ -1,6 +1,6 @@
 //! The top bar: logo, tabs, settings button and clock.
 
-use super::painter::Painter;
+use super::painter::{fade, Painter};
 use super::{ids, Tab};
 use crate::clock::WallClock;
 use crate::icons;
@@ -10,7 +10,6 @@ use crate::text::TextStyle;
 use crate::theme::{vars, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
-pub const HEIGHT: f32 = 88.0;
 /// Left and right margin of the whole interface.
 pub const MARGIN: f32 = 64.0;
 
@@ -75,8 +74,37 @@ pub struct TopBar<'a> {
 }
 
 impl TopBar<'_> {
+    /// How much the focus is in the top bar (tabs or gear), 0.0 to 1.0, animated with the focus.
+    fn bar_focus(&self) -> f32 {
+        [ids::TAB_HOME, ids::TAB_APPS, ids::GEAR]
+            .into_iter()
+            .map(|id| (self.focus)(id))
+            .fold(0.0f32, f32::max)
+            .clamp(0.0, 1.0)
+    }
+
+    /// How much of the underline `tab` has (0.0 to 1.0). It sits under the focused tab while
+    /// the focus is on the tabs, and under the active tab otherwise; the focus animation carries
+    /// it from one to the other.
+    fn underline_weight(&self, tab: Tab) -> f32 {
+        let focus = |tab: Tab| match tab {
+            Tab::Home => (self.focus)(ids::TAB_HOME),
+            Tab::Apps => (self.focus)(ids::TAB_APPS),
+        };
+        let other = match tab {
+            Tab::Home => Tab::Apps,
+            Tab::Apps => Tab::Home,
+        };
+        let held = if tab == self.active {
+            1.0 - focus(other)
+        } else {
+            0.0
+        };
+        focus(tab).max(held).clamp(0.0, 1.0)
+    }
+
     pub fn draw(&self, p: &mut Painter) {
-        logo::draw_mark(p.list, LOGO, vars::ACCENT, vars::BG);
+        logo::draw_mark(p.list, LOGO, vars::PRIMARY, vars::BG);
         let wordmark = TextStyle {
             size: 28.0,
             weight: 800,
@@ -84,7 +112,7 @@ impl TopBar<'_> {
         };
         p.text.draw(
             p.list,
-            "lume",
+            "Lume",
             WORDMARK_X,
             WORDMARK_BASELINE,
             &wordmark,
@@ -114,18 +142,18 @@ impl TopBar<'_> {
             let text_style = Painter::text_style(&style);
             p.text
                 .draw(p.list, label, x, TAB_BASELINE, &text_style, style.color);
-            if selected {
+            let weight = self.underline_weight(tab);
+            if weight > 0.0 {
+                // Blue while the focus is in the top bar (the tabs are being controlled), white once
+                // it goes down to the content.
+                let color =
+                    crate::ui::style::mix_color(vars::SECONDARY, vars::PRIMARY, self.bar_focus());
                 p.list.fill(
                     Rect::new(x - 2.0, 64.0, width + 4.0, vars::TAB_UNDERLINE),
                     vars::TAB_UNDERLINE / 2.0,
-                    crate::theme::Paint::Solid(vars::ACCENT),
+                    crate::theme::Paint::Solid(fade(color, weight)),
                 );
             }
-            // Focus ring of the tab.
-            let mut ring = style;
-            ring.background = None;
-            ring.box_shadow = None;
-            p.list.draw_box(self.tabs.rect(tab), &ring);
         }
 
         let progress = (self.focus)(ids::GEAR);

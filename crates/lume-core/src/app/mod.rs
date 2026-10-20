@@ -3,9 +3,10 @@
 //! [`LumeApp`] holds the state and is driven by three calls from the platform shell:
 //! [`LumeApp::handle_key`] for remote control keys, [`LumeApp::draw`] to fill a display list,
 //! and [`LumeApp::next_deadline`] to know when something will change without any input
-//! (an animation, the carousel, the clock), so the shell can sleep otherwise.
+//! (an animation, the clock), so the shell can sleep otherwise.
 
 mod apps;
+mod dock;
 mod editor;
 mod home;
 mod page;
@@ -21,7 +22,6 @@ use crate::app_icons::{AppIcons, Art};
 use crate::catalog::Catalog;
 use crate::clock::WallClock;
 use crate::home::config::HomeConfig;
-use crate::home::slides::{Slide, SlideAction};
 use crate::i18n::Translator;
 use crate::render::Rect;
 use crate::theme::{ComputedStyle, THEME};
@@ -37,7 +37,6 @@ pub mod ids {
     pub const TAB_HOME: FocusId = 1;
     pub const TAB_APPS: FocusId = 2;
     pub const GEAR: FocusId = 3;
-    pub const HERO_BUTTON: FocusId = 10;
     pub const FAVORITES_ADD: FocusId = 999;
     pub const FAVORITE_BASE: FocusId = 1000;
     pub const GRID_BASE: FocusId = 2000;
@@ -94,10 +93,19 @@ enum Anim {
     /// How focused an element is, 0.0 to 1.0.
     Focus(FocusId),
     ScrollY,
-    FavoritesScrollX,
-    /// Cross-fade between carousel slides, 0.0 to 1.0.
-    SlideFade,
+    /// The place (fractional while it moves) of the dock icon that is magnified.
+    DockPosition,
+    /// How much the dock magnifies, 0.0 (the focus is elsewhere) to 1.0.
+    DockAmplitude,
+    /// How visible the content of the tab is while it fades in after a tab change, 0.0 to 1.0.
+    TabFade,
 }
+
+/// The fade of the content when the tab changes.
+const TAB_FADE: crate::theme::Transition = crate::theme::Transition {
+    duration_ms: 180.0,
+    curve: crate::theme::Curve::EaseOut,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PendingFocus {
@@ -106,13 +114,12 @@ enum PendingFocus {
     Id(FocusId),
 }
 
-/// The carousel's runtime state.
-#[derive(Clone, Debug, Default)]
-struct Carousel {
-    index: usize,
-    previous: Option<usize>,
-    /// When the current slide appeared (milliseconds on the app clock).
-    since_ms: u64,
+/// Where the user was when they opened another app, to put them back there when they return.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ReturnPoint {
+    screen: Screen,
+    focus: Option<FocusId>,
+    scroll_y: f32,
 }
 
 pub struct LumeApp {
@@ -131,18 +138,33 @@ pub struct LumeApp {
     focus: Focus,
     anim: Animations<Anim>,
     scroll_y: f32,
-    favorites_scroll_x: f32,
+    /// Where the content of the frame starts in the display list (after the wallpaper).
+    content_start: usize,
+    /// The dock icon the focus is on, when it is in the dock.
+    dock_focus: Option<usize>,
+    /// The last dock icon that had the focus: its name stays in the bubble while it fades out.
+    dock_last: usize,
     /// The focused element whose position the scrolling was last adjusted for.
     revealed: Option<FocusId>,
     /// The element whose focus animation was last started.
     tracked_focus: Option<FocusId>,
     /// Where the focus goes at the next layout (after a screen change).
     pending_focus: Option<PendingFocus>,
-    carousel: Carousel,
-    slides: Vec<Slide>,
     toast: Option<(String, u64)>,
+    /// Set when an app was opened; used by the next Home press, dropped by any other key.
+    return_point: Option<ReturnPoint>,
+    /// Whether lume is on screen. A Home press while it is can only mean "go to the start".
+    foreground: bool,
+    /// lume just came back to the screen and has not drawn a frame yet.
+    wake_pending: bool,
+    /// When the first frame after coming back was drawn.
+    foreground_since: Option<u64>,
     now_ms: u64,
 }
+
+/// How long after coming back to the screen a Home press still counts as the one that brought
+/// lume back (the system may deliver it after the window is already there).
+const RETURN_WINDOW_MS: u64 = 2000;
 
 impl LumeApp {
     pub fn new(
@@ -166,14 +188,18 @@ impl LumeApp {
             focus: Focus::new(),
             anim: Animations::new(),
             scroll_y: 0.0,
-            favorites_scroll_x: 0.0,
+            content_start: 0,
+            dock_focus: None,
+            dock_last: 0,
             revealed: None,
             tracked_focus: None,
             // The app starts with the focus on the first element of the content.
             pending_focus: Some(PendingFocus::FirstContent),
-            carousel: Carousel::default(),
-            slides: Vec::new(),
             toast: None,
+            return_point: None,
+            foreground: true,
+            wake_pending: false,
+            foreground_since: None,
             now_ms: 0,
         }
     }
@@ -211,6 +237,25 @@ impl LumeApp {
     /// Handles a key press.
     pub fn handle_key(&mut self, key: Key, now_ms: u64) -> Vec<Effect> {
         self.now_ms = now_ms;
+        // Only the Home press that brings lume back can use the place where an app was opened.
+        if key != Key::Home {
+            self.return_point = None;
+        }
+        let effects = self.dispatch_key(key);
+        if effects
+            .iter()
+            .any(|e| matches!(e, Effect::OpenApp { .. } | Effect::OpenAndroidSettings))
+        {
+            self.return_point = Some(ReturnPoint {
+                screen: self.screen,
+                focus: self.focus.current_id(),
+                scroll_y: self.scroll_y,
+            });
+        }
+        effects
+    }
+
+    fn dispatch_key(&mut self, key: Key) -> Vec<Effect> {
         match key {
             Key::Up | Key::Down if self.screen == Screen::About => {
                 self.scroll_about(if key == Key::Up { -1.0 } else { 1.0 });
@@ -229,21 +274,27 @@ impl LumeApp {
             Key::Ok => self.activate(),
             Key::Back => self.back(),
             Key::Home => {
-                self.go_home();
+                match self.return_point.take() {
+                    // Back from the app that was opened: the screen and the focus as they were.
+                    Some(point) if self.just_returned() => self.restore(point),
+                    // lume was already on screen: Home is the way back to the start.
+                    _ => self.go_home(),
+                }
                 vec![]
             }
         }
     }
 
     fn horizontal(&mut self, direction: Direction) -> Vec<Effect> {
-        // With the focus on the carousel's button, left and right change the slide.
-        if self.screen == Screen::Main(Tab::Home)
-            && self.focus.current_id() == Some(ids::HERO_BUTTON)
-        {
-            self.step_slide(if direction == Direction::Left { -1 } else { 1 });
-            return vec![];
-        }
         self.move_focus(direction);
+        // Moving the focus onto a tab shows that tab at once, without OK. The focus stays on it.
+        if matches!(self.screen, Screen::Main(_)) {
+            match self.focus.current_id() {
+                Some(ids::TAB_HOME) => self.select_tab(Tab::Home),
+                Some(ids::TAB_APPS) => self.select_tab(Tab::Apps),
+                _ => {}
+            }
+        }
         vec![]
     }
 
@@ -312,9 +363,43 @@ impl LumeApp {
         self.pending_focus = Some(PendingFocus::FirstContent);
     }
 
+    /// lume left the screen (another app is in front).
+    pub fn went_to_background(&mut self) {
+        self.foreground = false;
+    }
+
+    /// lume is on the screen again.
+    pub fn came_to_foreground(&mut self) {
+        self.foreground = true;
+        self.wake_pending = true;
+        self.foreground_since = None;
+    }
+
+    /// Whether a Home press now is the one that brought lume back from another app: it comes while
+    /// lume is not on screen yet, or right after it is.
+    fn just_returned(&self) -> bool {
+        !self.foreground
+            || self.wake_pending
+            || self
+                .foreground_since
+                .is_some_and(|since| self.now_ms.saturating_sub(since) < RETURN_WINDOW_MS)
+    }
+
+    /// Puts the screen, the focused element and the scrolling back as they were when an app was opened.
+    fn restore(&mut self, point: ReturnPoint) {
+        self.editor = editor::EditorState::default();
+        self.screen = point.screen;
+        self.scroll_y = point.scroll_y;
+        self.anim.set(Anim::ScrollY, point.scroll_y);
+        self.revealed = None;
+        self.pending_focus = point.focus.map(PendingFocus::Id);
+    }
+
     fn select_tab(&mut self, tab: Tab) {
         if self.screen != Screen::Main(tab) {
             self.screen = Screen::Main(tab);
+            self.anim
+                .animate_to(Anim::TabFade, 0.0, 1.0, self.now_ms, Some(TAB_FADE));
             self.scroll_to_top();
             // The focus stays on the tab that was selected.
         }
@@ -322,36 +407,8 @@ impl LumeApp {
 
     fn scroll_to_top(&mut self) {
         self.scroll_y = 0.0;
-        self.favorites_scroll_x = 0.0;
         self.anim.set(Anim::ScrollY, 0.0);
-        self.anim.set(Anim::FavoritesScrollX, 0.0);
         self.revealed = None;
-    }
-
-    /// Shows the next (`1`) or previous (`-1`) slide.
-    fn step_slide(&mut self, delta: i32) {
-        let count = self.slides.len();
-        if count < 2 {
-            return;
-        }
-        let next = (self.carousel.index as i32 + delta).rem_euclid(count as i32) as usize;
-        self.set_slide(next);
-    }
-
-    fn set_slide(&mut self, index: usize) {
-        if index == self.carousel.index {
-            return;
-        }
-        self.carousel.previous = Some(self.carousel.index);
-        self.carousel.index = index;
-        self.carousel.since_ms = self.now_ms;
-        let transition = Some(crate::theme::Transition {
-            duration_ms: 300.0,
-            curve: crate::theme::Curve::EaseInOut,
-        });
-        self.anim.set(Anim::SlideFade, 0.0);
-        self.anim
-            .animate_to(Anim::SlideFade, 0.0, 1.0, self.now_ms, transition);
     }
 
     /// Opens the app `package` and records it in the usage history.
@@ -379,6 +436,8 @@ impl LumeApp {
     /// The platform could not open an app that was in the catalog.
     pub fn app_not_found(&mut self, now_ms: u64) {
         self.now_ms = now_ms;
+        // lume never left: there is nothing to go back to.
+        self.return_point = None;
         self.show_toast(
             self.translator
                 .get(crate::i18n::StringId::ToastAppNotFound)
@@ -401,8 +460,8 @@ impl LumeApp {
         self.toast = Some((text, self.now_ms + 2500));
     }
 
-    /// When something will change without any key press: the next animation frame, the carousel
-    /// advancing, the clock's minute turning or a message expiring. `None` lets the shell sleep.
+    /// When something will change without any key press: the next animation frame, the
+    /// clock's minute turning or a message expiring. `None` lets the shell sleep.
     pub fn next_deadline(&self, now_ms: u64) -> Option<u64> {
         // While something was moving at the last frame, the next frame is one frame after that one.
         // It must be a fixed time: counting from `now_ms` it would slide away at every call and the
@@ -417,20 +476,37 @@ impl LumeApp {
         if let Some((_, until)) = &self.toast {
             consider(*until);
         }
-        if let Some(at) = self.carousel_deadline() {
-            consider(at);
-        }
         deadline
+    }
+
+    /// Whether an animation is running at `now_ms` (a frame is due every few milliseconds).
+    pub fn is_animating(&self, now_ms: u64) -> bool {
+        self.anim.is_animating(self.now_ms.max(now_ms))
+    }
+
+    /// Fades the content drawn so far in this frame (not the top bar, which is drawn after it)
+    /// while the tab that was just selected appears.
+    pub(super) fn fade_tab_content(&self, p: &mut painter::Painter) {
+        let visible = self.anim.get(Anim::TabFade, 1.0, self.now_ms);
+        if visible < 1.0 {
+            p.list.fade_from(self.content_start, visible);
+        }
     }
 
     /// Draws the current screen.
     pub fn draw(&mut self, p: &mut Painter, now_ms: u64) {
         self.now_ms = now_ms;
+        if self.wake_pending {
+            self.wake_pending = false;
+            self.foreground_since = Some(now_ms);
+        }
         if let Some((_, until)) = &self.toast {
             if now_ms >= *until {
                 self.toast = None;
             }
         }
+        p.wallpaper(self.screen != Screen::Main(Tab::Home));
+        self.content_start = p.list.len();
         match self.screen {
             Screen::Main(Tab::Home) => self.draw_home(p),
             Screen::Main(Tab::Apps) => self.draw_apps(p),
@@ -439,10 +515,8 @@ impl LumeApp {
             Screen::Editor => self.draw_editor(p),
         }
         self.draw_toast(p);
-        self.anim.prune(now_ms, |key| match key {
-            Anim::SlideFade => 1.0,
-            _ => 0.0,
-        });
+        self.anim
+            .prune(now_ms, |key| if *key == Anim::TabFade { 1.0 } else { 0.0 });
     }
 
     fn draw_toast(&mut self, p: &mut Painter) {
@@ -556,17 +630,6 @@ impl LumeApp {
     /// The vertical scroll offset to draw with now.
     fn current_scroll_y(&self) -> f32 {
         self.anim.get(Anim::ScrollY, self.scroll_y, self.now_ms)
-    }
-}
-
-/// What a tap on a slide's button does, for the shell and the tests.
-pub(crate) fn slide_effect(app: &mut LumeApp, slide: &Slide) -> Vec<Effect> {
-    match &slide.action {
-        SlideAction::OpenApp(package) => app.open_app(package),
-        SlideAction::ShowApps => {
-            app.select_tab(Tab::Apps);
-            vec![]
-        }
     }
 }
 

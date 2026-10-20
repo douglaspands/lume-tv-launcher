@@ -25,6 +25,7 @@ fn main() {
             locale: options.locale.clone(),
             pseudo_locale: options.pseudo_locale,
             is_24h: !options.clock_12h,
+            favorites: options.favorites,
         };
         // LUME_EXIT_AFTER_MS closes the window by itself, for smoke tests.
         let exit_after = std::env::var("LUME_EXIT_AFTER_MS")
@@ -53,6 +54,7 @@ fn main() {
                 locale: options.locale.clone(),
                 pseudo_locale: options.pseudo_locale,
                 is_24h: !options.clock_12h,
+                favorites: options.favorites,
             };
             let mut app = demo::app_with(&setup);
             // The keys that lead to each screen from the Home tab.

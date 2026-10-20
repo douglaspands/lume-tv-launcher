@@ -29,11 +29,22 @@ pub enum Program {
     Image,
 }
 
+/// The texture an image batch samples.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Texture {
+    /// The RGBA atlas of app icons (also what the other programs use, which ignore it).
+    Icons,
+    /// The opaque RGB wallpaper.
+    Wallpaper,
+}
+
 /// One draw call: `quad_count` quads of `program`, starting at `first_quad` in that
-/// program's vertex buffer, clipped to `clip` (logical units) when set.
+/// program's vertex buffer, clipped to `clip` (logical units) when set. Image batches sample
+/// `texture`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Batch {
     pub program: Program,
+    pub texture: Texture,
     pub clip: Option<Rect>,
     pub first_quad: u32,
     pub quad_count: u32,
@@ -99,6 +110,13 @@ impl Frame {
         builder.frame
     }
 
+    /// Whether any batch samples the wallpaper texture.
+    pub fn uses_wallpaper(&self) -> bool {
+        self.batches
+            .iter()
+            .any(|b| b.program == Program::Image && b.texture == Texture::Wallpaper)
+    }
+
     /// Vertices of `program`.
     pub fn quad_count(&self, program: Program) -> usize {
         match program {
@@ -130,8 +148,9 @@ impl Builder {
                 self.recompute_clip();
             }
             Cmd::Rect(rect) => self.add_rect(rect),
-            Cmd::Glyph(quad) => self.add_textured(Program::Text, quad),
-            Cmd::Image(quad) => self.add_textured(Program::Image, quad),
+            Cmd::Glyph(quad) => self.add_textured(Program::Text, Texture::Icons, quad),
+            Cmd::Image(quad) => self.add_textured(Program::Image, Texture::Icons, quad),
+            Cmd::Wallpaper(quad) => self.add_textured(Program::Image, Texture::Wallpaper, quad),
         }
     }
 
@@ -167,11 +186,12 @@ impl Builder {
         }
     }
 
-    fn start_quad(&mut self, program: Program, clip: Option<Rect>) -> u32 {
+    fn start_quad(&mut self, program: Program, texture: Texture, clip: Option<Rect>) -> u32 {
         let first_quad = self.frame.quad_count(program) as u32;
         match self.frame.batches.last_mut() {
             Some(batch)
                 if batch.program == program
+                    && batch.texture == texture
                     && batch.clip == clip
                     && batch.quad_count < MAX_QUADS_PER_BATCH
                     && batch.first_quad + batch.quad_count == first_quad =>
@@ -180,6 +200,7 @@ impl Builder {
             }
             _ => self.frame.batches.push(Batch {
                 program,
+                texture,
                 clip,
                 first_quad,
                 quad_count: 1,
@@ -188,14 +209,14 @@ impl Builder {
         first_quad
     }
 
-    fn add_textured(&mut self, program: Program, cmd: &TexturedCmd) {
+    fn add_textured(&mut self, program: Program, texture: Texture, cmd: &TexturedCmd) {
         let Some(clip) = self.visible_clip() else {
             return;
         };
         if cmd.dest.is_empty() || clip.is_some_and(|c| !c.intersects(&cmd.dest)) {
             return;
         }
-        self.start_quad(program, clip);
+        self.start_quad(program, texture, clip);
         let color = premultiplied(cmd.color, 1.0);
         let (d, uv) = (cmd.dest, cmd.uv);
         let corners = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)];
@@ -224,7 +245,7 @@ impl Builder {
         if cmd.rect.is_empty() || clip.is_some_and(|c| !c.intersects(&quad)) {
             return;
         }
-        self.start_quad(Program::Rect, clip);
+        self.start_quad(Program::Rect, Texture::Icons, clip);
 
         let mut vertex = RectVertex {
             half_size: [cmd.rect.w / 2.0, cmd.rect.h / 2.0],
@@ -331,6 +352,7 @@ mod tests {
             frame.batches[0],
             Batch {
                 program: Program::Rect,
+                texture: Texture::Icons,
                 clip: None,
                 first_quad: 0,
                 quad_count: 3
@@ -340,6 +362,54 @@ mod tests {
         // Painter's order: the second quad is to the right of the first, the ring is last.
         assert!(frame.rect_vertices[4].position[0] > frame.rect_vertices[0].position[0] + 100.0);
         assert_eq!(frame.rect_vertices[8].ring, 2.0);
+    }
+
+    fn image_at(list: &mut DisplayList, x: f32, wallpaper: bool) {
+        let (dest, uv) = (Rect::new(x, 0.0, 10.0, 10.0), Rect::new(0.0, 0.0, 1.0, 1.0));
+        if wallpaper {
+            list.wallpaper(dest, uv, WHITE);
+        } else {
+            list.image(dest, uv, WHITE);
+        }
+    }
+
+    #[test]
+    fn a_texture_change_breaks_the_image_batch_and_only_then() {
+        let mut list = DisplayList::new();
+        image_at(&mut list, 0.0, true);
+        list.fill(R, 0.0, solid());
+        image_at(&mut list, 20.0, false);
+        image_at(&mut list, 30.0, false);
+        image_at(&mut list, 40.0, true);
+        let frame = Frame::build(&list);
+        let shape: Vec<_> = frame
+            .batches
+            .iter()
+            .map(|b| (b.program, b.texture, b.quad_count))
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                (Program::Image, Texture::Wallpaper, 1),
+                (Program::Rect, Texture::Icons, 1),
+                (Program::Image, Texture::Icons, 2),
+                (Program::Image, Texture::Wallpaper, 1),
+            ]
+        );
+        // Both textures share the image vertex buffer, in painter's order.
+        assert_eq!(frame.image_vertices.len(), 16);
+        assert!(frame.uses_wallpaper());
+    }
+
+    #[test]
+    fn consecutive_wallpaper_quads_share_a_batch_and_icons_alone_do_not_use_it() {
+        let mut list = DisplayList::new();
+        image_at(&mut list, 0.0, true);
+        image_at(&mut list, 20.0, true);
+        assert_eq!(Frame::build(&list).batches.len(), 1);
+        let mut icons = DisplayList::new();
+        image_at(&mut icons, 0.0, false);
+        assert!(!Frame::build(&icons).uses_wallpaper());
     }
 
     #[test]

@@ -3,7 +3,8 @@
 #
 # Usage: scripts/container-build.sh [debug|release]
 #
-# Runtime selection: $LUME_CONTAINER (a command), else wslc.exe (WSL), else docker.
+# Runtime selection: $LUME_CONTAINER (a command) always wins; otherwise the order is the priority:
+# the first one found of wslc (WSL), docker and podman, in that order, is used.
 # Results land in dist/ (APK, and AAB for release).
 set -euo pipefail
 
@@ -22,27 +23,41 @@ tarball="dist/artifacts-$variant.tar"
 jobs="${CARGO_BUILD_JOBS:-4}"
 heap="${GRADLE_HEAP:-1536m}"
 
+# Sets `runtime_cmd`, the command (as separate words, so a path with spaces survives) that runs
+# "build". The order is the priority: wslc, docker, podman.
 find_runtime() {
   if [[ -n "${LUME_CONTAINER:-}" ]]; then
-    echo "$LUME_CONTAINER"
+    # shellcheck disable=SC2206 # a command with arguments, split on spaces on purpose
+    runtime_cmd=($LUME_CONTAINER)
   elif command -v wslc.exe >/dev/null 2>&1; then
-    echo "wslc.exe"
+    runtime_cmd=("wslc.exe")
   elif [[ -x "/mnt/c/Program Files/WSL/wslc.exe" ]]; then
-    echo "/mnt/c/Program Files/WSL/wslc.exe"
+    runtime_cmd=("/mnt/c/Program Files/WSL/wslc.exe")
   elif command -v docker >/dev/null 2>&1; then
-    echo "docker buildx"
+    runtime_cmd=("docker" "buildx")
+  elif command -v podman >/dev/null 2>&1; then
+    runtime_cmd=("podman")
   else
-    echo "error: no container runtime found (install Docker, or use WSL with wslc)" >&2
+    cat >&2 <<'MSG'
+error: no container runtime found (looked for wslc, docker and podman, in that order).
+Install one of them, or pick another way to build:
+  - Windows: update WSL (wsl --update) to get wslc, or install Docker Desktop.
+  - Linux/macOS: install Docker Engine or Podman (podman 5 or newer, for --output).
+  - Any other OCI runtime with a docker-compatible "build" command: set LUME_CONTAINER.
+  - No containers at all: install Rust, the Android NDK/SDK and cargo-ndk and follow
+    docker/Dockerfile step by step on your machine.
+MSG
     exit 1
   fi
 }
 
-runtime="$(find_runtime)"
+find_runtime
+runtime="${runtime_cmd[*]}"
 echo "Using container runtime: $runtime"
 
 # wslc.exe is a Windows program: it needs Windows paths.
 path_for_runtime() {
-  if [[ "$runtime" == *wslc.exe ]]; then wslpath -w "$1"; else echo "$1"; fi
+  if [[ "${runtime_cmd[0]}" == *wslc.exe ]]; then wslpath -w "$1"; else echo "$1"; fi
 }
 
 # Release signing: pass the keystore and its passwords as build secrets, so they are never
@@ -74,9 +89,8 @@ elif [[ "$variant" == "release" ]]; then
   echo "note: LUME_KEYSTORE is not set, so the release is signed with the debug key (do not publish it)"
 fi
 
-# wslc cannot export a directory, only a tar file; the same works for docker buildx.
-# shellcheck disable=SC2086 # $runtime may be two words ("docker buildx")
-$runtime build \
+# wslc cannot export a directory, only a tar file; the same works for docker buildx and podman.
+"${runtime_cmd[@]}" build \
   --progress plain \
   --build-arg "VARIANT=$variant" \
   --build-arg "CARGO_BUILD_JOBS=$jobs" \

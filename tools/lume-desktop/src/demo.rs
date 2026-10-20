@@ -50,6 +50,8 @@ pub struct Setup {
     pub locale: Option<String>,
     pub pseudo_locale: bool,
     pub is_24h: bool,
+    /// The first N apps of [`mockup_apps`] as favorites, instead of the first-use ones.
+    pub favorites: Option<usize>,
 }
 
 impl Default for Setup {
@@ -58,6 +60,7 @@ impl Default for Setup {
             locale: None,
             pseudo_locale: false,
             is_24h: true,
+            favorites: None,
         }
     }
 }
@@ -67,7 +70,14 @@ pub fn app_with(setup: &Setup) -> LumeApp {
     let catalog = Catalog::from_discovered(&mockup_apps(), "app.lume.tv");
     let mut usage = UsageHistory::new();
     usage.mark_baseline(catalog.apps().iter().map(|a| a.package.as_str()));
-    let config = HomeConfig::first_use(&catalog);
+    let mut config = HomeConfig::first_use(&catalog);
+    if let Some(count) = setup.favorites {
+        config.favorites = mockup_apps()
+            .into_iter()
+            .take(count)
+            .map(|app| app.package)
+            .collect();
+    }
     let preferred: Vec<&str> = setup.locale.as_deref().into_iter().collect();
     let mut translator = Translator::new(&preferred);
     if setup.pseudo_locale {

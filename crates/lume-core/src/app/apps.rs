@@ -9,13 +9,13 @@ use crate::text::Align;
 use crate::theme::{vars, Paint, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
-const COLUMNS: usize = 5;
+const COLUMNS: usize = 6;
 const WIDTH: f32 = 1280.0 - 2.0 * topbar::MARGIN;
 const GAP: f32 = 24.0;
 const TILE_WIDTH: f32 = (WIDTH - (COLUMNS as f32 - 1.0) * GAP) / COLUMNS as f32;
 const TILE_HEIGHT: f32 = TILE_WIDTH * 9.0 / 16.0;
 /// Distance between the tops of two grid rows: the tile and its name below it.
-const ROW_PITCH: f32 = 170.5;
+const ROW_PITCH: f32 = TILE_HEIGHT + 51.75;
 const TITLE_BASELINE: f32 = 119.0;
 const GRID_TOP: f32 = 143.0;
 const BOTTOM_PADDING: f32 = 40.0;
@@ -46,13 +46,16 @@ impl LumeApp {
                 color: app.color,
             })
             .collect();
+        // lume's own entry, with its logo, opening lume's Settings screen.
         cells.push(Cell {
             id: ids::GRID_SETTINGS,
             package: None,
             rect: Rect::default(),
-            label: self.translator.get(StringId::AppsSettingsTile).into_owned(),
-            color: vars::TILE_SETTINGS,
+            label: "Lume".into(),
+            color: vars::PRIMARY,
         });
+        // lume is one more app of the grid: it takes its place in the alphabetical order.
+        cells.sort_by_cached_key(|c| crate::catalog::normalize::sort_key(&c.label));
         for (index, cell) in cells.iter_mut().enumerate() {
             let (row, column) = (index / COLUMNS, index % COLUMNS);
             cell.rect = Rect::new(
@@ -105,11 +108,6 @@ impl LumeApp {
         let scroll_y = self.current_scroll_y();
 
         let visible = p.display.visible_rect();
-        p.list.fill(
-            visible,
-            0.0,
-            THEME.app.base.background.unwrap_or(Paint::Solid(vars::BG)),
-        );
 
         p.list.push_clip(Rect::new(
             visible.x,
@@ -143,9 +141,23 @@ impl LumeApp {
         for (cell, rect, style) in &tiles {
             self.draw_tile_image(p, cell.package.as_deref(), *rect, style, false);
         }
-        let label_style = p.style(&THEME.tile_label, StateFlags::NONE);
         for (cell, rect, style) in &tiles {
-            self.draw_tile_name(p, cell.package.as_deref(), &cell.label, *rect, style, false);
+            if cell.package.is_none() {
+                // lume's own tile: the whole tile is the logo color, with the L centered. The mark's
+                // square has the tile's color, so only the L shows and the tile stays a rectangle.
+                let tile = rect.scaled_about_center(style.scale);
+                let side = tile.h * 0.72;
+                let mark = Rect::new(
+                    tile.x + (tile.w - side) / 2.0,
+                    tile.y + (tile.h - side) / 2.0,
+                    side,
+                    side,
+                );
+                crate::logo::draw_mark(p.list, mark, vars::PRIMARY, vars::BG);
+            } else {
+                self.draw_tile_name(p, cell.package.as_deref(), &cell.label, *rect, style, false);
+            }
+            let label_style = p.focus_style(&THEME.tile_label, self.focus_progress(cell.id));
             p.text(
                 &cell.label,
                 Rect::new(rect.x, rect.bottom() + 8.0, rect.w, 24.0),
@@ -155,6 +167,7 @@ impl LumeApp {
         }
         p.list.pop_clip();
 
+        self.fade_tab_content(p);
         let progress = |id: u32| self.focus_progress(id);
         TopBar {
             tabs: &tabs,
@@ -169,7 +182,8 @@ impl LumeApp {
 
     pub(super) fn activate_apps(&mut self, id: u32) -> Vec<Effect> {
         if id == ids::GRID_SETTINGS {
-            return vec![Effect::OpenAndroidSettings];
+            self.open_settings();
+            return vec![];
         }
         let Some(index) = id.checked_sub(ids::GRID_BASE) else {
             return vec![];
@@ -180,5 +194,36 @@ impl LumeApp {
             .get(index as usize)
             .map(|a| a.package.clone());
         package.map(|p| self.open_app(&p)).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn six_columns_fill_the_content_width_without_a_leftover() {
+        let last_right = topbar::MARGIN + (COLUMNS - 1) as f32 * (TILE_WIDTH + GAP) + TILE_WIDTH;
+        assert!(
+            (last_right - (1280.0 - topbar::MARGIN)).abs() < 0.01,
+            "{last_right}"
+        );
+        assert_eq!(
+            COLUMNS as f32 * TILE_WIDTH + (COLUMNS - 1) as f32 * GAP,
+            WIDTH
+        );
+    }
+
+    #[test]
+    fn tiles_are_about_172_by_97() {
+        assert!((TILE_WIDTH - 172.0).abs() < 0.01, "{TILE_WIDTH}");
+        assert!((TILE_HEIGHT - 96.75).abs() < 0.01, "{TILE_HEIGHT}");
+        // About 18% smaller than the old 211x119 tiles.
+        assert!((1.0 - TILE_WIDTH / 211.0 - 0.18).abs() < 0.02);
+    }
+
+    #[test]
+    fn a_row_keeps_the_same_strip_for_the_name_as_before() {
+        assert!((ROW_PITCH - 148.5).abs() < 0.01, "{ROW_PITCH}");
     }
 }

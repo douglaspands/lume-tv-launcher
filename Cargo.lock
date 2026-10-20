@@ -754,7 +754,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lume-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "android-activity",
  "android_logger",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "lume-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "fontdue",
@@ -783,11 +783,11 @@ dependencies = [
 
 [[package]]
 name = "lume-css"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "lume-desktop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "glow",
  "khronos-egl",
@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "lume-strings"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "memchr"

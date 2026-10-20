@@ -36,8 +36,10 @@ pub enum Cmd {
     Rect(RectCmd),
     /// A glyph from the text/icon atlas, tinted with `color`.
     Glyph(TexturedCmd),
-    /// An RGBA image, multiplied by `color` (white = unchanged).
+    /// An RGBA image from the icon atlas, multiplied by `color` (white = unchanged).
     Image(TexturedCmd),
+    /// A piece of the wallpaper texture (opaque RGB), multiplied by `color`.
+    Wallpaper(TexturedCmd),
     PushClip(Rect),
     PopClip,
 }
@@ -100,6 +102,26 @@ impl DisplayList {
 
     pub fn image(&mut self, dest: Rect, uv: Rect, color: Color) {
         self.cmds.push(Cmd::Image(TexturedCmd { dest, uv, color }));
+    }
+
+    pub fn wallpaper(&mut self, dest: Rect, uv: Rect, color: Color) {
+        self.cmds
+            .push(Cmd::Wallpaper(TexturedCmd { dest, uv, color }));
+    }
+
+    /// Makes everything drawn since command `start` (an index from [`len`](Self::len)) `factor`
+    /// (0.0 to 1.0) as opaque, for fading a part of the frame in or out without a layer over it.
+    pub fn fade_from(&mut self, start: usize, factor: f32) {
+        let factor = factor.clamp(0.0, 1.0);
+        for cmd in self.cmds.iter_mut().skip(start) {
+            match cmd {
+                Cmd::Rect(r) => r.opacity *= factor,
+                Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) => {
+                    t.color.a = (f32::from(t.color.a) * factor).round() as u8;
+                }
+                Cmd::PushClip(_) | Cmd::PopClip => {}
+            }
+        }
     }
 
     pub fn push_clip(&mut self, rect: Rect) {

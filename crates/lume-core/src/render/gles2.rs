@@ -4,7 +4,10 @@
 //! over a [`glow::Context`]. Dropping the context's resources is explicit
 //! ([`Gles2Backend::destroy`]) so the app can release all GPU memory when it sleeps.
 
-use super::batch::{Frame, Program, RectVertex, TexVertex, MAX_QUADS_PER_BATCH, QUAD_INDICES};
+use super::batch::{
+    Frame, Program, RectVertex, TexVertex, Texture as ImageTexture, MAX_QUADS_PER_BATCH,
+    QUAD_INDICES,
+};
 use super::geometry::Rect;
 use super::shaders::{IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, TEXT_FRAGMENT, TEX_VERTEX};
 use super::{Backend, Viewport};
@@ -37,6 +40,8 @@ pub struct Gles2Backend {
     index_quads: u32,
     atlas: Option<Texture>,
     image: Option<Texture>,
+    /// The wallpaper, created the first time a frame draws it and freed with everything else.
+    wallpaper: Option<Texture>,
 }
 
 impl Gles2Backend {
@@ -74,6 +79,7 @@ impl Gles2Backend {
                 index_quads: 0,
                 atlas: None,
                 image: None,
+                wallpaper: None,
             })
         }
     }
@@ -241,6 +247,51 @@ impl Gles2Backend {
         }
     }
 
+    /// Creates the wallpaper texture (opaque RGB, linear filter, clamped to the edge) from
+    /// [`crate::wallpaper::current`], if it does not exist yet. Until then a frame has only the
+    /// clear color behind its content.
+    pub fn ensure_wallpaper(&mut self) {
+        if self.wallpaper.is_some() {
+            return;
+        }
+        let wallpaper = crate::wallpaper::current();
+        assert_eq!(
+            wallpaper.rgb.len(),
+            (wallpaper.width * wallpaper.height * 3) as usize
+        );
+        // SAFETY: see `new`.
+        unsafe {
+            let texture = self
+                .gl
+                .create_texture()
+                .expect("cannot create the wallpaper texture");
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGB as i32,
+                wallpaper.width as i32,
+                wallpaper.height as i32,
+                0,
+                glow::RGB,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(wallpaper.rgb)),
+            );
+            set_filtering(&self.gl);
+            self.wallpaper = Some(Texture {
+                texture,
+                width: wallpaper.width,
+                height: wallpaper.height,
+            });
+        }
+    }
+
+    /// Whether the wallpaper texture exists.
+    pub fn has_wallpaper(&self) -> bool {
+        self.wallpaper.is_some()
+    }
+
     /// Uploads whatever changed in the text engine's atlas since the last call.
     pub fn sync_text_atlas(&mut self, engine: &mut TextEngine) {
         let updates = engine.take_updates();
@@ -292,7 +343,10 @@ impl Gles2Backend {
             for buffer in [self.rect_vbo, self.tex_vbo, self.index_buffer] {
                 self.gl.delete_buffer(buffer);
             }
-            for texture in [self.atlas, self.image].into_iter().flatten() {
+            for texture in [self.atlas, self.image, self.wallpaper]
+                .into_iter()
+                .flatten()
+            {
                 self.gl.delete_texture(texture.texture);
             }
         }
@@ -375,6 +429,10 @@ impl Backend for Gles2Backend {
             if frame.batches.is_empty() {
                 return;
             }
+            if frame.uses_wallpaper() {
+                self.ensure_wallpaper();
+            }
+            let gl = &self.gl;
             gl.enable(glow::BLEND);
             gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
             self.ensure_indices(max_quads);
@@ -441,7 +499,11 @@ impl Backend for Gles2Backend {
                         self.bind_tex_attributes(batch.first_quad);
                     }
                     Program::Image => {
-                        self.bind_texture(self.image.as_ref(), program);
+                        let texture = match batch.texture {
+                            ImageTexture::Icons => self.image.as_ref(),
+                            ImageTexture::Wallpaper => self.wallpaper.as_ref(),
+                        };
+                        self.bind_texture(texture, program);
                         self.bind_tex_attributes(image_quad_base + batch.first_quad);
                     }
                 }

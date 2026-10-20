@@ -8,7 +8,7 @@ plugins {
 def releaseKeystore = System.getenv("LUME_KEYSTORE")
 
 // The version comes from the release tag (LUME_VERSION_NAME, e.g. 0.1.0 or 0.1.0-rc1).
-def lumeVersion = System.getenv("LUME_VERSION_NAME") ?: "0.1.0"
+def lumeVersion = System.getenv("LUME_VERSION_NAME") ?: "0.2.0"
 // versionCode: 1.2.3 -> 10203, ignoring any pre-release suffix.
 def lumeVersionCode = lumeVersion.split("-")[0].tokenize(".").take(3).inject(0) { total, part -> total * 100 + part.toInteger() }
 

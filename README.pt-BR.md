@@ -6,9 +6,18 @@
 
 > **Situação:** o lume está em desenvolvimento. A versão 0.1.0 ainda não foi lançada, então ainda não há download. Os passos abaixo são o que você fará quando ela sair.
 
+<p align="center">
+  <img src="docs/screenshots/home-pt-BR.png" alt="Tela Início com o dock" width="49%">
+  <img src="docs/screenshots/apps-pt-BR.png" alt="Tela Apps" width="49%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/settings-pt-BR.png" alt="Configurações" width="49%">
+  <img src="docs/screenshots/editor-pt-BR.png" alt="Edição dos favoritos" width="49%">
+</p>
+
 **O que você ganha**
 
-- Uma tela inicial com um banner de destaque que alterna e os seus apps favoritos.
+- Uma tela inicial com um dock flutuante para os seus apps favoritos: o ícone em foco cresce e os vizinhos abrem espaço.
 - Uma tela "Apps" com tudo o que está instalado na TV.
 - Tudo funciona com o controle remoto comum (setas, OK, Voltar, Home).
 - Português (Brasil) e inglês, seguindo o idioma da TV.
@@ -159,8 +168,13 @@ cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screensh
 
 Você só precisa de um runtime de containers. Não precisa de Rust, NDK nem Android SDK na sua máquina.
 
-- **Docker:** instale o Docker com BuildKit (`docker buildx`).
-- **Windows com WSL:** a ferramenta `wslc`, que vem com o WSL, também funciona (o script a detecta).
+A ordem também é a prioridade: o script usa o primeiro runtime que encontrar (a não ser que você defina `LUME_CONTAINER`):
+
+1. **wslc:** a ferramenta que vem com o WSL no Windows.
+2. **Docker:** com BuildKit (`docker buildx`).
+3. **Podman:** versão 5 ou mais nova.
+
+Se nenhum dos três estiver instalado, o script avisa e sugere alternativas: atualizar o WSL para ter o `wslc`, instalar o Docker ou o Podman, apontar `LUME_CONTAINER` para outro runtime compatível com o Docker, ou compilar sem containers instalando Rust, Android NDK/SDK e `cargo-ndk` e seguindo o `docker/Dockerfile` à mão.
 
 ```
 scripts/container-build.sh debug      # APK com arm64, armv7 e x86_64
@@ -220,6 +234,10 @@ Enviar uma tag como `v0.1.0` (ou `v0.1.0-rc1` para uma pré-versão) roda o `.gi
 ### Traduções
 
 As traduções são arquivos `strings.xml` padrão do Android em `android/app/src/main/res/values-<idioma>/`. Veja [`docs/translations.md`](docs/translations.md).
+
+### Papel de parede
+
+O lume desenha uma fotografia de aurora boreal atrás de todas as telas. Como ela é processada no build, como trocá-la e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contribuição, licença e marca
 

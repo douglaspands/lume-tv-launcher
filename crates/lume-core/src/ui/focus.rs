@@ -263,7 +263,7 @@ mod tests {
         )
     }
 
-    /// Apps grid: 5 columns, `count` items, ids 100.. in reading order.
+    /// Apps grid: 5 columns (the focus code does not depend on the real count), `count` items, ids 100.. in reading order.
     fn grid(count: u32) -> Vec<Row> {
         (0..count.div_ceil(5))
             .map(|r| {

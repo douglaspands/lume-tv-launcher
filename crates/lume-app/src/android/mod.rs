@@ -1,7 +1,7 @@
 //! The Android event loop.
 //!
 //! The loop blocks in `poll_events` until a key arrives, the window or the activity changes,
-//! or the next deadline the launcher reported (an animation, the carousel, the clock's minute).
+//! or the next deadline the launcher reported (an animation, the clock's minute).
 //! A frame is drawn only when something changed, and everything that holds GPU memory is
 //! released when the window goes away.
 
@@ -43,7 +43,7 @@ pub extern "system" fn Java_app_lume_tv_LumeActivity_nativeHomePressed(
 }
 
 /// Icons fetched per turn of the loop, so keys are still answered while they load.
-const ICONS_PER_TURN: usize = 2;
+const ICONS_PER_TURN: usize = 1;
 
 /// `mallopt` option that returns freed heap pages to the system (bionic, Android 10+).
 const M_PURGE: libc::c_int = -101;
@@ -69,6 +69,8 @@ struct Runtime {
     graphics: Option<Graphics>,
     /// Apps whose icon could not be loaded in this window, so they are not asked again.
     icons_failed: HashSet<String>,
+    /// Apps whose dock icon the platform could not give.
+    dock_failed: HashSet<String>,
     /// Icons are still missing: the loop does not wait for events.
     icons_pending: bool,
     started: Instant,
@@ -109,6 +111,7 @@ fn android_main(app: AndroidApp) {
         shell,
         graphics: None,
         icons_failed: HashSet::new(),
+        dock_failed: HashSet::new(),
         icons_pending: false,
         started: Instant::now(),
         first_frame_from: None,
@@ -125,7 +128,8 @@ impl Runtime {
 
     fn run(&mut self) {
         while self.running {
-            let timeout = if self.icons_pending {
+            let busy = self.shell.is_busy(self.now_ms());
+            let timeout = if self.icons_pending && !busy {
                 Some(Duration::ZERO)
             } else {
                 self.shell.next_timeout(self.now_ms())
@@ -141,7 +145,11 @@ impl Runtime {
             if self.graphics.is_some() && self.shell.frame_due(self.now_ms()) {
                 self.draw();
             }
-            self.load_icons();
+            // Loading an icon takes tens of milliseconds: it waits for the animation to end, or the
+            // frames would be late and the movement would stutter.
+            if !self.shell.is_busy(self.now_ms()) {
+                self.load_icons();
+            }
         }
     }
 
@@ -216,6 +224,7 @@ impl Runtime {
     fn destroy_window(&mut self) {
         let had_graphics = self.graphics.take().is_some();
         self.icons_failed.clear();
+        self.dock_failed.clear();
         self.icons_pending = false;
         self.shell.sleep();
         if had_graphics {
@@ -323,6 +332,31 @@ impl Runtime {
             self.icons_pending = false;
             return;
         };
+        // The dock is what Home shows: its icons come first, a couple per turn, so the first frames
+        // are drawn right away with the app color and initial.
+        let dock = self
+            .shell
+            .dock_icons_wanted(&self.dock_failed, ICONS_PER_TURN);
+        for (package, activity) in &dock {
+            let region = self
+                .bridge
+                .dock_icon(package, activity)
+                .and_then(|pixels| self.shell.reserve_dock_icon(package).map(|r| (r, pixels)));
+            match region {
+                Some((region, pixels)) => {
+                    let backend = graphics.backend();
+                    backend.ensure_image(icons::ATLAS_WIDTH, icons::ATLAS_HEIGHT);
+                    backend.update_image(region, &pixels);
+                }
+                None => {
+                    self.dock_failed.insert(package.clone());
+                }
+            }
+        }
+        if !dock.is_empty() {
+            self.icons_pending = true;
+            return;
+        }
         let wanted = self.shell.icons_wanted(&self.icons_failed, ICONS_PER_TURN);
         for (package, activity) in &wanted {
             let art = self
@@ -343,7 +377,11 @@ impl Runtime {
                 }
             }
         }
-        self.icons_pending = !self.shell.icons_wanted(&self.icons_failed, 1).is_empty();
+        self.icons_pending = !self.shell.icons_wanted(&self.icons_failed, 1).is_empty()
+            || !self
+                .shell
+                .dock_icons_wanted(&self.dock_failed, 1)
+                .is_empty();
     }
 
     fn draw(&mut self) {

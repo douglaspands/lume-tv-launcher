@@ -1,76 +1,80 @@
 # home-screen Specification
 
 ## Purpose
-Define o conteúdo da tela Início do lume na v0.1.0: o carrossel de destaque com os apps do usuário e a linha "Seus apps favoritos", conforme o mockup.
+Define o conteúdo da tela Início do lume: a barra superior sobre o papel de parede e, embaixo, o dock com os apps favoritos e a Magnification do item em foco.
 
 ## Requirements
 
-### Requirement: Seções da tela Início
-A tela Início SHALL exibir, abaixo da barra superior, as seções habilitadas na configuração (carrossel de destaque e "Seus apps favoritos"), na ordem configurada. Quando o conteúdo passa da altura da tela, a tela SHALL rolar verticalmente para manter o elemento focado visível.
+### Requirement: Conteúdo da tela Início
+A tela Início SHALL exibir, sobre o papel de parede, a barra superior e, na parte de baixo, o dock com os apps favoritos. A tela Início SHALL NOT exibir carrossel, título de seção nem outros conteúdos além do dock.
 
-#### Scenario: Ordem padrão
+#### Scenario: Primeiro uso
 - **WHEN** o lume é aberto pela primeira vez
-- **THEN** a tela Início mostra o carrossel no topo e "Seus apps favoritos" logo abaixo
+- **THEN** a tela Início mostra o papel de parede, a barra superior e, embaixo, o dock com os favoritos padrão
 
-#### Scenario: Seção oculta
-- **WHEN** o usuário ocultou o carrossel no modo edição
-- **THEN** a tela Início começa pela linha de favoritos
-
-### Requirement: Slides do carrossel
-O carrossel SHALL exibir um slide por app selecionado em "Apps no carrossel" e que esteja instalado. Cada slide SHALL mostrar o fundo em gradiente na cor do app, a etiqueta com o nome do app, o nome do app como título, uma linha de contexto e o botão "Abrir". O carrossel SHALL NOT exibir logos, slogans ou imagens de terceiros.
-
-#### Scenario: Slide de app
-- **WHEN** o Netflix está selecionado no carrossel
-- **THEN** existe um slide com o título "Netflix", o gradiente da cor do Netflix e o botão "Abrir"
-
-#### Scenario: Abrir pelo carrossel
-- **WHEN** o foco está no botão "Abrir" de um slide e o usuário pressiona OK
-- **THEN** o app daquele slide é aberto
-
-### Requirement: Linha de contexto do slide
-A linha de contexto SHALL ser escolhida com base no histórico local, nesta ordem de prioridade: "Novo no seu TV" (app visto pela primeira vez há menos de 7 dias), "Mais usado da semana" (app com a maior contagem semanal, quando ela é maior que zero), "Aberto há <tempo>" (há uma última abertura) e, na falta de tudo isso, "Toque em Abrir para começar".
-
-#### Scenario: App mais usado
-- **WHEN** o YouTube tem a maior contagem de aberturas nos últimos 7 dias
-- **THEN** o slide do YouTube mostra "Mais usado da semana"
-
-#### Scenario: App aberto recentemente
-- **WHEN** o Prime Video foi aberto há 2 horas e não se encaixa nos casos anteriores
-- **THEN** o slide mostra "Aberto há 2 horas"
-
-### Requirement: Slide de app recém-instalado
-Quando existe um app instalado há menos de 7 dias que não está no carrossel, o carrossel SHALL incluir um slide "Novo: <nome do app>" para o app instalado mais recentemente.
-
-#### Scenario: Nova instalação
-- **WHEN** o usuário instalou o Globoplay ontem e ele não está no carrossel
-- **THEN** o carrossel inclui um slide "Novo: Globoplay" com o botão "Abrir"
-
-### Requirement: Rotação do carrossel
-O carrossel SHALL avançar para o próximo slide no intervalo configurado (3 s, 5 s, 10 s, 30 s ou 1 min; padrão 5 s), voltando ao primeiro depois do último, e SHALL exibir indicadores de posição com o slide atual destacado. A rotação automática SHALL pausar enquanto o foco estiver no carrossel. Com o foco no carrossel, Esquerda/Direita SHALL trocar de slide manualmente.
-
-#### Scenario: Rotação automática
-- **WHEN** o intervalo é 5 s, o foco está nos favoritos e há 3 slides
-- **THEN** o slide visível muda a cada 5 segundos, e o indicador acompanha a posição
-
-#### Scenario: Pausa com foco
-- **WHEN** o foco está no botão "Abrir" do carrossel
-- **THEN** o slide não muda sozinho
-
-#### Scenario: Nenhum app selecionado instalado
-- **WHEN** nenhum app do carrossel está instalado e não há instalações recentes
-- **THEN** o carrossel mostra um único slide de boas-vindas do lume, que leva à grade de Apps
-
-### Requirement: Linha de favoritos
-A seção "Seus apps favoritos" SHALL exibir os favoritos configurados, na ordem configurada, como tiles de app: o banner de TV do app (ou, sem banner, o ícone sobre a cor do tile). Quando o tile mostra só o ícone, o nome do app SHALL aparecer dentro do tile, sob o ícone. A linha SHALL rolar horizontalmente quando houver mais favoritos do que cabem na tela. OK sobre um tile SHALL abrir o app.
+### Requirement: Dock de favoritos
+Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma barra translúcida de cantos arredondados, flutuante, centralizada horizontalmente e acima da borda inferior da área segura. Cada favorito SHALL aparecer como o ícone do app em formato quadrado de cantos arredondados, sobre a cor do app quando o ícone tem transparência. O dock SHALL mostrar todos os favoritos (até 12) lado a lado, sem rolagem horizontal, e SHALL ficar dentro da área segura. OK sobre um favorito SHALL abrir o app.
 
 #### Scenario: Favoritos padrão no primeiro uso
 - **WHEN** o lume é aberto pela primeira vez com Netflix, YouTube e Spotify instalados
-- **THEN** os favoritos são os apps conhecidos instalados, na ordem Netflix, YouTube, Prime Video, Spotify, Disney+, Max, Globoplay, limitados a 5
+- **THEN** o dock mostra os apps conhecidos instalados, na ordem Netflix, YouTube, Prime Video, Spotify, Disney+, Max, Globoplay, limitados a 5
 
-#### Scenario: Foco no tile
-- **WHEN** o foco chega a um tile de favorito
-- **THEN** o tile ganha o estilo de foco do tema (contorno e escala), com animação
+#### Scenario: Doze favoritos
+- **WHEN** existem 12 favoritos
+- **THEN** todos aparecem no dock ao mesmo tempo, dentro da área segura e sem rolagem, mesmo com o item focado ampliado
+
+#### Scenario: Abrir pelo dock
+- **WHEN** o foco está num ícone do dock e o usuário pressiona OK
+- **THEN** o app daquele ícone é aberto
+
+### Requirement: Magnification do dock
+O item do dock em foco SHALL ser ampliado, com a base alinhada à base do dock, e os itens vizinhos SHALL ser ampliados em proporção menor, decrescente com a distância ao item focado, até voltar ao tamanho normal. A ampliação SHALL ser animada ao mover o foco. Itens ampliados MAY se sobrepor aos vizinhos sem deslocá-los. O dock SHALL NOT desenhar contorno ao redor do item focado.
+
+#### Scenario: Foco no item do meio
+- **WHEN** o foco chega ao terceiro de cinco itens
+- **THEN** o terceiro item fica o maior, o segundo e o quarto ficam menores que ele e maiores que o normal, e o primeiro e o quinto permanecem no tamanho normal
+
+#### Scenario: Mover o foco
+- **WHEN** o usuário pressiona Direita com o foco no terceiro item
+- **THEN** a ampliação passa ao quarto item com animação, sem salto
+
+#### Scenario: Sem contorno
+- **WHEN** um item do dock está em foco
+- **THEN** não há contorno nem anel ao redor do item, apenas a ampliação
+
+#### Scenario: Foco fora do dock
+- **WHEN** o foco está na barra superior
+- **THEN** todos os itens do dock aparecem no tamanho normal
+
+### Requirement: Nome do app em foco
+Com um item do dock em foco, o lume SHALL exibir o nome do app num balão acima do item ampliado, centralizado nele e dentro da tela. O balão SHALL desaparecer quando o foco sai do dock.
+
+#### Scenario: Balão com o nome
+- **WHEN** o foco chega ao ícone do Spotify
+- **THEN** um balão com "Spotify" aparece acima do ícone
+
+#### Scenario: Item na borda do dock
+- **WHEN** o foco está no primeiro item e o nome é longo
+- **THEN** o balão fica inteiro dentro da área segura, com o nome truncado se necessário
+
+### Requirement: Navegação no dock
+Com o foco no dock, Esquerda e Direita SHALL mover o foco entre os itens, sem avançar além do primeiro ou do último. Cima SHALL levar o foco à aba ativa da barra superior. Baixo SHALL NOT mudar o foco. Ao descer da barra superior, o foco SHALL ir ao primeiro item do dock.
+
+#### Scenario: Limite do dock
+- **WHEN** o foco está no último favorito e o usuário pressiona Direita
+- **THEN** o foco permanece no último favorito
+
+#### Scenario: Ir à barra superior
+- **WHEN** o foco está no dock e o usuário pressiona Cima
+- **THEN** o foco vai para a aba ativa da barra superior
+
+#### Scenario: Descer da barra superior
+- **WHEN** o foco está na barra superior e o usuário pressiona Baixo
+- **THEN** o foco vai ao primeiro item do dock
+
+### Requirement: Dock sem favoritos
+Quando a lista de favoritos está vazia, o dock SHALL mostrar um único item "Adicionar favoritos", cujo nome aparece no balão quando em foco e que abre o modo edição com OK.
 
 #### Scenario: Sem favoritos
 - **WHEN** a lista de favoritos está vazia
-- **THEN** a linha mostra um único tile "Adicionar favoritos" que abre o modo edição
+- **THEN** o dock mostra um único item "Adicionar favoritos" que abre o modo edição

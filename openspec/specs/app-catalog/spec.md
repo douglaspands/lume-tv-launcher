@@ -36,8 +36,8 @@ O catálogo SHALL refletir apps instalados, atualizados ou removidos sempre que 
 - **THEN** o Globoplay aparece na grade de Apps
 
 #### Scenario: Favorito desinstalado
-- **WHEN** um app que estava nos favoritos ou no carrossel é desinstalado
-- **THEN** ele é removido dos favoritos e do carrossel, e as demais posições mantêm a ordem relativa
+- **WHEN** um app que estava nos favoritos é desinstalado
+- **THEN** ele é removido dos favoritos e do dock, e as demais posições mantêm a ordem relativa
 
 ### Requirement: Identidade visual do app
 Cada app SHALL ter um nome de exibição (o rótulo do sistema) e uma cor de fundo de tile. Para apps conhecidos (pelo menos Netflix, YouTube, Prime Video, Disney+, Max, Spotify, Globoplay, Play Store e Chrome), a cor SHALL vir de uma tabela fixa alinhada ao mockup. Para os demais, a cor SHALL ser derivada do ícone do app e ajustada para manter o texto branco legível.
@@ -98,3 +98,18 @@ O lume SHALL registrar, apenas no armazenamento interno do dispositivo, o horár
 #### Scenario: Histórico apagado ao limpar dados
 - **WHEN** o usuário limpa os dados do lume nas configurações do Android
 - **THEN** o histórico de uso deixa de existir
+
+### Requirement: Ícone do app no dock
+Cada favorito do dock SHALL exibir o ícone do app em formato quadrado de cantos arredondados, e não o banner de TV. Quando o ícone tem transparência, ele SHALL aparecer sobre a cor do app. Os ícones SHALL ser carregados aos poucos, sem atrasar o primeiro quadro nem a resposta às teclas. Enquanto o ícone não estiver disponível, o dock SHALL mostrar a cor do app com a inicial do nome. As imagens do dock SHALL ficar na mesma textura gráfica das imagens da grade de Apps, criada só com o lume em primeiro plano e liberada ao ir para segundo plano.
+
+#### Scenario: App com banner de TV nos favoritos
+- **WHEN** o Netflix, que declara banner de TV, é um favorito
+- **THEN** o dock mostra o ícone quadrado do Netflix, e a grade de Apps continua mostrando o banner
+
+#### Scenario: Ícones carregando
+- **WHEN** o lume abre e os ícones ainda não foram carregados
+- **THEN** o dock é desenhado de imediato com a cor e a inicial de cada app, e cada um dá lugar ao ícone assim que ele fica pronto
+
+#### Scenario: Segundo plano
+- **WHEN** outro app passa ao primeiro plano
+- **THEN** a textura dos ícones é liberada, e os ícones são carregados de novo na próxima vez que o lume ficar visível

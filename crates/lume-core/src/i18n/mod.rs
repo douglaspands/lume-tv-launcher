@@ -234,24 +234,24 @@ mod tests {
     #[test]
     fn plurals_in_portuguese_and_english() {
         let pt = Translator::new(&["pt-BR"]);
-        let one = pt.plural(PluralId::CarouselContextHoursAgo, 1, &[Arg::Int(1)]);
-        let three = pt.plural(PluralId::CarouselContextHoursAgo, 3, &[Arg::Int(3)]);
+        let one = pt.plural(PluralId::EditorLimitReached, 1, &[Arg::Int(1)]);
+        let three = pt.plural(PluralId::EditorLimitReached, 3, &[Arg::Int(3)]);
         assert_eq!(
             (one.as_str(), three.as_str()),
-            ("Aberto há 1 hora", "Aberto há 3 horas")
+            ("Limite de 1 favorito", "Limite de 3 favoritos")
         );
         let en = Translator::new(&["en"]);
         assert_eq!(
-            en.plural(PluralId::CarouselContextDaysAgo, 1, &[Arg::Int(1)]),
-            "Opened 1 day ago"
+            en.plural(PluralId::EditorLimitReached, 1, &[Arg::Int(1)]),
+            "Limit of 1 favorite"
         );
         assert_eq!(
-            en.plural(PluralId::CarouselContextDaysAgo, 2, &[Arg::Int(2)]),
-            "Opened 2 days ago"
+            en.plural(PluralId::EditorLimitReached, 2, &[Arg::Int(2)]),
+            "Limit of 2 favorites"
         );
         assert_eq!(
-            en.plural(PluralId::CarouselContextDaysAgo, 0, &[Arg::Int(0)]),
-            "Opened 0 days ago"
+            en.plural(PluralId::EditorLimitReached, 0, &[Arg::Int(0)]),
+            "Limit of 0 favorites"
         );
     }
 
@@ -259,8 +259,8 @@ mod tests {
     fn placeholders_follow_the_translation_order() {
         let t = Translator::new(&["pt-BR"]);
         assert_eq!(
-            t.format(StringId::CarouselNewApp, &[Arg::Str("Globoplay")]),
-            "Novo: Globoplay"
+            t.format(StringId::AboutSource, &[Arg::Str("github.com/x")]),
+            "Código-fonte: github.com/x"
         );
         assert_eq!(
             Translator::new(&["en"]).format(StringId::AboutVersion, &[Arg::Str("0.1.0")]),
@@ -286,12 +286,12 @@ mod tests {
         assert_eq!(t.get(StringId::HomeFavoritesTitle), "Your favorite apps");
         // The plural falls back to the English text with English rules.
         assert_eq!(
-            t.plural(PluralId::CarouselContextHoursAgo, 1, &[Arg::Int(1)]),
-            "Opened 1 hour ago"
+            t.plural(PluralId::EditorLimitReached, 1, &[Arg::Int(1)]),
+            "Limit of 1 favorite"
         );
         assert_eq!(
-            t.plural(PluralId::CarouselContextHoursAgo, 0, &[Arg::Int(0)]),
-            "Opened 0 hours ago"
+            t.plural(PluralId::EditorLimitReached, 0, &[Arg::Int(0)]),
+            "Limit of 0 favorites"
         );
     }
 
@@ -300,7 +300,7 @@ mod tests {
         // A Russian-style table: one, few, many, other.
         static RU: LanguageTable = {
             let mut plurals = [None; PluralId::COUNT];
-            plurals[PluralId::CarouselContextDaysAgo as usize] = Some([
+            plurals[PluralId::EditorLimitReached as usize] = Some([
                 None,
                 Some("%1$d день"),
                 None,
@@ -315,7 +315,7 @@ mod tests {
             }
         };
         let t = Translator::for_table(&RU);
-        let day = |n| t.plural(PluralId::CarouselContextDaysAgo, n, &[Arg::Int(n)]);
+        let day = |n| t.plural(PluralId::EditorLimitReached, n, &[Arg::Int(n)]);
         assert_eq!(day(1), "1 день");
         assert_eq!(day(3), "3 дня");
         assert_eq!(day(5), "5 дней");
@@ -335,8 +335,8 @@ mod tests {
                 id.key()
             );
         }
-        let hours = t.plural(PluralId::CarouselContextHoursAgo, 3, &[Arg::Int(3)]);
-        assert!(hours.contains('3') && hours.ends_with('~'));
+        let limit = t.plural(PluralId::EditorLimitReached, 3, &[Arg::Int(3)]);
+        assert!(limit.contains('3') && limit.ends_with('~'));
     }
 
     #[test]
@@ -365,10 +365,7 @@ mod tests {
     #[test]
     fn ids_and_keys_round_trip() {
         assert_eq!(StringId::HomeFavoritesTitle.key(), "home_favorites_title");
-        assert_eq!(
-            PluralId::CarouselContextHoursAgo.key(),
-            "carousel_context_hours_ago"
-        );
+        assert_eq!(PluralId::EditorLimitReached.key(), "editor_limit_reached");
         assert_eq!(StringId::ALL.len(), StringId::COUNT);
         assert_eq!(available_languages().collect::<Vec<_>>(), ["en", "pt-BR"]);
     }

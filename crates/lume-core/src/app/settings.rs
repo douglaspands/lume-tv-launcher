@@ -8,7 +8,7 @@ use crate::icons;
 use crate::licenses;
 use crate::render::Rect;
 use crate::text::Align;
-use crate::theme::{vars, Paint, StateFlags, THEME};
+use crate::theme::{vars, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
 /// Where the source code lives, shown on the About screen.
@@ -59,12 +59,6 @@ impl LumeApp {
             .collect();
         self.update_focus(rows);
 
-        let visible = p.display.visible_rect();
-        p.list.fill(
-            visible,
-            0.0,
-            THEME.app.base.background.unwrap_or(Paint::Solid(vars::BG)),
-        );
         page::draw_header(
             p,
             &[&t.get(StringId::SettingsTitle)],
@@ -123,11 +117,6 @@ impl LumeApp {
         let t = self.translator;
         self.update_focus(vec![]);
         let visible = p.display.visible_rect();
-        p.list.fill(
-            visible,
-            0.0,
-            THEME.app.base.background.unwrap_or(Paint::Solid(vars::BG)),
-        );
 
         // Build the text, then limit the scrolling to its length.
         let lines = licenses::lines();
@@ -174,12 +163,7 @@ impl LumeApp {
         }
         p.list.pop_clip();
 
-        // The header stays on top of the scrolling text.
-        p.list.fill(
-            Rect::new(visible.x, visible.y, visible.w, ABOUT_VIEW_TOP),
-            0.0,
-            THEME.app.base.background.unwrap_or(Paint::Solid(vars::BG)),
-        );
+        // The scrolling text is clipped below the header, so the header needs no cover.
         page::draw_header(
             p,
             &[

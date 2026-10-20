@@ -6,7 +6,9 @@ mod gles2;
 mod list;
 mod shaders;
 
-pub use batch::{Batch, Frame, Program, RectVertex, TexVertex, MAX_QUADS_PER_BATCH, QUAD_INDICES};
+pub use batch::{
+    Batch, Frame, Program, RectVertex, TexVertex, Texture, MAX_QUADS_PER_BATCH, QUAD_INDICES,
+};
 pub use geometry::Rect;
 pub use gles2::Gles2Backend;
 pub use list::{Cmd, DisplayList, RectCmd, RectKind, TexturedCmd};

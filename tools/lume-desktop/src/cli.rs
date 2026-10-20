@@ -16,16 +16,19 @@ pub struct Options {
     pub keys: Option<String>,
     /// Show the clock in 12-hour format.
     pub clock_12h: bool,
+    /// How many favorites to put in the dock (the first N demo apps) instead of the first-use setup.
+    pub favorites: Option<usize>,
 }
 
 pub const USAGE: &str = "\
-usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] [--screenshot SCREEN FILE.png]
+usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] [--favorites N] [--screenshot SCREEN FILE.png]
 
   --size WxH               surface size, e.g. 1280x720 (default) or 1920x1080
   --locale TAG             language to show, e.g. pt-BR or en
   --pseudo-locale          lengthen texts by 40% and accent them
   --keys LIST              press keys first, e.g. down,right,right,ok (up down left right ok back home)
   --clock-12h              show the clock in 12-hour format
+  --favorites N            put the first N demo apps in the dock (0 to 12)
   --screenshot SCREEN FILE render SCREEN to a PNG file and exit
 ";
 
@@ -38,6 +41,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
         pseudo_locale: false,
         keys: None,
         clock_12h: false,
+        favorites: None,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -62,6 +66,16 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
             "--pseudo-locale" => options.pseudo_locale = true,
             "--keys" => options.keys = Some(value("--keys")?),
             "--clock-12h" => options.clock_12h = true,
+            "--favorites" => {
+                let n = value("--favorites")?;
+                let count: usize = n
+                    .parse()
+                    .map_err(|_| format!("invalid number of favorites '{n}'"))?;
+                if count > 12 {
+                    return Err(format!("the dock holds at most 12 favorites, not {count}"));
+                }
+                options.favorites = Some(count);
+            }
             "--screenshot" => {
                 let screen = value("--screenshot")?;
                 let file = value("--screenshot")?;
@@ -114,11 +128,22 @@ mod tests {
     }
 
     #[test]
+    fn favorites_option() {
+        assert_eq!(
+            parse_args(&["--favorites", "3"]).unwrap().favorites,
+            Some(3)
+        );
+        assert_eq!(parse_args(&[]).unwrap().favorites, None);
+    }
+
+    #[test]
     fn bad_input_is_rejected() {
         assert!(parse_args(&["--size", "big"]).is_err());
         assert!(parse_args(&["--size", "0x720"]).is_err());
         assert!(parse_args(&["--locale"]).is_err());
         assert!(parse_args(&["--screenshot", "home"]).is_err());
         assert!(parse_args(&["--nope"]).is_err());
+        assert!(parse_args(&["--favorites", "13"]).is_err());
+        assert!(parse_args(&["--favorites", "many"]).is_err());
     }
 }

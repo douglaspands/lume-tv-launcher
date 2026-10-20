@@ -1,4 +1,3 @@
-//! The home screen model: user configuration and the carousel's slides.
+//! The home screen model: the user's configuration.
 
 pub mod config;
-pub mod slides;

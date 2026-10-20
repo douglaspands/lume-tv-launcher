@@ -163,3 +163,103 @@ Com as animações rodando, cada animação de ~200 ms tem **1 a 3 quadros de 33
 
 ### Carrossel
 Os 78 quadros em 30 s com o foco no botão do carrossel ficaram sem investigação: o usuário decidiu não seguir com o carrossel, e as melhorias sobre ele foram descartadas.
+
+## Análise de desempenho da v0.2.0 (dock, papel de parede, abas por foco)
+
+Medida em 19/10/2026 na TCL 55C715 (SoC rtd284x, 4 núcleos a 0,9 a 1,1 GHz, 2 GB de RAM), com o APK de release
+(`lume-0.2.0-release-debugsigned.apk`, 3,14 MB), via `adb` (`dumpsys meminfo`, `/proc/meminfo`, `/proc/<pid>/stat`,
+`am start -W`, `logcat`). Valores de um aparelho em uso normal, não de um laboratório.
+
+### Memória do aparelho (sistema inteiro)
+
+| | Valor | Observação |
+|---|---|---|
+| RAM total | 2.048 MB | |
+| Livre (`MemFree`) | cerca de 115 MB (5,6%) | o Android usa o resto como cache |
+| Disponível (`MemAvailable`) | cerca de 530 MB (25%) | o que dá para usar sem matar apps |
+| Cache + buffers | cerca de 475 MB | recuperável |
+| Em uso por apps (`Active`) | cerca de 680 MB | |
+| Swap (zram) total | 600 MB | |
+| Swap livre | cerca de 373 MB; **usado cerca de 232 MB (38%)** | variou de 232 a 235 MB nas leituras |
+| Dados no zram | 205 MB originais → 73 MB comprimidos (2,8x) | `mm_stat` |
+| Páginas para o swap desde o boot | 1,06 milhão de saídas e 77 mil de entradas | cerca de 4 GB escritos em zram |
+| Carga (`loadavg`) | cerca de 21 em 4 núcleos | o sistema da TV (serviços TCL) está bem carregado, com ou sem o lume |
+
+Leitura: a TV trabalha com pouca RAM livre e com swap em uso o tempo todo. Isso torna importante o lume ficar
+pequeno e **não manter memória gráfica em segundo plano**, e explica por que o sistema às vezes encerra o processo
+do lume quando outro app pesado abre.
+
+### Memória do lume
+
+| | Primeiro plano | Segundo plano | Orçamento |
+|---|---|---|---|
+| PSS total | 16,7 a 17,2 MB | 16,4 MB | 45 MB / 20 MB |
+| Native heap (Rust) | 7,0 a 7,9 MB | | |
+| Java heap | 2,2 a 3,4 MB | | |
+| Código mapeado (.so, .jar, .apk) | 1,7 a 2,2 MB de PSS (73 MB de RSS, compartilhado) | | |
+| Swap do processo | 15 a 67 KB | | |
+| RSS | 106 a 110 MB, quase tudo arquivo compartilhado | | |
+
+O lume representa cerca de 0,8% da RAM. **A memória gráfica não aparece no PSS** nesta TV (`Graphics: 0`). Pela conta
+do projeto ela é: atlas de ícones 1024x2304 RGBA = 9,4 MB, papel de parede 640x360 RGB = 0,7 MB e o atlas de glifos;
+somando o PSS mais cerca de 10 a 11 MB, o total fica perto de 28 MB, dentro dos 45 MB. Em segundo plano o PSS quase não
+cai (16,4 contra 16,7 MB) justamente porque a parte gráfica liberada nunca estava contada; o que sobra é o runtime.
+O Java e o Rust do processo ficam residentes de propósito (retorno a quente rápido).
+
+### Tempo
+
+| | Medido | Observação |
+|---|---|---|
+| Abertura a frio (`am start -W`) | **371 ms** (TotalTime) | processo novo |
+| Primeiro quadro | 650 ms depois do início do processo, 77 ms depois de a janela existir | log do próprio lume |
+| Retorno a quente (Home com lume em 2º plano) | **127 ms** | spec: até 300 ms |
+| Troca de aba, dock, grade | um quadro de animação a cada 16 ms; custo por quadro abaixo de 8 ms | em 6 movimentos do dock só um quadro chegou a 8 ms |
+
+Antes da correção do dock havia saltos de 15 a 46 ms por volta no 1º uso (carga de ícones durante a animação) e a
+posição 0 da animação sendo descartada: ver `docs/handoff-dock-aurora.md`.
+
+### CPU e ciclos
+
+`/proc/<pid>/stat` em ticks de 10 ms; ciclos estimados com 0,9 a 1,1 GHz (frequência dos núcleos do aparelho).
+
+| Situação (30 s) | CPU do lume | Núcleo ocupado | Ciclos |
+|---|---|---|---|
+| Início ocioso (foco no dock) | 0,07 s (6 ticks de usuário e 1 de sistema) | **0,2% de 1 núcleo** | cerca de 65 milhões (2 milhões por segundo, só o relógio por minuto) |
+| Navegação contínua, 60 teclas (esquerda/direita a cada 0,5 s) | 3,37 s (226 de usuário e 111 de sistema) | **11% de 1 núcleo** | cerca de 3,0 a 3,7 bilhões (50 a 60 milhões por tecla, uma animação de 210 ms) |
+| Início desde a abertura até esta medida | 1,73 s | | |
+
+O lume tem 20 threads, nenhuma delas trabalhando enquanto parado. O laço de eventos dorme até o próximo prazo
+(relógio ou animação), por isso o início ocioso custa 0,2%.
+
+### Sobre gerar log durante o desenvolvimento
+
+O lume **já gera log**, também na release: `android_logger` em nível `Info`, só eventos (versão ao iniciar, tamanho da
+janela, tempo do primeiro quadro, janela liberada, avisos). São poucas linhas por sessão, sem log por quadro, e custam
+praticamente nada. Não vale acrescentar log por quadro ou por tecla: ele custa CPU no laço de desenho e polui o `logcat`.
+Para medir tempo basta instrumentação temporária (como foi feito para achar o engasgo do dock) ou, se virar rotina, um
+`log::debug!` de tempo de quadro compilado só em `debug_assertions`.
+
+## Fechamento da v0.2.0: quadros perdidos e memória (20/10/2026)
+
+Mesma TCL 55C715, APK de release `lume-0.2.0-release-debugsigned.apk` (3,15 MB, `verify-apk.py` passou). Quadros medidos com
+`dumpsys SurfaceFlinger --latency` (camada do `LumeActivity`) durante 40 a 60 teclas; "perdido" é um intervalo de 33 ms ou mais.
+
+| Situação | Quadros | Perdidos |
+|---|---|---|
+| Foco na grade de Apps, antes da correção | 102 | **55 (54%)** |
+| Grade de Apps sem a camada de escurecimento (teste) | 114 | 5 (4%) |
+| Grade de Apps com o escurecimento no desenho do papel de parede | 115 | 0 e 1 (0 a 1%) |
+| Dock (Início, esquerda e direita) | 118 | 0 |
+| Troca de abas com o fade de 180 ms | 117 | 0 |
+
+**Causa:** a camada `rgba(15,23,30,0,78)` de tela cheia das telas de texto, desenhada sobre o papel de parede, dobrava o
+preenchimento de pixels por quadro na GPU da TV. Hoje o papel de parede e as estrelas são desenhados já escurecidos
+(`Painter::wallpaper(true)`: fator 0,22 sobre o fundo `--bg` em que o quadro é limpo), com o mesmo resultado visual
+(os testes de contraste em GL passam) e sem a camada.
+
+| Memória do lume (PSS) | Valor | Orçamento |
+|---|---|---|
+| Primeiro plano | 17 a 20 MB | 45 MB |
+| Segundo plano (YouTube aberto, 12 s) | 12,2 MB | 20 MB |
+| Abertura a frio (`am start -W`) | 373 ms | n/a |
+| Retorno a quente | 12 ms de espera no `am start -W` (127 ms de ponta a ponta, antes) | 300 ms |

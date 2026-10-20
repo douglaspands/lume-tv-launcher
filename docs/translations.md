@@ -39,9 +39,9 @@ That is all: no code changes are needed for a language whose plural rules alread
 Texts with a quantity use `<plurals>` with the CLDR categories of your language: `zero`, `one`, `two`, `few`, `many` and `other`. `other` is always required.
 
 ```xml
-<plurals name="carousel_context_hours_ago">
-    <item quantity="one">Hace %1$d hora</item>
-    <item quantity="other">Hace %1$d horas</item>
+<plurals name="editor_limit_reached">
+    <item quantity="one">Límite de %1$d favorito</item>
+    <item quantity="other">Límite de %1$d favoritos</item>
 </plurals>
 ```
 

@@ -29,7 +29,7 @@ Quando o idioma do sistema mudar com o lume em execução, o lume SHALL exibir o
 
 #### Scenario: Usuário troca o idioma nas configurações
 - **WHEN** o usuário muda o idioma do Android de português para inglês e volta ao lume com o Home
-- **THEN** a tela Início aparece em inglês, com os mesmos favoritos e carrossel
+- **THEN** a tela Início aparece em inglês, com os mesmos favoritos no dock
 
 ### Requirement: Idiomas incluídos na v0.1.0
 A v0.1.0 SHALL incluir traduções completas para português do Brasil (`pt-BR`, idioma de referência) e inglês (`en`).

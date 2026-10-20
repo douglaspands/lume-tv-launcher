@@ -23,7 +23,7 @@ pub fn draw_header(
     logo::draw_mark(
         p.list,
         Rect::new(LEFT, 33.0 - scroll_y, 24.0, 24.0),
-        vars::ACCENT,
+        vars::PRIMARY,
         vars::BG,
     );
     let muted = p.style(&THEME.breadcrumb, StateFlags::NONE);

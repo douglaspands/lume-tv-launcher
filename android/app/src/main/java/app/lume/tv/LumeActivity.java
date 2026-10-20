@@ -27,6 +27,11 @@ public class LumeActivity extends NativeActivity {
         return LumeBridge.iconPixels(this, packageName, activityName, width, height);
     }
 
+    /** Called by Rust through JNI: the square icon of an app for the dock: see {@link LumeBridge#dockIcon}. */
+    public byte[] dockIcon(String packageName, String activityName, int size) {
+        return LumeBridge.dockIcon(this, packageName, activityName, size);
+    }
+
     /** Implemented in Rust (crates/lume-app/src/android/mod.rs). */
     private static native void nativeHomePressed();
 

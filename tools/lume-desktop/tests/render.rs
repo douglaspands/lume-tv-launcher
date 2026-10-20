@@ -379,3 +379,65 @@ fn image_regions_are_filled_in_place_and_drawn() {
     );
     assert_eq!(pixels.at(60, 60), [16, 24, 32, 255], "outside the quad");
 }
+
+#[test]
+fn the_wallpaper_texture_is_created_when_first_drawn_and_freed_with_the_context() {
+    let Some(mut rig) = rig() else { return };
+    assert!(!rig.backend.has_wallpaper(), "nothing is created up front");
+
+    // A frame without the wallpaper does not create it.
+    let mut list = DisplayList::new();
+    list.fill(
+        Rect::new(0.0, 0.0, 10.0, 10.0),
+        0.0,
+        Paint::Solid(Color::rgb(1, 2, 3)),
+    );
+    render(&mut rig, &list);
+    assert!(!rig.backend.has_wallpaper());
+
+    // The whole texture over the whole surface: it replaces the clear color.
+    let mut list = DisplayList::new();
+    list.wallpaper(
+        Rect::new(0.0, 0.0, W as f32, H as f32),
+        Rect::new(0.0, 0.0, 1.0, 1.0),
+        Color::WHITE,
+    );
+    let pixels = render(&mut rig, &list);
+    assert!(rig.backend.has_wallpaper());
+    let wallpaper = lume_core::wallpaper::current();
+    let texel = |x: usize, y: usize| {
+        let i = (y * wallpaper.width as usize + x) * 3;
+        [
+            wallpaper.rgb[i],
+            wallpaper.rgb[i + 1],
+            wallpaper.rgb[i + 2],
+            255,
+        ]
+    };
+    // Sample the middle of a pixel and compare with the same spot of the source image; the linear
+    // filter blurs a little, so the tolerance is loose, but it must be the wallpaper and not BG.
+    let (sx, sy) = (W / 2, H / 2);
+    let expected = texel(
+        (wallpaper.width / 2) as usize,
+        (wallpaper.height / 2) as usize,
+    );
+    assert!(
+        close(pixels.at(sx, sy), expected, 24),
+        "got {:?}, expected about {expected:?}",
+        pixels.at(sx, sy)
+    );
+    // Every pixel is covered: no leftover clear color at the corners' neighbourhood is required,
+    // but the corners must come from the texture (clamped to the edge), not from BG.
+    let corner = texel(0, 0);
+    assert!(
+        close(pixels.at(0, 0), corner, 24),
+        "{:?} vs {corner:?}",
+        pixels.at(0, 0)
+    );
+
+    // A second frame keeps the same texture; destroying the backend frees it with the rest.
+    render(&mut rig, &list);
+    assert!(rig.backend.has_wallpaper());
+    let Rig { backend, _gl } = rig;
+    backend.destroy();
+}

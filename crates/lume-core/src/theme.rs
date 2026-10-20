@@ -363,8 +363,8 @@ mod tests {
     #[test]
     fn tile_is_resolved_with_inherited_text_defaults() {
         let tile = THEME.resolve(&THEME.tile, StateFlags::NONE);
-        assert_eq!(tile.width, Some(211.0));
-        assert_eq!(tile.height, Some(119.0));
+        assert_eq!(tile.width, Some(172.0));
+        assert_eq!(tile.height, Some(97.0));
         assert_eq!(tile.border_radius, 12.0);
         assert_eq!(tile.font_size, 22.0);
         assert_eq!(tile.scale, 1.0);
@@ -377,7 +377,7 @@ mod tests {
         assert_eq!(focused.scale, 1.05);
         let ring = focused.outline.expect("focus ring");
         assert_eq!(ring.width, 4.0);
-        assert_eq!(ring.color, Color::rgb(0xF2, 0xF5, 0xF7));
+        assert_eq!(ring.color, vars::PRIMARY);
         assert!(focused.box_shadow.is_some());
         // Properties the focus rule does not set come from the base rule.
         assert_eq!(focused.border_radius, 12.0);
@@ -412,8 +412,6 @@ mod tests {
         for component in [
             &THEME.tab,
             &THEME.clock,
-            &THEME.hero_badge,
-            &THEME.hero_subtitle,
             &THEME.button,
             &THEME.tile,
             &THEME.tile_label,
@@ -421,6 +419,7 @@ mod tests {
             &THEME.breadcrumb,
             &THEME.panel,
             &THEME.toast,
+            &THEME.dock_label,
         ] {
             for state in [
                 StateFlags::NONE,
@@ -446,8 +445,6 @@ mod tests {
 
     #[test]
     fn components_inherit_text_from_app_but_not_boxes() {
-        let hero = THEME.resolve(&THEME.hero, StateFlags::NONE);
-        assert!(matches!(hero.background, Some(Paint::Gradient(_))));
         let toast = THEME.resolve(&THEME.toast, StateFlags::NONE);
         assert_eq!(toast.color, vars::TEXT);
         // `.app` sets a background, but it is not inherited.
@@ -456,15 +453,59 @@ mod tests {
     }
 
     #[test]
-    fn hero_gradient_has_three_ordered_stops() {
-        let Some(Paint::Gradient(g)) = THEME.resolve(&THEME.hero, StateFlags::NONE).background
-        else {
-            panic!("the hero needs a gradient");
+    fn the_dock_is_a_translucent_rounded_bar_with_a_light_ring() {
+        let dock = THEME.resolve(&THEME.dock, StateFlags::NONE);
+        let Some(Paint::Solid(background)) = dock.background else {
+            panic!("the dock has a solid translucent background");
         };
-        assert_eq!(g.angle_deg, 80.0);
-        assert_eq!(g.stops().len(), 3);
-        assert_eq!(g.stops()[0].color, vars::HERO_FROM);
-        assert!(g.stops().windows(2).all(|w| w[0].position <= w[1].position));
+        assert_eq!((background.r, background.g, background.b), (15, 23, 30));
+        assert!(
+            background.a > 0 && background.a < 255,
+            "translucent: {}",
+            background.a
+        );
+        assert!(dock.border_radius >= 16.0);
+        assert!(dock.outline.is_some_and(|o| o.width == 1.0));
+        assert!(dock.box_shadow.is_some());
+    }
+
+    #[test]
+    fn the_dock_label_is_a_readable_bubble() {
+        let label = THEME.resolve(&THEME.dock_label, StateFlags::NONE);
+        assert!(label.background.is_some() && label.border_radius > 0.0);
+        assert_eq!(label.color, vars::TEXT);
+        assert!(label.font_size >= MIN_FONT_SIZE);
+        assert!(label.padding[0] > 0.0 && label.padding[1] > 0.0);
+    }
+
+    #[test]
+    fn the_color_roles_are_the_primary_blue_and_the_secondary_light_neutral() {
+        assert_eq!(vars::PRIMARY, Color::rgb(0x4D, 0xB3, 0xFF));
+        assert_eq!(vars::ON_PRIMARY, Color::rgb(0x0F, 0x17, 0x1E));
+        assert_eq!(vars::SECONDARY, Color::rgb(0xF2, 0xF5, 0xF7));
+        // The old names are aliases of the roles, so older themes and code keep working.
+        assert_eq!(vars::ACCENT, vars::PRIMARY);
+        assert_eq!(vars::ON_ACCENT, vars::ON_PRIMARY);
+        // The text is the secondary color.
+        assert_eq!(vars::TEXT, vars::SECONDARY);
+    }
+
+    #[test]
+    fn every_focus_outline_of_the_default_theme_is_the_primary_color() {
+        for (name, component) in [
+            ("tile", &THEME.tile),
+            ("settings-item", &THEME.settings_item),
+            ("editor-row", &THEME.editor_row),
+            ("chip", &THEME.chip),
+            ("button", &THEME.button),
+            ("icon-button", &THEME.icon_button),
+        ] {
+            let focused = THEME.resolve(component, StateFlags::FOCUS);
+            let outline = focused
+                .outline
+                .unwrap_or_else(|| panic!("{name} has no focus outline"));
+            assert_eq!(outline.color, vars::PRIMARY, "{name}");
+        }
     }
 
     #[test]

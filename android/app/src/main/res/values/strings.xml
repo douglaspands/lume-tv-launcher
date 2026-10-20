@@ -15,31 +15,9 @@
     <!-- Home screen -->
     <string name="home_favorites_title">Your favorite apps</string>
     <string name="home_add_favorites">Add favorites</string>
-    <string name="carousel_open">Open</string>
-    <string name="carousel_new_app">New: %1$s</string>
-    <string name="carousel_context_new">New on your TV</string>
-    <string name="carousel_context_most_used">Most used this week</string>
-    <string name="carousel_context_just_now">Opened just now</string>
-    <string name="carousel_context_start">Select Open to get started</string>
-    <plurals name="carousel_context_minutes_ago">
-        <item quantity="one">Opened %1$d minute ago</item>
-        <item quantity="other">Opened %1$d minutes ago</item>
-    </plurals>
-    <plurals name="carousel_context_hours_ago">
-        <item quantity="one">Opened %1$d hour ago</item>
-        <item quantity="other">Opened %1$d hours ago</item>
-    </plurals>
-    <plurals name="carousel_context_days_ago">
-        <item quantity="one">Opened %1$d day ago</item>
-        <item quantity="other">Opened %1$d days ago</item>
-    </plurals>
-    <string name="carousel_welcome_title">Welcome to lume</string>
-    <string name="carousel_welcome_context">Find every app on your TV</string>
-    <string name="carousel_welcome_button">See all apps</string>
 
     <!-- Apps screen -->
     <string name="apps_title">All apps</string>
-    <string name="apps_settings_tile">Settings</string>
 
     <!-- lume settings -->
     <string name="settings_title">Settings</string>
@@ -57,21 +35,8 @@
     <!-- Home screen editor -->
     <string name="editor_breadcrumb_edit">Edit</string>
     <string name="editor_title">Edit home screen</string>
-    <string name="editor_instruction">Select a row and use the buttons on the left to move it up, move it down or hide it.</string>
+    <string name="editor_instruction">Select an app and use the buttons to move it left or right, or to remove it. Add more apps below.</string>
     <string name="editor_done">Done</string>
-    <string name="editor_section_carousel">Featured carousel</string>
-    <string name="editor_section_favorites">Favorite apps</string>
-    <string name="editor_section_hidden">Hidden</string>
-    <plurals name="editor_carousel_summary">
-        <item quantity="one">%1$d app alternating in the carousel</item>
-        <item quantity="other">%1$d apps alternating in the carousel</item>
-    </plurals>
-    <string name="editor_favorites_none">No favorites yet</string>
-    <string name="editor_carousel_apps">APPS IN THE CAROUSEL</string>
-    <string name="editor_carousel_min_one">At least one app</string>
-    <string name="editor_carousel_interval">Refresh:</string>
-    <string name="interval_seconds">%1$d s</string>
-    <string name="interval_minutes">%1$d min</string>
     <string name="editor_favorites_order">FAVORITE APPS · DISPLAY ORDER</string>
     <string name="editor_use_arrows">Use the arrows to move</string>
     <string name="editor_add_app">Add app:</string>
@@ -81,7 +46,7 @@
     </plurals>
     <string name="editor_restore_defaults">Restore defaults</string>
     <string name="editor_restore_title">Restore the default home screen?</string>
-    <string name="editor_restore_body">Sections, carousel and favorites go back to the first-use setup. Your usage history is kept.</string>
+    <string name="editor_restore_body">Your favorites go back to the first-use setup. Your usage history is kept.</string>
     <string name="editor_restore_confirm">Restore</string>
     <string name="editor_cancel">Cancel</string>
 

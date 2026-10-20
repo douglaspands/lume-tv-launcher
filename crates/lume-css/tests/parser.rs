@@ -316,7 +316,7 @@ fn var_with_fallback_and_nested_vars() {
 
 #[test]
 fn var_inside_function() {
-    let sheet = parse_ok(":root { --a: #000; --b: #fff; }\n.hero { background: linear-gradient(90deg, var(--a), var(--b)); }");
+    let sheet = parse_ok(":root { --a: #000; --b: #fff; }\n.panel { background: linear-gradient(90deg, var(--a), var(--b)); }");
     assert!(matches!(
         sheet.rules[0].decls[0],
         Decl::Background(Paint::Gradient(_))
@@ -430,7 +430,7 @@ fn other_at_rules_warn_including_blocks() {
 
 #[test]
 fn url_in_value_warns() {
-    let (sev, line, msg) = only(".hero {\n  background: url(imagem.png);\n}");
+    let (sev, line, msg) = only(".panel {\n  background: url(imagem.png);\n}");
     assert_eq!((sev, line), (Severity::Warning, 2));
     assert!(msg.contains("url()"), "{msg}");
 }
@@ -510,4 +510,25 @@ fn diagnostic_display_has_file_and_line() {
         "{}",
         p.diagnostics[0]
     );
+}
+
+#[test]
+fn the_removed_carousel_selectors_warn_as_unsupported() {
+    for selector in [
+        ".hero",
+        ".hero-badge",
+        ".hero-title",
+        ".hero-subtitle",
+        ".pager-dot",
+    ] {
+        let p = parse(&format!("{selector} {{\n  color: #fff;\n}}"), "t.css");
+        assert_eq!(p.diagnostics.len(), 1, "{selector}");
+        assert_eq!(p.diagnostics[0].severity, Severity::Warning);
+        assert!(
+            p.diagnostics[0].message.contains("unsupported selector"),
+            "{selector}: {}",
+            p.diagnostics[0].message
+        );
+        assert!(p.stylesheet.rules.is_empty());
+    }
 }

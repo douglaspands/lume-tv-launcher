@@ -1,10 +1,9 @@
-//! The home screen editor: sections, carousel and favorites.
+//! The home screen editor: the favorites.
 
 use super::page::{self, LEFT, WIDTH};
 use super::painter::{fade, Painter};
 use super::{Effect, LumeApp, PendingFocus, Screen, Tab};
-use crate::catalog::known::KnownApp;
-use crate::home::config::{HomeConfig, Interval, Section, MAX_FAVORITES};
+use crate::home::config::{HomeConfig, MAX_FAVORITES};
 use crate::i18n::{Arg, PluralId, StringId};
 use crate::icons;
 use crate::render::Rect;
@@ -15,59 +14,23 @@ use std::collections::HashMap;
 
 pub const DONE: FocusId = 4000;
 pub const RESTORE: FocusId = 4001;
-pub(super) const SECTION_BASE: FocusId = 4100;
-pub(super) const INTERVAL_BASE: FocusId = 4200;
-pub(super) const CAROUSEL_APP_BASE: FocusId = 4300;
 pub(super) const FAVORITE_BUTTON_BASE: FocusId = 4400;
 pub(super) const ADD_APP_BASE: FocusId = 4600;
 pub const CONFIRM_RESTORE: FocusId = 4900;
 pub const CONFIRM_CANCEL: FocusId = 4901;
 
-const ROW_HEIGHT: f32 = 71.0;
-const ROW_GAP: f32 = 17.0;
-const PANEL_GAP: f32 = 16.0;
 const CHIP_HEIGHT: f32 = 42.0;
-const CHIP_GAP: f32 = 14.0;
 const CARD_WIDTH: f32 = 168.0;
 const CARD_NAME_HEIGHT: f32 = 56.0;
 const CARD_CONTROLS_HEIGHT: f32 = 60.0;
 const CARD_GAP: f32 = 18.0;
-const BUTTON_SIZE: f32 = 48.0;
 const TOP: f32 = 162.0;
 const BOTTOM_PADDING: f32 = 120.0;
-
-/// What a section row's three buttons do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum SectionAction {
-    Up = 0,
-    Down = 1,
-    Hide = 2,
-}
-
-fn section_index(section: Section) -> u32 {
-    match section {
-        Section::Carousel => 0,
-        Section::Favorites => 1,
-    }
-}
-
-pub(super) fn section_button(section: Section, action: SectionAction) -> FocusId {
-    SECTION_BASE + section_index(section) * 10 + action as u32
-}
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct EditorState {
     /// The "Restore defaults" confirmation is open.
     pub confirm: bool,
-    /// When the "at least one app" hint stops being highlighted.
-    pub hint_until_ms: u64,
-}
-
-/// An app that can be switched on or off in the carousel.
-struct CarouselChoice {
-    package: String,
-    label: String,
-    color: Color,
 }
 
 impl LumeApp {
@@ -77,41 +40,6 @@ impl LumeApp {
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::Id(DONE));
         self.focus.set_rows(vec![]);
-    }
-
-    /// The apps offered in "Apps in the carousel": the known streaming apps that are installed,
-    /// every favorite, and anything already selected so it can be switched off.
-    fn carousel_choices(&self) -> Vec<CarouselChoice> {
-        let mut packages: Vec<String> = Vec::new();
-        let add = |package: &str, packages: &mut Vec<String>| {
-            if self.catalog.contains(package) && !packages.iter().any(|p| p == package) {
-                packages.push(package.to_string());
-            }
-        };
-        for known in KnownApp::DEFAULT_FAVORITES {
-            for package in known.packages() {
-                add(package, &mut packages);
-            }
-        }
-        for package in self
-            .config
-            .favorites
-            .iter()
-            .chain(&self.config.carousel_apps)
-        {
-            add(package, &mut packages);
-        }
-        packages
-            .into_iter()
-            .filter_map(|package| {
-                let app = self.catalog.get(&package)?;
-                Some(CarouselChoice {
-                    package: package.clone(),
-                    label: app.label.clone(),
-                    color: app.color,
-                })
-            })
-            .collect()
     }
 
     /// Apps that are not favorites yet, in the catalog's order.
@@ -145,13 +73,7 @@ impl LumeApp {
     fn editor_pass(&mut self, p: &mut Painter, draw: bool, scroll_y: f32) -> Layout {
         let mut layout = Layout::default();
         let t = self.translator;
-        let visible = p.display.visible_rect();
         if draw {
-            p.list.fill(
-                visible,
-                0.0,
-                THEME.app.base.background.unwrap_or(Paint::Solid(vars::BG)),
-            );
             page::draw_header(
                 p,
                 &[
@@ -182,24 +104,10 @@ impl LumeApp {
             self.draw_button(p, done.translate(0.0, -scroll_y), &done_label, DONE);
         }
 
-        let mut y = TOP;
-        let sections: Vec<Section> = self.config.sections.iter().map(|s| s.section).collect();
-        let last = sections.len() - 1;
-        for (index, section) in sections.into_iter().enumerate() {
-            y = self.section_block(
-                p,
-                &mut layout,
-                section,
-                index == 0,
-                index == last,
-                y,
-                scroll_y,
-                draw,
-            );
-        }
+        let y = self.favorites_panel(p, &mut layout, TOP, scroll_y, draw);
 
         // "Restore defaults" at the bottom right.
-        y += 24.0;
+        let y = y + 24.0 + 24.0;
         let label = t.get(StringId::EditorRestoreDefaults).into_owned();
         let width = p.measure(&label, &button_style) + 2.0 * 28.0;
         let restore = Rect::new(LEFT + WIDTH - width, y, width, 50.0);
@@ -224,377 +132,7 @@ impl LumeApp {
         layout
     }
 
-    /// One section: its row, and the panel below it.
-    #[allow(clippy::too_many_arguments)]
-    fn section_block(
-        &mut self,
-        p: &mut Painter,
-        layout: &mut Layout,
-        section: Section,
-        first: bool,
-        last: bool,
-        top: f32,
-        scroll_y: f32,
-        draw: bool,
-    ) -> f32 {
-        let t = self.translator;
-        let row = Rect::new(LEFT, top, WIDTH, ROW_HEIGHT);
-        let buttons_y = top + (ROW_HEIGHT - BUTTON_SIZE) / 2.0;
-        let button = |i: f32| {
-            Rect::new(
-                LEFT + 16.0 + i * (BUTTON_SIZE + 8.0),
-                buttons_y,
-                BUTTON_SIZE,
-                BUTTON_SIZE,
-            )
-        };
-        let (up, down, hide) = (button(0.0), button(1.0), button(2.0));
-        let (up_id, down_id, hide_id) = (
-            section_button(section, SectionAction::Up),
-            section_button(section, SectionAction::Down),
-            section_button(section, SectionAction::Hide),
-        );
-        let mut items = vec![
-            if first {
-                Focusable::disabled(up_id, up)
-            } else {
-                Focusable::new(up_id, up)
-            },
-            if last {
-                Focusable::disabled(down_id, down)
-            } else {
-                Focusable::new(down_id, down)
-            },
-            Focusable::new(hide_id, hide),
-        ];
-        for (id, rect) in [(up_id, up), (down_id, down), (hide_id, hide)] {
-            layout.rects.insert(id, rect);
-        }
-
-        // Interval chips of the carousel, at the right end of its row.
-        let mut interval_chips: Vec<(Interval, Rect)> = Vec::new();
-        if section == Section::Carousel {
-            let chip_style = p.style(&THEME.chip, StateFlags::NONE);
-            let mut x = LEFT + WIDTH - 16.0;
-            for (i, interval) in Interval::ALL.iter().enumerate().rev() {
-                let label = self.interval_label(*interval);
-                let width = p.measure(&label, &chip_style) + 2.0 * chip_style.padding[1];
-                x -= width;
-                let rect = Rect::new(x, top + (ROW_HEIGHT - 33.0) / 2.0, width, 33.0);
-                interval_chips.push((*interval, rect));
-                layout.rects.insert(INTERVAL_BASE + i as u32, rect);
-                x -= 8.0;
-            }
-            interval_chips.reverse();
-            for (i, (_, rect)) in interval_chips.iter().enumerate() {
-                items.push(Focusable::new(INTERVAL_BASE + i as u32, *rect));
-            }
-        }
-        layout.row(items);
-
-        let visible_section = self.config.is_visible(section);
-        let number = self.config.position(section) + 1;
-        let (title, summary) = match section {
-            Section::Carousel => {
-                let count = self.config.carousel_apps.len() as i64;
-                (
-                    t.get(StringId::EditorSectionCarousel).into_owned(),
-                    t.plural(PluralId::EditorCarouselSummary, count, &[Arg::Int(count)]),
-                )
-            }
-            Section::Favorites => {
-                let names: Vec<&str> = self
-                    .config
-                    .favorites
-                    .iter()
-                    .filter_map(|package| self.catalog.get(package).map(|a| a.label.as_str()))
-                    .collect();
-                let summary = if names.is_empty() {
-                    t.get(StringId::EditorFavoritesNone).into_owned()
-                } else {
-                    names.join(", ")
-                };
-                (
-                    t.get(StringId::EditorSectionFavorites).into_owned(),
-                    summary,
-                )
-            }
-        };
-        let hidden = (!visible_section).then(|| t.get(StringId::EditorSectionHidden).into_owned());
-        if draw {
-            self.draw_section_row(
-                p,
-                row.translate(0.0, -scroll_y),
-                [up, down, hide],
-                [up_id, down_id, hide_id],
-                (first, last),
-                visible_section,
-                number,
-                &title,
-                &summary,
-                hidden.as_deref(),
-                &interval_chips,
-                scroll_y,
-                section == Section::Carousel,
-            );
-        }
-
-        let panel_top = top + ROW_HEIGHT + PANEL_GAP;
-        let bottom = match section {
-            Section::Carousel => self.carousel_panel(p, layout, panel_top, scroll_y, draw),
-            Section::Favorites => self.favorites_panel(p, layout, panel_top, scroll_y, draw),
-        };
-        bottom + ROW_GAP
-    }
-
-    fn interval_label(&self, interval: Interval) -> String {
-        let t = self.translator;
-        let seconds = interval.seconds();
-        if seconds >= 60 {
-            t.format(
-                StringId::IntervalMinutes,
-                &[Arg::Int(i64::from(seconds / 60))],
-            )
-        } else {
-            t.format(StringId::IntervalSeconds, &[Arg::Int(i64::from(seconds))])
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn draw_section_row(
-        &mut self,
-        p: &mut Painter,
-        row: Rect,
-        buttons: [Rect; 3],
-        ids_: [FocusId; 3],
-        (first, last): (bool, bool),
-        visible_section: bool,
-        number: usize,
-        title: &str,
-        summary: &str,
-        hidden: Option<&str>,
-        intervals: &[(Interval, Rect)],
-        scroll_y: f32,
-        is_carousel: bool,
-    ) {
-        let mut style = p.style(&THEME.editor_row, StateFlags::NONE);
-        let any_focus = ids_.iter().any(|id| self.focus_progress(*id) > 0.0);
-        if any_focus {
-            style = p.focus_style(&THEME.editor_row, 0.0);
-        }
-        style.outline = None;
-        style.opacity = if visible_section { 1.0 } else { 0.6 };
-        p.draw_box(row, &style);
-
-        let icons_for = [
-            icons::CHEVRON_UP,
-            icons::CHEVRON_DOWN,
-            if visible_section {
-                icons::EYE
-            } else {
-                icons::EYE_OFF
-            },
-        ];
-        for (i, rect) in buttons.iter().enumerate() {
-            let disabled = (i == 0 && first) || (i == 1 && last);
-            let progress = self.focus_progress(ids_[i]);
-            self.draw_round_button(
-                p,
-                rect.translate(0.0, -scroll_y),
-                icons_for[i],
-                progress,
-                disabled,
-                false,
-            );
-        }
-
-        // The position number, then the title and the summary.
-        let number_style = TextStyle::new(22.0, 700);
-        p.text_with(
-            &number.to_string(),
-            Rect::new(buttons[2].right() + 14.0, row.y, 36.0, row.h),
-            Align::Center,
-            &number_style,
-            vars::TEXT_MUTED,
-        );
-        let text_x = buttons[2].right() + 14.0 + 36.0 + 16.0;
-        let dot_color = if visible_section {
-            Color::WHITE
-        } else {
-            vars::TEXT_DISABLED
-        };
-        p.list.fill(
-            Rect::new(text_x, row.y + 22.0, 11.0, 11.0),
-            5.5,
-            Paint::Solid(dot_color),
-        );
-        let title_x = text_x + 22.0;
-        let title_style = TextStyle::new(24.0, 700);
-        let max_width = if is_carousel {
-            intervals.first().map_or(row.right(), |(_, r)| r.x) - 140.0 - title_x
-        } else {
-            row.right() - 40.0 - title_x
-        };
-        let shown_title = match hidden {
-            Some(h) => format!("{title} ({})", h.to_lowercase()),
-            None => title.to_string(),
-        };
-        let shown = p
-            .text
-            .ellipsize(&shown_title, &title_style, max_width)
-            .into_owned();
-        p.text.draw(
-            p.list,
-            &shown,
-            title_x,
-            row.y + 31.0,
-            &title_style,
-            fade(vars::TEXT, style.opacity),
-        );
-        let summary_style = TextStyle::new(16.0, 500);
-        let shown = p
-            .text
-            .ellipsize(summary, &summary_style, max_width)
-            .into_owned();
-        p.text.draw(
-            p.list,
-            &shown,
-            title_x,
-            row.y + 55.0,
-            &summary_style,
-            fade(vars::TEXT_MUTED, style.opacity),
-        );
-
-        if is_carousel {
-            let label = self
-                .translator
-                .get(StringId::EditorCarouselInterval)
-                .into_owned();
-            let label_style = TextStyle::new(16.0, 500);
-            let width = p.text.measure(&label, &label_style);
-            let first_chip = intervals.first().map_or(row.right(), |(_, r)| r.x);
-            p.text.draw(
-                p.list,
-                &label,
-                first_chip - 12.0 - width,
-                row.y + 41.0,
-                &label_style,
-                vars::TEXT_MUTED,
-            );
-        }
-        for (i, (interval, rect)) in intervals.iter().enumerate() {
-            let selected = *interval == self.config.interval;
-            let progress = self.focus_progress(INTERVAL_BASE + i as u32);
-            let label = self.interval_label(*interval);
-            self.draw_chip(
-                p,
-                rect.translate(0.0, -scroll_y),
-                &label,
-                selected,
-                progress,
-            );
-        }
-        let _ = scroll_y;
-    }
-
-    /// The panel under the carousel row: which apps rotate in it.
-    fn carousel_panel(
-        &mut self,
-        p: &mut Painter,
-        layout: &mut Layout,
-        top: f32,
-        scroll_y: f32,
-        draw: bool,
-    ) -> f32 {
-        let t = self.translator;
-        let choices = self.carousel_choices();
-        let label = t.get(StringId::EditorCarouselApps).into_owned();
-        let label_style = TextStyle {
-            size: 15.0,
-            weight: 800,
-            letter_spacing: 1.2,
-        };
-        let label_width = p.text.measure(&label, &label_style);
-        let chip_style = TextStyle::new(18.0, 700);
-
-        let widths: Vec<f32> = choices
-            .iter()
-            .map(|c| {
-                20.0 + 10.0 + 10.0 + p.text.measure(&c.label, &chip_style) + 14.0 + 16.0 + 18.0
-            })
-            .collect();
-        let start_x = LEFT + 32.0 + label_width + 24.0;
-        let positions = flow(
-            &widths,
-            start_x,
-            LEFT + WIDTH - 32.0,
-            CHIP_GAP,
-            LEFT + 32.0,
-            CHIP_HEIGHT + 12.0,
-            top + 24.0,
-        );
-        let lines = positions.last().map_or(1, |q| q.line + 1);
-        let height = 24.0 + lines as f32 * CHIP_HEIGHT + (lines as f32 - 1.0) * 12.0 + 24.0;
-        let panel = Rect::new(LEFT, top, WIDTH, height.max(72.0));
-
-        if draw {
-            let style = p.style(&THEME.panel, StateFlags::NONE);
-            p.draw_box(panel.translate(0.0, -scroll_y), &style);
-            p.text.draw(
-                p.list,
-                &label,
-                LEFT + 32.0,
-                top + 24.0 + 28.0 - scroll_y,
-                &label_style,
-                vars::ACCENT,
-            );
-        }
-        let mut row_items: Vec<Vec<Focusable>> = vec![Vec::new(); lines];
-        for (i, (choice, pos)) in choices.iter().zip(&positions).enumerate() {
-            let rect = Rect::new(pos.x, pos.y, widths[i], CHIP_HEIGHT);
-            let id = CAROUSEL_APP_BASE + i as u32;
-            layout.rects.insert(id, rect);
-            row_items[pos.line].push(Focusable::new(id, rect));
-            if draw {
-                let selected = self.config.carousel_apps.contains(&choice.package);
-                let progress = self.focus_progress(id);
-                self.draw_app_chip(
-                    p,
-                    rect.translate(0.0, -scroll_y),
-                    &choice.label,
-                    choice.color,
-                    selected,
-                    progress,
-                );
-            }
-        }
-        for items in row_items {
-            layout.row(items);
-        }
-        if draw {
-            // The hint that one app has to stay.
-            let hint = t.get(StringId::EditorCarouselMinOne).into_owned();
-            let hint_style = TextStyle::new(16.0, 500);
-            let width = p.text.measure(&hint, &hint_style);
-            let flash = self.now_ms < self.editor.hint_until_ms;
-            let color = if flash {
-                vars::ACCENT
-            } else {
-                vars::TEXT_MUTED
-            };
-            p.text.draw(
-                p.list,
-                &hint,
-                panel.right() - 32.0 - width,
-                panel.bottom() - 24.0 - 13.0 - scroll_y,
-                &hint_style,
-                color,
-            );
-        }
-        panel.bottom()
-    }
-
-    /// The panel under the favorites row: order, remove, and add.
+    /// The favorites: order, remove, and add.
     fn favorites_panel(
         &mut self,
         p: &mut Painter,
@@ -664,7 +202,7 @@ impl LumeApp {
                 inner_left,
                 heading_y + 17.0 - scroll_y,
                 &heading_style,
-                vars::ACCENT,
+                vars::PRIMARY,
             );
             let hint = t.get(StringId::EditorUseArrows).into_owned();
             let hint_style = TextStyle::new(16.0, 500);
@@ -843,72 +381,6 @@ impl LumeApp {
         p.icon(icon, rect, 24.0, color);
     }
 
-    fn draw_chip(
-        &mut self,
-        p: &mut Painter,
-        rect: Rect,
-        label: &str,
-        selected: bool,
-        progress: f32,
-    ) {
-        let state = if selected {
-            StateFlags::ACTIVE
-        } else {
-            StateFlags::NONE
-        };
-        let rest = p.style(&THEME.chip, state);
-        let mut focused = state;
-        focused.focus = true;
-        let mut style = crate::ui::style::mix(&rest, &p.style(&THEME.chip, focused), progress);
-        style.border_radius = rect.h / 2.0;
-        p.draw_box(rect, &style);
-        p.text(label, rect, Align::Center, &style);
-    }
-
-    fn draw_app_chip(
-        &mut self,
-        p: &mut Painter,
-        rect: Rect,
-        label: &str,
-        color: Color,
-        selected: bool,
-        progress: f32,
-    ) {
-        let radius = rect.h / 2.0;
-        let background = if selected {
-            vars::SURFACE_FOCUS
-        } else {
-            vars::SURFACE
-        };
-        p.list.fill(rect, radius, Paint::Solid(background));
-        let border = if selected {
-            vars::ACCENT
-        } else {
-            vars::CONTROL
-        };
-        p.list.ring(rect, radius, 2.0, border);
-        let dot = Rect::new(rect.x + 20.0, rect.center().1 - 5.0, 10.0, 10.0);
-        p.list
-            .fill(dot, 5.0, Paint::Solid(super::home::brighten(color)));
-        let style = TextStyle::new(18.0, 700);
-        let text_rect = Rect::new(
-            dot.right() + 10.0,
-            rect.y,
-            rect.w - 20.0 - 10.0 - 10.0 - 14.0 - 16.0 - 8.0,
-            rect.h,
-        );
-        p.text_with(label, text_rect, Align::Start, &style, vars::TEXT);
-        if selected {
-            p.icon(
-                icons::CHECK,
-                Rect::new(rect.right() - 20.0 - 16.0, rect.y, 16.0, rect.h),
-                16.0,
-                vars::TEXT,
-            );
-        }
-        self.draw_focus_ring(p, rect, radius, progress);
-    }
-
     fn draw_add_chip(
         &mut self,
         p: &mut Painter,
@@ -958,7 +430,7 @@ impl LumeApp {
             3.0,
             Color {
                 a: (255.0 * progress) as u8,
-                ..vars::TEXT
+                ..vars::PRIMARY
             },
         );
     }
@@ -1118,54 +590,6 @@ impl LumeApp {
                 return vec![];
             }
             _ => {}
-        }
-        for section in [Section::Carousel, Section::Favorites] {
-            let (up, down, hide) = (
-                section_button(section, SectionAction::Up),
-                section_button(section, SectionAction::Down),
-                section_button(section, SectionAction::Hide),
-            );
-            if id == up || id == down || id == hide {
-                let moved = if id == up {
-                    self.config.move_section_up(section)
-                } else if id == down {
-                    self.config.move_section_down(section)
-                } else {
-                    let visible = self.config.is_visible(section);
-                    self.config.set_section_visible(section, !visible);
-                    true
-                };
-                if moved {
-                    // The focus follows the section to its new row. A section that reached an end
-                    // has that button disabled, so the focus goes to the opposite one.
-                    let target = if id == down && !self.config.can_move_section_down(section) {
-                        up
-                    } else if id == up && !self.config.can_move_section_up(section) {
-                        down
-                    } else {
-                        id
-                    };
-                    self.pending_focus = Some(PendingFocus::Id(target));
-                }
-                return if moved { save } else { vec![] };
-            }
-        }
-        if (INTERVAL_BASE..INTERVAL_BASE + Interval::ALL.len() as u32).contains(&id) {
-            self.config
-                .set_interval(Interval::ALL[(id - INTERVAL_BASE) as usize]);
-            return save;
-        }
-        if (CAROUSEL_APP_BASE..FAVORITE_BUTTON_BASE).contains(&id) {
-            let choices = self.carousel_choices();
-            let Some(choice) = choices.get((id - CAROUSEL_APP_BASE) as usize) else {
-                return vec![];
-            };
-            if self.config.toggle_carousel_app(&choice.package) {
-                return save;
-            }
-            // The last app cannot be removed: highlight the hint.
-            self.editor.hint_until_ms = self.now_ms + 1500;
-            return vec![];
         }
         if (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id) {
             let offset = id - FAVORITE_BUTTON_BASE;

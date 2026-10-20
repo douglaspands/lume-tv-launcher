@@ -3,7 +3,7 @@
 use android_activity::AndroidApp;
 use jni::objects::{JByteArray, JObject, JString};
 use jni::{jni_sig, jni_str, JValue, JavaVM};
-use lume_core::app_icons::{Art, CELL_HEIGHT, CELL_WIDTH};
+use lume_core::app_icons::{Art, CELL_HEIGHT, CELL_WIDTH, DOCK_CELL};
 use lume_core::catalog::known::KnownApp;
 use lume_core::catalog::{Catalog, Discovered};
 use lume_core::clock::WallClock;
@@ -96,6 +96,41 @@ impl Bridge {
             Ok(pixels) => pixels,
             Err(e) => {
                 log::warn!("icon of {package} failed: {e}");
+                None
+            }
+        }
+    }
+
+    /// The square icon of an app for the dock: `DOCK_CELL` x `DOCK_CELL` premultiplied RGBA bytes.
+    pub fn dock_icon(&self, package: &str, activity: &str) -> Option<Vec<u8>> {
+        let result = self
+            .vm
+            .attach_current_thread(|env| -> jni::errors::Result<Option<Vec<u8>>> {
+                // SAFETY: `activity` is a valid global reference to the activity object.
+                let activity_object = unsafe { JObject::from_raw(env, self.activity.cast()) };
+                let package_arg = env.new_string(package)?;
+                let activity_arg = env.new_string(activity)?;
+                let answer = env.call_method(
+                    &activity_object,
+                    jni_str!("dockIcon"),
+                    jni_sig!((package: JString, activity: JString, size: jint) -> jbyte[]),
+                    &[
+                        JValue::Object(&package_arg),
+                        JValue::Object(&activity_arg),
+                        JValue::Int(DOCK_CELL as i32),
+                    ],
+                )?;
+                let object = answer.l()?;
+                if object.is_null() {
+                    return Ok(None);
+                }
+                let bytes = env.cast_local::<JByteArray>(object)?;
+                Ok(Some(env.convert_byte_array(&bytes)?))
+            });
+        match result {
+            Ok(pixels) => pixels.filter(|p| protocol::is_dock_icon(p)),
+            Err(e) => {
+                log::warn!("dock icon of {package} failed: {e}");
                 None
             }
         }

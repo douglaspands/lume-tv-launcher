@@ -19,3 +19,6 @@ keystore.properties
 # Editors
 .idea/
 .vscode/
+
+# Wallpaper candidates (local evaluation only)
+wallpaper-samples/

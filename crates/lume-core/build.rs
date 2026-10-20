@@ -2,6 +2,7 @@
 //!
 //! - `themes/lume/theme.css` -> `theme_generated.rs`
 //! - `android/app/src/main/res/values*/strings.xml` -> `strings_generated.rs`
+//! - `assets/wallpaper/aurora-*` -> `wallpaper_640x360.rgb`, `wallpaper_stars.rs`
 //!
 //! Warnings are forwarded as `cargo:warning`; any error fails the build.
 
@@ -16,6 +17,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../lume-app/Cargo.toml");
     compile_strings(&manifest);
     compile_theme(&manifest);
+    compile_wallpaper(&manifest);
     list_third_party(&manifest);
 }
 
@@ -83,6 +85,38 @@ fn compile_strings(manifest: &std::path::Path) {
     }
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("strings_generated.rs");
     std::fs::write(out, compiled.code).expect("cannot write strings_generated.rs");
+}
+
+/// Embeds the wallpaper: the 640x360 RGB base and the positions of the stars, both made by
+/// `tools/wallpaper/aurora06.py` (see `docs/wallpaper.md`). Stars become a Rust slice of
+/// `(x, y, brightness)` for the renderer to draw as crisp points.
+fn compile_wallpaper(manifest: &std::path::Path) {
+    let dir = manifest.join("assets/wallpaper");
+    println!("cargo:rerun-if-changed={}", dir.display());
+    let read = |name: &str| {
+        std::fs::read(dir.join(name)).unwrap_or_else(|e| panic!("cannot read {name}: {e}"))
+    };
+    let rgb = read("aurora-640x360.rgb");
+    assert_eq!(
+        rgb.len(),
+        640 * 360 * 3,
+        "aurora-640x360.rgb has the wrong size"
+    );
+    let text = String::from_utf8(read("aurora-stars.txt")).expect("the stars are not text");
+    let stars = text
+        .lines()
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .map(|l| {
+            let n: Vec<&str> = l.split_whitespace().collect();
+            assert_eq!(n.len(), 3, "bad star line '{l}'");
+            format!("({}, {}, {})", n[0], n[1], n[2])
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    std::fs::write(out_dir.join("wallpaper_640x360.rgb"), rgb).expect("cannot write the wallpaper");
+    std::fs::write(out_dir.join("wallpaper_stars.rs"), format!("&[{stars}]"))
+        .expect("cannot write the stars");
 }
 
 fn compile_theme(manifest: &std::path::Path) {

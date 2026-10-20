@@ -6,9 +6,18 @@ English | [Português](README.pt-BR.md)
 
 > **Status:** lume is in development. Version 0.1.0 has not been released yet, so there is no download yet. The steps below are what you will do once it is out.
 
+<p align="center">
+  <img src="docs/screenshots/home-en.png" alt="Home screen with the dock" width="49%">
+  <img src="docs/screenshots/apps-en.png" alt="Apps screen" width="49%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/settings-en.png" alt="Settings" width="49%">
+  <img src="docs/screenshots/editor-en.png" alt="Editing the favorites" width="49%">
+</p>
+
 **What you get**
 
-- A home screen with a rotating highlight banner and your favorite apps.
+- A home screen with a floating dock for your favorite apps: the icon under the focus grows, and the neighbors make room.
 - An "Apps" screen with everything installed on your TV.
 - Everything works with the normal TV remote (arrows, OK, Back, Home).
 - Portuguese (Brazil) and English, following your TV's language.
@@ -159,8 +168,13 @@ cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screensh
 
 You only need a container runtime. No Rust, NDK or Android SDK on your machine.
 
-- **Docker:** install Docker with BuildKit (`docker buildx`).
-- **Windows with WSL:** the `wslc` tool that ships with WSL works too (the script detects it).
+The order is also the priority: the script uses the first runtime it finds (unless you set `LUME_CONTAINER`):
+
+1. **wslc:** the tool that ships with WSL on Windows.
+2. **Docker:** with BuildKit (`docker buildx`).
+3. **Podman:** version 5 or newer.
+
+If none of the three is installed, the script says so and suggests alternatives: update WSL to get `wslc`, install Docker or Podman, point `LUME_CONTAINER` at another Docker-compatible runtime, or build without containers by installing Rust, the Android NDK/SDK and `cargo-ndk` and following `docker/Dockerfile` by hand.
 
 ```
 scripts/container-build.sh debug      # APK with arm64, armv7 and x86_64
@@ -220,6 +234,10 @@ Pushing a tag such as `v0.1.0` (or `v0.1.0-rc1` for a pre-release) runs `.github
 ### Translations
 
 Translations are standard Android `strings.xml` files in `android/app/src/main/res/values-<locale>/`. See [`docs/translations.md`](docs/translations.md).
+
+### Wallpaper
+
+lume draws one northern-lights photograph behind every screen. How it is processed at build time, how to replace it and where its source and license are recorded: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contributing, license and trademarks
 

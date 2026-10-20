@@ -15,7 +15,9 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.LocaleList;
 import android.provider.Settings;
 import android.text.format.DateFormat;
@@ -42,6 +44,13 @@ public final class LumeBridge {
     private static final float TILE_RADIUS_RATIO = 12f / 211f;
     /** Side of the icon in a tile, over the tile height. */
     private static final float ICON_RATIO = 0.5f;
+    /** The dock icon's corner radius over its side: a rounded square. */
+    private static final float DOCK_RADIUS_RATIO = 0.22f;
+    /** An adaptive icon layer is 108 dp wide and its visible area, the part a mask keeps, 72 dp. */
+    private static final float ADAPTIVE_LAYER_RATIO = 108f / 72f;
+    /** Reused by every call of {@link #dockIcon}, like the tile bitmaps below. */
+    private static Bitmap dockBitmap;
+    private static Bitmap dockSourceBitmap;
     /** Reused by every call of {@link #iconPixels}: the final cell and the banner as it is drawn. */
     private static Bitmap cellBitmap;
     private static Bitmap sourceBitmap;
@@ -49,6 +58,8 @@ public final class LumeBridge {
     private static final String TILE_CACHE_DIR = "tiles";
     /** Changes when the drawing of a tile changes, so old files are not reused. */
     private static final String TILE_CACHE_VERSION = "v1";
+    /** Same for the dock icons, which are drawn by other code. */
+    private static final String DOCK_CACHE_VERSION = "d1";
     private static boolean cachePruned;
 
     /** Sequence number of the last package change report; -1 before the first one. */
@@ -152,6 +163,69 @@ public final class LumeBridge {
         return pixels;
     }
 
+    /**
+     * The icon of an app for the dock, as `size` x `size` premultiplied RGBA bytes: the whole icon
+     * (an adaptive icon with both its layers, not cut by the system's mask) clipped to a rounded
+     * square. `null` when the app has no icon.
+     */
+    static synchronized byte[] dockIcon(Context context, String packageName, String activityName, int size) {
+        File cached = cacheFile(context, packageName, activityName, size, size, DOCK_CACHE_VERSION);
+        byte[] pixels = cached == null ? null : readCache(cached, size * size * 4);
+        if (pixels != null) {
+            return pixels;
+        }
+        pixels = renderDockIcon(context, packageName, activityName, size);
+        if (pixels != null && cached != null) {
+            writeCache(context, cached, packageName, pixels);
+        }
+        return pixels;
+    }
+
+    private static byte[] renderDockIcon(Context context, String packageName, String activityName, int size) {
+        PackageManager pm = context.getPackageManager();
+        Drawable drawable = loadIcon(pm, new ComponentName(packageName, activityName), packageName);
+        if (drawable == null) {
+            return null;
+        }
+        if (dockBitmap == null || dockBitmap.getWidth() != size) {
+            dockBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            dockSourceBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        }
+        dockSourceBitmap.eraseColor(Color.TRANSPARENT);
+        drawWholeIcon(new Canvas(dockSourceBitmap), drawable, size);
+        // Clip to the rounded square, with antialiased edges, through a shader.
+        dockBitmap.eraseColor(Color.TRANSPARENT);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        paint.setShader(new BitmapShader(dockSourceBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float radius = size * DOCK_RADIUS_RATIO;
+        new Canvas(dockBitmap).drawRoundRect(new RectF(0, 0, size, size), radius, radius, paint);
+        ByteBuffer buffer = ByteBuffer.allocate(size * size * 4);
+        dockBitmap.copyPixelsToBuffer(buffer);
+        return buffer.array();
+    }
+
+    /**
+     * Draws the icon over the whole square. An adaptive icon is drawn layer by layer, each one
+     * enlarged so its visible area fills the square: drawing it as a whole would apply the system's
+     * mask (a circle on some devices) and leave transparent corners.
+     */
+    private static void drawWholeIcon(Canvas canvas, Drawable drawable, int size) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable instanceof AdaptiveIconDrawable) {
+            AdaptiveIconDrawable adaptive = (AdaptiveIconDrawable) drawable;
+            int layer = Math.round(size * ADAPTIVE_LAYER_RATIO);
+            int offset = (layer - size) / 2;
+            for (Drawable part : new Drawable[] {adaptive.getBackground(), adaptive.getForeground()}) {
+                if (part != null) {
+                    part.setBounds(-offset, -offset, size + offset, size + offset);
+                    part.draw(canvas);
+                }
+            }
+            return;
+        }
+        drawable.setBounds(0, 0, size, size);
+        drawable.draw(canvas);
+    }
+
     /** Draws the tile image; this opens the other app's resources, which is what the cache avoids. */
     private static byte[] renderTile(
         Context context, String packageName, String activityName, int width, int height) {
@@ -190,10 +264,15 @@ public final class LumeBridge {
      */
     private static File cacheFile(
         Context context, String packageName, String activityName, int width, int height) {
+        return cacheFile(context, packageName, activityName, width, height, TILE_CACHE_VERSION);
+    }
+
+    private static File cacheFile(
+        Context context, String packageName, String activityName, int width, int height, String version) {
         try {
             long updated = context.getPackageManager().getPackageInfo(packageName, 0).lastUpdateTime;
             String name = packageName + "-" + updated + "-" + Integer.toHexString(activityName.hashCode())
-                + "-" + width + "x" + height + "-" + TILE_CACHE_VERSION + ".rgba";
+                + "-" + width + "x" + height + "-" + version + ".rgba";
             return new File(new File(context.getCacheDir(), TILE_CACHE_DIR), name);
         } catch (PackageManager.NameNotFoundException | RuntimeException e) {
             return null;
@@ -241,7 +320,11 @@ public final class LumeBridge {
         pruneCache(context, dir, packageName, file.getName());
     }
 
-    /** Deletes older files of this app and, once per run, the files of apps that are gone. */
+    /**
+     * Deletes what is stale: files of this app from an older update, files of the same kind (tile
+     * or dock, told apart by their size) that this one replaces and, once per run, the files of
+     * apps that are gone. The other kind of the same app, from the same update, stays.
+     */
     private static void pruneCache(Context context, File dir, String packageName, String keep) {
         File[] files = dir.listFiles();
         if (files == null) {
@@ -249,15 +332,24 @@ public final class LumeBridge {
         }
         boolean checkAll = !cachePruned;
         cachePruned = true;
+        // Names are package-updated-hash-WxH-version.rgba, and package names have no dash.
+        String[] kept = keep.split("-");
         for (File file : files) {
             String name = file.getName();
             if (name.equals(keep)) {
                 continue;
             }
-            // Package names have no dash, so the name up to the first one is the package.
-            int dash = name.indexOf('-');
-            String owner = dash > 0 ? name.substring(0, dash) : name;
-            if (owner.equals(packageName) || (checkAll && !isInstalled(context, owner))) {
+            String[] parts = name.split("-");
+            String owner = parts.length > 0 ? parts[0] : name;
+            boolean stale = false;
+            if (owner.equals(packageName)) {
+                boolean sameUpdate = parts.length == kept.length && parts[1].equals(kept[1]);
+                boolean sameKind = parts.length == kept.length && parts[3].equals(kept[3]);
+                stale = !sameUpdate || sameKind;
+            } else if (checkAll && !isInstalled(context, owner)) {
+                stale = true;
+            }
+            if (stale) {
                 file.delete();
             }
         }
