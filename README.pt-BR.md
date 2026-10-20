@@ -37,7 +37,7 @@ Você vai enviar o app do computador para a TV com uma ferramenta pequena chamad
 
 ### 1. Baixe o Lume
 
-1. Abra a página **Releases** deste projeto no GitHub.
+1. Abra a [página **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) deste projeto no GitHub.
 2. Na versão mais nova, baixe o arquivo com nome parecido com **`lume-0.1.0.apk`**.
 3. Anote onde ele foi salvo (por exemplo, a pasta Downloads).
 
@@ -183,7 +183,7 @@ scripts/container-build.sh release    # APK e AAB com arm64 e armv7
 
 O resultado vai para `dist/`. O primeiro build baixa o Android SDK/NDK e o Rust e demora; os seguintes reaproveitam o cache. Use `LUME_CONTAINER` para forçar um runtime.
 
-Instale na TV ou no emulador com `adb install -r dist/lume-0.1.0-debug.apk`.
+Instale na TV ou no emulador com `adb install -r dist/lume-<version>-debug.apk`.
 
 **Assinar um release.** Sem chave, o release é assinado com a chave de debug e se chama `...-release-debugsigned.apk`: serve para você instalar, não para publicar. Para assinar com a sua chave, defina isto antes de rodar o script (os valores vão para o build como segredos e nunca ficam na imagem):
 
@@ -192,12 +192,12 @@ export LUME_KEYSTORE=/caminho/para/lume.jks
 export LUME_KEYSTORE_PASSWORD=...
 export LUME_KEY_ALIAS=...
 export LUME_KEY_PASSWORD=...
-scripts/container-build.sh release    # dist/lume-0.1.0-release.apk
+scripts/container-build.sh release    # dist/lume-<version>-release-debugsigned.apk
 ```
 
-Guarde o keystore fora do repositório e faça backup: a mesma chave precisa assinar todas as atualizações. `LUME_VERSION_NAME=0.2.0` gera outra versão.
+Guarde o keystore fora do repositório e faça backup: a mesma chave precisa assinar todas as atualizações. `A versão vem do build, não de um arquivo: a tag `v0.3.0` vira `0.3.0` (`LUME_VERSION_NAME=v0.3.0` faz o mesmo) e um build local usa o hash curto do commit (`4d8438b`, com `-dirty` se houver mudança não commitada em arquivo rastreado; `dev` sem git), então o arquivo se chama `dist/lume-4d8438b-release-debugsigned.apk`.
 
-**Conferir um APK.** `scripts/verify-apk.py dist/lume-0.1.0-release.apk` confere o tamanho (6 MB), as ABIs, o alinhamento de 16 KB das bibliotecas nativas e que o app não pede `INTERNET` nem `QUERY_ALL_PACKAGES`.
+**Conferir um APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` confere o tamanho (6 MB), as ABIs, o alinhamento de 16 KB das bibliotecas nativas e que o app não pede `INTERNET` nem `QUERY_ALL_PACKAGES`.
 
 ### Build sem container
 
