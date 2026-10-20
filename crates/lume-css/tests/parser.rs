@@ -163,7 +163,7 @@ fn lengths_and_numbers() {
         Decl::BorderRadius(16.0)
     );
     assert_eq!(single_decl("border-radius", "0"), Decl::BorderRadius(0.0));
-    assert_eq!(single_decl("font-size", "22.5px"), Decl::FontSize(22.5));
+    assert_eq!(single_decl("font-size", "22px"), Decl::FontSize(22.0));
     assert_eq!(single_decl("font-weight", "700"), Decl::FontWeight(700));
     assert_eq!(
         single_decl("letter-spacing", "-0.5px"),
@@ -172,7 +172,7 @@ fn lengths_and_numbers() {
     assert_eq!(single_decl("opacity", ".4"), Decl::Opacity(0.4));
     assert_eq!(single_decl("width", "320px"), Decl::Width(320.0));
     assert_eq!(single_decl("height", "180px"), Decl::Height(180.0));
-    assert_eq!(single_decl("gap", "20px"), Decl::Gap(20.0));
+    assert_eq!(single_decl("gap", "20.5px"), Decl::Gap(20.5));
     assert_eq!(
         single_decl("outline-offset", "4px"),
         Decl::OutlineOffset(4.0)
@@ -445,11 +445,24 @@ fn small_font_warns_but_keeps_declaration() {
     );
     assert_eq!(p.stylesheet.rules[0].decls[0], Decl::FontSize(12.0));
     assert_eq!(
-        parse(".tile-label { font-size: 14px; }", "t.css")
+        parse(".tile-label { font-size: 16px; }", "t.css")
             .diagnostics
             .len(),
         0
     );
+}
+
+#[test]
+fn font_size_outside_the_type_scale_warns() {
+    for size in ["15px", "17px", "24px", "22.5px"] {
+        let p = parse(&format!(".tile-label {{ font-size: {size}; }}"), "t.css");
+        assert_eq!(p.diagnostics.len(), 1, "{size}");
+        assert_eq!(p.diagnostics[0].severity, Severity::Warning);
+    }
+    for size in ["16px", "18px", "20px", "22px", "28px", "40px"] {
+        let p = parse(&format!(".tile-label {{ font-size: {size}; }}"), "t.css");
+        assert!(p.diagnostics.is_empty(), "{size}");
+    }
 }
 
 #[test]

@@ -4,7 +4,24 @@
 //! [`THEME`] and the [`vars`] constants, so no parsing happens at runtime.
 
 /// No text is rendered smaller than this many logical units.
-pub const MIN_FONT_SIZE: f32 = 14.0;
+pub const MIN_FONT_SIZE: f32 = 16.0;
+
+/// The type scale (same as `lume_css::FONT_SCALE`): text is rendered only in these sizes.
+pub const FONT_SCALE: [f32; 6] = [16.0, 18.0, 20.0, 22.0, 28.0, 40.0];
+
+/// The size of the scale nearest to `size` (the larger one on a tie); the build already warns
+/// about sizes outside the scale.
+pub fn nearest_font_size(size: f32) -> f32 {
+    FONT_SCALE
+        .into_iter()
+        .min_by(|a, b| {
+            (a - size)
+                .abs()
+                .total_cmp(&(b - size).abs())
+                .then(b.total_cmp(a))
+        })
+        .unwrap_or(MIN_FONT_SIZE)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Color {
@@ -246,8 +263,8 @@ impl ComputedStyle {
             self.box_shadow = (v.color.a > 0).then_some(v);
         }
         if let Some(v) = style.font_size {
-            // Smaller text is unreadable on a TV; the build already warns about it.
-            self.font_size = v.max(MIN_FONT_SIZE);
+            // Smaller text is unreadable on a TV, and sizes off the scale blur at 1.5x.
+            self.font_size = nearest_font_size(v);
         }
         if let Some(v) = style.font_weight {
             self.font_weight = v;
@@ -399,7 +416,7 @@ mod tests {
             font_size: Some(13.0),
             ..Style::EMPTY
         };
-        assert_eq!(ComputedStyle::DEFAULT.overlay(&small).font_size, 14.0);
+        assert_eq!(ComputedStyle::DEFAULT.overlay(&small).font_size, 16.0);
         let fine = Style {
             font_size: Some(18.0),
             ..Style::EMPTY
@@ -408,18 +425,44 @@ mod tests {
     }
 
     #[test]
-    fn the_theme_never_asks_for_text_smaller_than_the_minimum() {
+    fn font_sizes_off_the_scale_take_the_nearest_level() {
+        assert_eq!(nearest_font_size(15.0), 16.0);
+        assert_eq!(nearest_font_size(17.0), 18.0);
+        assert_eq!(nearest_font_size(24.0), 22.0);
+        assert_eq!(nearest_font_size(25.0), 28.0);
+        assert_eq!(nearest_font_size(100.0), 40.0);
+        for size in FONT_SCALE {
+            assert_eq!(nearest_font_size(size), size);
+        }
+    }
+
+    #[test]
+    fn every_text_of_the_theme_is_on_the_type_scale() {
         for component in [
+            &THEME.app,
             &THEME.tab,
             &THEME.clock,
+            &THEME.icon_button,
             &THEME.button,
+            &THEME.button_secondary,
+            &THEME.button_danger,
+            &THEME.section_title,
             &THEME.tile,
             &THEME.tile_label,
-            &THEME.chip,
-            &THEME.breadcrumb,
-            &THEME.panel,
-            &THEME.toast,
             &THEME.dock_label,
+            &THEME.editor_row,
+            &THEME.chip,
+            &THEME.panel,
+            &THEME.breadcrumb,
+            &THEME.settings_item,
+            &THEME.toast,
+            &THEME.brand,
+            &THEME.page_title,
+            &THEME.page_subtitle,
+            &THEME.card_heading,
+            &THEME.about_heading,
+            &THEME.about_body,
+            &THEME.about_license,
         ] {
             for state in [
                 StateFlags::NONE,
@@ -427,9 +470,84 @@ mod tests {
                 StateFlags::ACTIVE,
                 StateFlags::DISABLED,
             ] {
-                assert!(THEME.resolve(component, state).font_size >= MIN_FONT_SIZE);
+                let size = THEME.resolve(component, state).font_size;
+                assert!(
+                    size >= MIN_FONT_SIZE && FONT_SCALE.contains(&size),
+                    "{size}"
+                );
             }
         }
+    }
+
+    #[test]
+    fn the_component_boxes_are_on_the_ruler() {
+        let components = [
+            ("topbar", &THEME.topbar),
+            ("icon-button", &THEME.icon_button),
+            ("button", &THEME.button),
+            ("button-secondary", &THEME.button_secondary),
+            ("button-danger", &THEME.button_danger),
+            ("dock", &THEME.dock),
+            ("dock-label", &THEME.dock_label),
+            ("tile", &THEME.tile),
+            ("settings-item", &THEME.settings_item),
+            ("editor-row", &THEME.editor_row),
+            ("panel", &THEME.panel),
+            ("chip", &THEME.chip),
+            ("toast", &THEME.toast),
+        ];
+        let on_ruler = |name: &str, what: &str, v: f32| {
+            assert!(
+                v % 4.0 == 0.0,
+                "{name} {what} = {v} is off the 4-unit ruler"
+            );
+        };
+        for (name, component) in components {
+            let style = THEME.resolve(component, StateFlags::NONE);
+            on_ruler(name, "width", style.width.unwrap_or(0.0));
+            // The tile height comes from 16:9 (172 x 96.75), the registered exception.
+            if name != "tile" {
+                on_ruler(name, "height", style.height.unwrap_or(0.0));
+            }
+            on_ruler(name, "radius", style.border_radius);
+            on_ruler(name, "gap", style.gap);
+            for side in style.padding {
+                on_ruler(name, "padding", side);
+            }
+        }
+    }
+
+    #[test]
+    fn the_type_scale_matches_the_design_system() {
+        assert_eq!(
+            [
+                vars::FONT_CAPTION,
+                vars::FONT_LABEL,
+                vars::FONT_BODY,
+                vars::FONT_PRIMARY,
+                vars::FONT_BRAND,
+                vars::FONT_TITLE,
+            ],
+            FONT_SCALE
+        );
+        let size = |c: &ComponentTheme| THEME.resolve(c, StateFlags::NONE).font_size;
+        assert_eq!(size(&THEME.page_title), 40.0);
+        assert_eq!(size(&THEME.brand), 28.0);
+        // The clock matches the wordmark, at the other end of the top bar.
+        assert_eq!(size(&THEME.clock), 28.0);
+        for c in [&THEME.tab, &THEME.editor_row, &THEME.about_heading] {
+            assert_eq!(size(c), 22.0);
+        }
+        for c in [
+            &THEME.tile_label,
+            &THEME.chip,
+            &THEME.panel,
+            &THEME.breadcrumb,
+        ] {
+            assert_eq!(size(c), 18.0);
+        }
+        assert_eq!(size(&THEME.card_heading), 16.0);
+        assert_eq!(size(&THEME.about_license), 16.0);
     }
 
     #[test]

@@ -55,7 +55,9 @@ A variable can use another one (`--accent: var(--primary);`), so a theme can set
 
 Only the components below, with at most one pseudo-class: `:focus` (D-pad focus), `:active` (selected) and `:disabled`.
 
-`.app` `.topbar` `.tab` `.clock` `.icon-button` `.button` `.button-secondary` `.button-danger` `.section-title` `.tile` `.tile-label` `.dock` `.dock-label` `.editor-row` `.chip` `.panel` `.breadcrumb` `.settings-item` `.toast`
+`.app` `.topbar` `.brand` `.tab` `.clock` `.icon-button` `.button` `.button-secondary` `.button-danger` `.section-title` `.tile` `.tile-label` `.dock` `.dock-label` `.editor-row` `.chip` `.panel` `.breadcrumb` `.settings-item` `.toast` `.page-title` `.page-subtitle` `.card-heading` `.about-heading` `.about-body` `.about-license`
+
+`.brand` is the "Lume" wordmark in the top bar; `.page-title` and `.page-subtitle` are the header of secondary screens; `.card-heading` is the uppercase heading inside a card (TV statistics, favorites order); `.about-heading`, `.about-body` and `.about-license` are the three kinds of text of the About screen. No screen sets a font size, weight or letter spacing in code: they all come from these components.
 
 ```css
 .tab { color: rgba(255, 255, 255, 0.7); }
@@ -91,7 +93,7 @@ Lengths are always in `px` of the 1280×720 logical canvas (or `0`).
 | `outline` | `<width> solid <color>` or `none` |
 | `outline-offset` | a length |
 | `box-shadow` | `<x> <y> <blur> [<spread>] <color>` (one shadow) or `none` |
-| `font-size` | a length (below 14px produces a warning) |
+| `font-size` | a length on the type scale: 16, 18, 20, 22, 28 or 40px (any other size produces a warning and is drawn at the nearest one; below 16px is too small for a TV) |
 | `font-weight` | an integer (e.g. 400, 700) |
 | `letter-spacing` | a length |
 | `padding` | 1 to 4 lengths |
@@ -140,9 +142,26 @@ Curves: `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out` and `cubic-bezier
 
 ### Typography and spacing
 
+The type scale has six even sizes, so the text lands on whole pixels at 1.5x (1080p). The default theme names them as variables, and every text component uses one:
+
+```css
+:root {
+  --font-title: 40px;   /* screen title */
+  --font-brand: 28px;   /* "Lume" and the clock in the top bar */
+  --font-primary: 22px; /* tabs, sections, settings items, tiles, editor rows, About headings */
+  --font-body: 20px;    /* base text, About body */
+  --font-label: 18px;   /* buttons, dock bubble, toast, subtitle, breadcrumb, tile label, chip, panel */
+  --font-caption: 16px; /* third-party licenses, card headings */
+}
+.page-title { font-size: var(--font-title); font-weight: 800; letter-spacing: -0.8px; }
+.card-heading { font-size: var(--font-caption); font-weight: 800; letter-spacing: 1.2px; }
+```
+
+Lengths follow the 4-unit ruler of the design system (`openspec/specs/design-system`, "Régua de layout"): positions, sizes, padding, gaps and radii are multiples of 4.
+
 ```css
 .section-title { font-size: 22px; font-weight: 700; letter-spacing: 0.2px; }
-.tile-label { font-size: 16px; font-weight: 500; padding: 8px 12px; gap: 6px; }
+.tile-label { font-size: 18px; font-weight: 500; padding: 8px 12px; gap: 8px; }
 .button { width: 160px; height: 48px; }
 ```
 
@@ -157,7 +176,7 @@ The favorites on the Home screen sit in a floating bar. `.dock` styles the bar a
   outline: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
-.dock-label { padding: 8px 18px; border-radius: 12px; background: rgba(15, 23, 30, 0.9); color: #F2F5F7; font-size: 18px; font-weight: 700; }
+.dock-label { padding: 8px 16px; border-radius: 12px; background: rgba(15, 23, 30, 0.9); color: #F2F5F7; font-size: 18px; font-weight: 700; }
 ```
 
 ## What is not supported
@@ -167,6 +186,7 @@ The favorites on the Home screen sit in a floating bar. `.dock` styles the bar a
 .panel { background: url(image.png); }     /* warning: url() is not supported */
 .tile { filter: blur(4px); }               /* warning: unsupported property */
 .tile { font-size: 12px; }                 /* warning: too small to read on a TV */
+.tile { font-size: 17px; }                 /* warning: not on the type scale, drawn at 18px */
 .tile { color: var(--does-not-exist); }    /* error: undefined variable */
 .tile { border-radius: 12; }               /* error: missing the px unit */
 .tile { color: white;                      /* error: block without a closing brace */
