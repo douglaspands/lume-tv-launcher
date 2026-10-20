@@ -1,6 +1,6 @@
 # Notas de dispositivo e ambiente
 
-Registro de medições e descobertas feitas durante o desenvolvimento do lume v0.1.0.
+Registro de medições e descobertas feitas durante o desenvolvimento do Lume v0.1.0.
 
 ## Build em container: validação do `wslc` (tarefa 1.6)
 
@@ -24,18 +24,18 @@ Medido em 2026-10-19 com o APK de debug (`dist/lume-0.1.0-debug.apk`), via `adb`
 
 | Item | Valor |
 |---|---|
-| Modelo / fabricante | `UnionTV` / TCL (SoC Realtek `rtd284x`) |
-| Android | 9 (API 28), build `release-keys`, `ro.config.low_ram=true` |
+| Modelo / fabricante | `BeyondTV2` / TCL (SoC Realtek `rtd285o`) |
+| Android | 11 (API 30), build `release-keys`, `ro.config.low_ram=false`; firmware global instalado pelo autor (o firmware original do Brasil só chega ao Android 9) |
 | ABIs | `armeabi-v7a`, `armeabi` (somente 32 bits) |
 | GPU | ARM Mali-470 MP, **OpenGL ES 2.0** (`ro.opengles.version=131072`), driver r9p0 |
-| Tela | `wm size` 1280×720, `wm density` 213; a janela recebida do lume é 1280×720 |
-| RAM | `MemTotal` 1,4 GB (`MemAvailable` ~700 MB com a TV ociosa) |
+| Tela | `wm size` 1920×1080, `wm density` 320 |
+| RAM | `MemTotal` 2 GB (`MemAvailable` ~498 MB com a TV ociosa) |
 | Fontes do sistema | 236 arquivos em `/system/fonts` (Noto por escrita, `NotoSansCJK-Regular.ttc`, `DroidSans*`), mais `/system/etc/fonts.xml` |
 
 ### 2.1 Hello GL / renderer
 
 - O primeiro build falhou na TV com `program failed to link: L0010 Uniform 'u_view' differ on precision`: o driver Mali exige a mesma precisão para um `uniform` declarado nos dois estágios, e o fragment shader do retângulo usava `highp` condicional enquanto o vertex shader usava o padrão. **Correção:** o `u_view` saiu do fragment shader, e a unidade de pixel (`1 / escala`) passa do vertex shader para o fragment shader pelo varying `v_local.z`.
-- Depois disso, o lume desenha a interface inteira na TV (barra superior, carrossel, favoritos, textos em pt-BR). Screenshot por `adb exec-out screencap -p`.
+- Depois disso, o Lume desenha a interface inteira na TV (barra superior, carrossel, favoritos, textos em pt-BR). Screenshot por `adb exec-out screencap -p`.
 - O build de debug do container usa uma chave de debug diferente a cada imagem, então `adb install -r` falha com `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. Em desenvolvimento, desinstale antes (`adb uninstall app.lume.tv`).
 
 ### 2.2 Botão Home
@@ -43,7 +43,7 @@ Medido em 2026-10-19 com o APK de debug (`dist/lume-0.1.0-debug.apk`), via `adb`
 | Tentativa | Resultado |
 |---|---|
 | `cmd package set-home-activity app.lume.tv/.LumeActivity` | Aceito, **mas o Home continua abrindo o `com.google.android.tvlauncher`** (a resolução de HOME ignora a escolha) |
-| `pm disable-user --user 0 com.google.android.tvlauncher` | **Funciona**: HOME resolve para `app.lume.tv/.LumeActivity`, e `input keyevent KEYCODE_HOME` volta ao lume a partir de Configurações e do YouTube |
+| `pm disable-user --user 0 com.google.android.tvlauncher` | **Funciona**: HOME resolve para `app.lume.tv/.LumeActivity`, e `input keyevent KEYCODE_HOME` volta ao Lume a partir de Configurações e do YouTube |
 
 Reverter: `adb shell pm enable com.google.android.tvlauncher`.
 Limitação: o teste usou `input keyevent KEYCODE_HOME`. A conferência com o botão físico do controle da TCL continua pendente (tarefa 14.1).
@@ -57,9 +57,9 @@ Limitação: o teste usou `input keyevent KEYCODE_HOME`. A conferência com o bo
 | Launcher de fábrica (`com.google.android.tvlauncher`), ocioso | **48,7 MB** (Native 21 MB, Code 10 MB) |
 
 Descobertas:
-- O Android da TCL **encerra o processo do lume pouco depois de ele ir para segundo plano** (`ActivityManager: Killing ... app.lume.tv (adj 600): stop app.lume.tv`; há também uma lista `persist.tcl.standby.processName`). Nos testes isso aconteceu quando outro app pesado abriu (Play Store). Nesses casos o custo em segundo plano é zero, e todo retorno é uma abertura a frio.
-- Configurações da TV (`com.android.tv.settings/.MainSettings`) é translúcida: o lume só pausa, não para, e o ciclo DORMINDO não dispara. Para testar o DORMINDO, use um app de tela cheia (Plex, Play Store).
-- O YouTube, nesta TV, fecha sozinho ao ser aberto por `am start` e devolve a tela ao lume (provavelmente não está logado), então não serve para as medições.
+- O Android da TCL **encerra o processo do Lume pouco depois de ele ir para segundo plano** (`ActivityManager: Killing ... app.lume.tv (adj 600): stop app.lume.tv`; há também uma lista `persist.tcl.standby.processName`). Nos testes isso aconteceu quando outro app pesado abriu (Play Store). Nesses casos o custo em segundo plano é zero, e todo retorno é uma abertura a frio.
+- Configurações da TV (`com.android.tv.settings/.MainSettings`) é translúcida: o Lume só pausa, não para, e o ciclo DORMINDO não dispara. Para testar o DORMINDO, use um app de tela cheia (Plex, Play Store).
+- O YouTube, nesta TV, fecha sozinho ao ser aberto por `am start` e devolve a tela ao Lume (provavelmente não está logado), então não serve para as medições.
 
 ### Build de release na TCL (APK de 1,9 MB, assinado com chave de debug)
 
@@ -71,18 +71,18 @@ Descobertas:
 | Abertura a frio (Home → `window 1280x720`, 3 execuções) | 0,87 a 0,88 s (`Displayed` +470 a 490 ms) | ≤ 800 ms até o primeiro quadro |
 
 Observações:
-- Os tempos vão do `START u0 {HOME}` do `ActivityManager` até o log `window` do lume, que **não inclui a criação do renderer nem o primeiro quadro**. Boa parte do intervalo é a transição de janelas do sistema, que o lume não controla. Falta um log de "primeiro quadro desenhado" para fechar a medição (tarefa 14.1).
+- Os tempos vão do `START u0 {HOME}` do `ActivityManager` até o log `window` do Lume, que **não inclui a criação do renderer nem o primeiro quadro**. Boa parte do intervalo é a transição de janelas do sistema, que o Lume não controla. Falta um log de "primeiro quadro desenhado" para fechar a medição (tarefa 14.1).
 - Mesmo só até a janela, o retorno a quente (~0,5 s) já passa de 300 ms. Parte disso é a transição do sistema, mas é o principal ponto de atenção da tarefa 14.1 e pode exigir recalibrar esse orçamento na spec.
 - A release usa metade da memória do build de debug (o debug carrega símbolos e DEX sem otimização).
 
 ### Bug encontrado só na release: o R8 removia a ponte JNI
 
-Com `minifyEnabled true` e sem regras, o R8 removia `LumeActivity.bridge(String, String)`, chamado apenas pelo Rust. A TV mostrou o lume em inglês, sem catálogo (só o tile "Settings"), com os logs `bridge command '...' failed: Method not found`. **Correção:** `android/app/proguard-rules.pro` mantém `LumeActivity.bridge`, `nativeHomePressed` e `LumeBridge`. Depois disso, a TV lista os apps reais, em pt-BR (idioma do sistema vindo da ponte).
+Com `minifyEnabled true` e sem regras, o R8 removia `LumeActivity.bridge(String, String)`, chamado apenas pelo Rust. A TV mostrou o Lume em inglês, sem catálogo (só o tile "Settings"), com os logs `bridge command '...' failed: Method not found`. **Correção:** `android/app/proguard-rules.pro` mantém `LumeActivity.bridge`, `nativeHomePressed` e `LumeBridge`. Depois disso, a TV lista os apps reais, em pt-BR (idioma do sistema vindo da ponte).
 
 ### Aba Apps: serviços de sistema e ícones (2026-10-19)
 
-- **O OK nos tiles funciona**: testei os 22 tiles da grade antigos por `adb input`, e cada OK abriu a activity certa. O "volta para o início" e o "vai para configurações" vinham de apps de sistema da TCL que estavam na grade: `copyDataToTV` e `TclHomePassive` fecham na hora (a TV volta ao HOME, que é o lume), e o Android TV Remote Service, `Config.` e `Configuração Inicial` abrem telas de configuração.
-- **Origem**: eram atividades com a categoria `LAUNCHER` comum (não `LEANBACK_LAUNCHER`) de apps de sistema. O launcher original só lista `LEANBACK_LAUNCHER`. O lume agora descarta as só-`LAUNCHER` de apps de sistema, e a grade passa de 25 para 18 tiles (apps de TV e o tile "Configurações").
+- **O OK nos tiles funciona**: testei os 22 tiles da grade antigos por `adb input`, e cada OK abriu a activity certa. O "volta para o início" e o "vai para configurações" vinham de apps de sistema da TCL que estavam na grade: `copyDataToTV` e `TclHomePassive` fecham na hora (a TV volta ao HOME, que é o Lume), e o Android TV Remote Service, `Config.` e `Configuração Inicial` abrem telas de configuração.
+- **Origem**: eram atividades com a categoria `LAUNCHER` comum (não `LEANBACK_LAUNCHER`) de apps de sistema. O launcher original só lista `LEANBACK_LAUNCHER`. O Lume agora descarta as só-`LAUNCHER` de apps de sistema, e a grade passa de 25 para 18 tiles (apps de TV e o tile "Configurações").
 - **Ícones**: aparecem na grade (sem o nome dentro do tile) e nos favoritos (ícone mais o nome). Medido na release com ícones carregados: **18,3 MB** em primeiro plano e **16,9 MB** dormindo (Graphics 0), contra 13,8 MB e 13,6 MB sem ícones. Ainda dentro dos orçamentos de 45 e 20 MB.
 - **Banners de TV** (como o Android TV Launcher): os apps de TV mostram o banner 16:9 cobrindo o tile, com os cantos arredondados do tile, e os demais mostram o ícone sobre a cor do tile. Memória na release: **16,4 MB** em primeiro plano e **15,5 MB** dormindo (Graphics 0), dentro dos orçamentos de 45 e 20 MB.
 
@@ -92,7 +92,7 @@ APK de release assinado com chave de debug, TCL 55C715 (4 núcleos, 1,4 GB de RA
 
 ### Resumo
 
-| Item | lume | Launcher original | Orçamento |
+| Item | Lume | Launcher original | Orçamento |
 |---|---|---|---|
 | PSS em primeiro plano, estável (30 s a 90 s depois de abrir) | **28 a 32 MB** | 40,9 MB (48,7 MB em outra medição) | ≤ 45 MB |
 | PSS em primeiro plano, pico (0 a 10 s depois de abrir) | **51 a 53 MB** | n/a | ≤ 45 MB (**acima**) |
@@ -116,10 +116,10 @@ Sem vazamento: em 90 ciclos de troca de abas, o heap Java ficou em 1,7 MB e o he
 - Retorno a quente: 0,2 s pelo `am start -W` (mesma ressalva) e ~0,5 s da tecla Home até o `window`, parte disso é a transição do sistema.
 
 ### O que explica o PSS
-- **Pico de 51 a 53 MB na abertura**: ~23 MB são páginas **limpas** de arquivo (`.apk mmap`, privadas e reclamáveis pelo kernel), que caem para ~7 MB sozinhas em 20 a 30 s. A explicação mais provável é que o `PackageManager` abre o APK de cada app instalado para ler o rótulo e o banner (Netflix, Disney+ e Prime têm dezenas de MB). O pico vem do custo de abrir esses recursos, não do lume. Para reduzir: guardar os banners num cache em disco (`cacheDir`, ~150 KB por app) e carregar só uma vez por versão do app.
+- **Pico de 51 a 53 MB na abertura**: ~23 MB são páginas **limpas** de arquivo (`.apk mmap`, privadas e reclamáveis pelo kernel), que caem para ~7 MB sozinhas em 20 a 30 s. A explicação mais provável é que o `PackageManager` abre o APK de cada app instalado para ler o rótulo e o banner (Netflix, Disney+ e Prime têm dezenas de MB). O pico vem do custo de abrir esses recursos, não do Lume. Para reduzir: guardar os banners num cache em disco (`cacheDir`, ~150 KB por app) e carregar só uma vez por versão do app.
 - **Heap nativo de ~11 MB em primeiro plano** (contra 4,5 MB sem imagens): memória livre que o alocador ainda não devolveu depois de montar os banners. Reutilizar os `Bitmap` (já feito) não mudou o valor estável. Cai para ~6 MB dormindo.
-- **Dormindo, ~6 MB de heap nativo** é o piso do processo; o lume em si usa pouco.
-- A TCL encerra o processo do lume ~40 a 60 s depois de ir para segundo plano.
+- **Dormindo, ~6 MB de heap nativo** é o piso do processo; o Lume em si usa pouco.
+- A TCL encerra o processo do Lume ~40 a 60 s depois de ir para segundo plano.
 
 ### Bug encontrado e corrigido
 Na aba Apps (e em Configurações, Sobre e Editor), com o foco fora do botão do carrossel, o prazo do carrossel ficava vencido para sempre (só o desenho da Home o consumia) e o laço desenhava a **60 quadros por segundo sem parar, usando ~30% de um núcleo**. Corrigido: o carrossel só tem prazo na Home. Teste: `no_screen_but_home_keeps_the_carousel_timer_running`. Depois da correção, a aba Apps parada usa 0,00% de CPU.
@@ -149,10 +149,10 @@ O primeiro uso, com o cache vazio, continua custando o escaneamento e a renderiz
 
 ## Primeiro quadro, animações e quadros perdidos (2026-10-19)
 
-### Primeiro quadro (log `first frame` do lume, release, TCL)
+### Primeiro quadro (log `first frame` do Lume, release, TCL)
 - **A frio** (processo morto, `START` → primeiro quadro): **725 a 904 ms** (mediana ~745 ms), contra o orçamento de 800 ms. O quadro sai 80 a 90 ms depois da janela e ~430 a 510 ms depois do início do processo.
-- **A quente** (processo vivo, outro app na frente): **503 a 714 ms** (mediana ~520 ms), contra 300 ms. A parte do lume (janela → primeiro quadro) é de **75 a 110 ms**. Cerca de 400 ms vão da camada do lume aparecer no SurfaceFlinger até a janela chegar ao lume, e esse tempo é da transição de janelas da TCL, fora do controle do lume.
-- Um tema próprio (`LumeTheme`, sem animação de janela e com o fundo do lume) melhorou só a abertura a frio (mediana de ~745 para ~690 ms) e não mudou a quente.
+- **A quente** (processo vivo, outro app na frente): **503 a 714 ms** (mediana ~520 ms), contra 300 ms. A parte do Lume (janela → primeiro quadro) é de **75 a 110 ms**. Cerca de 400 ms vão da camada do Lume aparecer no SurfaceFlinger até a janela chegar ao Lume, e esse tempo é da transição de janelas da TCL, fora do controle do Lume.
+- Um tema próprio (`LumeTheme`, sem animação de janela e com o fundo do Lume) melhorou só a abertura a frio (mediana de ~745 para ~690 ms) e não mudou a quente.
 - O primeiro quadro é desenhado sem as imagens dos tiles, que entram em seguida.
 
 ### Bug: as animações não rodavam na TV
@@ -166,7 +166,7 @@ Os 78 quadros em 30 s com o foco no botão do carrossel ficaram sem investigaç�
 
 ## Análise de desempenho da v0.2.0 (dock, papel de parede, abas por foco)
 
-Medida em 19/10/2026 na TCL 55C715 (SoC rtd284x, 4 núcleos a 0,9 a 1,1 GHz, 2 GB de RAM), com o APK de release
+Medida em 19/10/2026 na TCL 55C715 (SoC rtd285o, 4 núcleos a 0,9 a 1,1 GHz, 2 GB de RAM), com o APK de release
 (`lume-0.2.0-release-debugsigned.apk`, 3,14 MB), via `adb` (`dumpsys meminfo`, `/proc/meminfo`, `/proc/<pid>/stat`,
 `am start -W`, `logcat`). Valores de um aparelho em uso normal, não de um laboratório.
 
@@ -183,13 +183,13 @@ Medida em 19/10/2026 na TCL 55C715 (SoC rtd284x, 4 núcleos a 0,9 a 1,1 GHz, 2 G
 | Swap livre | cerca de 373 MB; **usado cerca de 232 MB (38%)** | variou de 232 a 235 MB nas leituras |
 | Dados no zram | 205 MB originais → 73 MB comprimidos (2,8x) | `mm_stat` |
 | Páginas para o swap desde o boot | 1,06 milhão de saídas e 77 mil de entradas | cerca de 4 GB escritos em zram |
-| Carga (`loadavg`) | cerca de 21 em 4 núcleos | o sistema da TV (serviços TCL) está bem carregado, com ou sem o lume |
+| Carga (`loadavg`) | cerca de 21 em 4 núcleos | o sistema da TV (serviços TCL) está bem carregado, com ou sem o Lume |
 
-Leitura: a TV trabalha com pouca RAM livre e com swap em uso o tempo todo. Isso torna importante o lume ficar
+Leitura: a TV trabalha com pouca RAM livre e com swap em uso o tempo todo. Isso torna importante o Lume ficar
 pequeno e **não manter memória gráfica em segundo plano**, e explica por que o sistema às vezes encerra o processo
-do lume quando outro app pesado abre.
+do Lume quando outro app pesado abre.
 
-### Memória do lume
+### Memória do Lume
 
 | | Primeiro plano | Segundo plano | Orçamento |
 |---|---|---|---|
@@ -200,7 +200,7 @@ do lume quando outro app pesado abre.
 | Swap do processo | 15 a 67 KB | | |
 | RSS | 106 a 110 MB, quase tudo arquivo compartilhado | | |
 
-O lume representa cerca de 0,8% da RAM. **A memória gráfica não aparece no PSS** nesta TV (`Graphics: 0`). Pela conta
+O Lume representa cerca de 0,8% da RAM. **A memória gráfica não aparece no PSS** nesta TV (`Graphics: 0`). Pela conta
 do projeto ela é: atlas de ícones 1024x2304 RGBA = 9,4 MB, papel de parede 640x360 RGB = 0,7 MB e o atlas de glifos;
 somando o PSS mais cerca de 10 a 11 MB, o total fica perto de 28 MB, dentro dos 45 MB. Em segundo plano o PSS quase não
 cai (16,4 contra 16,7 MB) justamente porque a parte gráfica liberada nunca estava contada; o que sobra é o runtime.
@@ -211,8 +211,8 @@ O Java e o Rust do processo ficam residentes de propósito (retorno a quente rá
 | | Medido | Observação |
 |---|---|---|
 | Abertura a frio (`am start -W`) | **371 ms** (TotalTime) | processo novo |
-| Primeiro quadro | 650 ms depois do início do processo, 77 ms depois de a janela existir | log do próprio lume |
-| Retorno a quente (Home com lume em 2º plano) | **127 ms** | spec: até 300 ms |
+| Primeiro quadro | 650 ms depois do início do processo, 77 ms depois de a janela existir | log do próprio Lume |
+| Retorno a quente (Home com Lume em 2º plano) | **127 ms** | spec: até 300 ms |
 | Troca de aba, dock, grade | um quadro de animação a cada 16 ms; custo por quadro abaixo de 8 ms | em 6 movimentos do dock só um quadro chegou a 8 ms |
 
 Antes da correção do dock havia saltos de 15 a 46 ms por volta no 1º uso (carga de ícones durante a animação) e a
@@ -222,18 +222,18 @@ posição 0 da animação sendo descartada: ver `docs/handoff-dock-aurora.md`.
 
 `/proc/<pid>/stat` em ticks de 10 ms; ciclos estimados com 0,9 a 1,1 GHz (frequência dos núcleos do aparelho).
 
-| Situação (30 s) | CPU do lume | Núcleo ocupado | Ciclos |
+| Situação (30 s) | CPU do Lume | Núcleo ocupado | Ciclos |
 |---|---|---|---|
 | Início ocioso (foco no dock) | 0,07 s (6 ticks de usuário e 1 de sistema) | **0,2% de 1 núcleo** | cerca de 65 milhões (2 milhões por segundo, só o relógio por minuto) |
 | Navegação contínua, 60 teclas (esquerda/direita a cada 0,5 s) | 3,37 s (226 de usuário e 111 de sistema) | **11% de 1 núcleo** | cerca de 3,0 a 3,7 bilhões (50 a 60 milhões por tecla, uma animação de 210 ms) |
 | Início desde a abertura até esta medida | 1,73 s | | |
 
-O lume tem 20 threads, nenhuma delas trabalhando enquanto parado. O laço de eventos dorme até o próximo prazo
+O Lume tem 20 threads, nenhuma delas trabalhando enquanto parado. O laço de eventos dorme até o próximo prazo
 (relógio ou animação), por isso o início ocioso custa 0,2%.
 
 ### Sobre gerar log durante o desenvolvimento
 
-O lume **já gera log**, também na release: `android_logger` em nível `Info`, só eventos (versão ao iniciar, tamanho da
+O Lume **já gera log**, também na release: `android_logger` em nível `Info`, só eventos (versão ao iniciar, tamanho da
 janela, tempo do primeiro quadro, janela liberada, avisos). São poucas linhas por sessão, sem log por quadro, e custam
 praticamente nada. Não vale acrescentar log por quadro ou por tecla: ele custa CPU no laço de desenho e polui o `logcat`.
 Para medir tempo basta instrumentação temporária (como foi feito para achar o engasgo do dock) ou, se virar rotina, um
@@ -257,9 +257,52 @@ preenchimento de pixels por quadro na GPU da TV. Hoje o papel de parede e as est
 (`Painter::wallpaper(true)`: fator 0,22 sobre o fundo `--bg` em que o quadro é limpo), com o mesmo resultado visual
 (os testes de contraste em GL passam) e sem a camada.
 
-| Memória do lume (PSS) | Valor | Orçamento |
+| Memória do Lume (PSS) | Valor | Orçamento |
 |---|---|---|
 | Primeiro plano | 17 a 20 MB | 45 MB |
 | Segundo plano (YouTube aberto, 12 s) | 12,2 MB | 20 MB |
 | Abertura a frio (`am start -W`) | 373 ms | n/a |
 | Retorno a quente | 12 ms de espera no `am start -W` (127 ms de ponta a ponta, antes) | 300 ms |
+
+## Comparação entre as duas TVs de teste (2026-10-20)
+
+Coletado por `adb` (dados brutos em `docs/device-specs/`). A TCL é o final `.6` e a AIWA o final `.3`.
+
+| | TCL 55C715 (`.6`) | AIWA SMART TV (`.3`) |
+|---|---|---|
+| Fabricante / modelo | TCL `BeyondTV2` | KTC (marca AIWA), device `stanford`, build `KTC_AIWA_2K_SA_21V2` |
+| Android | 11 (API 30), patch 2021-12-05, firmware global | 11 (API 30), patch 2024-01-01 |
+| SoC (plataforma) | Realtek `rtd285o` | MediaTek `mt5867` |
+| CPU | 4 × Cortex-A53, ARMv7 32 bits, até 1,1 GHz | 4 × Cortex-A53, ARMv7 32 bits, até 1,5 GHz |
+| ABI | `armeabi-v7a` | `armeabi-v7a` |
+| RAM | 2 GB (`MemAvailable` ~498 MB na coleta) | ~913 MB, `low_ram=true` (`MemAvailable` ~348 MB) |
+| GPU | Mali-470 MP, OpenGL ES 2.0 | Mali-G31, OpenGL ES 3.2, Vulkan 1.0 |
+| Tela | 1920×1080, 320 dpi, 60 Hz, HDR 1/2/3 | 1280×720, 213 dpi |
+| `/data` | 10,1 GB, 18% usado | 4,0 GB, 82% usado (~755 MB livres após limpar caches) |
+| Launcher do fabricante | `com.tcl.tv.tclhome_master` | `com.google.android.tvlauncher` |
+| Configurações | `com.android.tv.settings.MainSettings` | `com.android.tv.settings.MainSettings` |
+| `com.android.tv.action.VIEW_INPUTS` | `com.tcl.tv/.sourcemenu.sourcemanager.EnableViewInputLauncher` | `com.mediatek.wwtv.tvcenter/.nav.inputpanel.InputsPanelActivity` |
+| Idioma do sistema | pt-BR | pt-BR |
+
+Observações:
+
+- A AIWA é o caso mais exigente: menos da metade da RAM, `low_ram`, 720p e pouco espaço livre. Os orçamentos de `resource-efficiency` só foram medidos na TCL.
+- O menu de entradas abre nas duas TVs pela ação `com.android.tv.action.VIEW_INPUTS`, sem permissão especial. Na AIWA a abertura foi confirmada visualmente pelo autor (o `screencap` não captura o painel); o log do `ActivityTaskManager` registra a activity exibida em 131 ms.
+- Em 2026-10-20 foram limpos os caches dos apps da AIWA (`pm trim-caches`): o `/data` passou de 3,38 GB para 3,33 GB usados.
+
+## v0.2.1: entradas, engrenagem e painel de estatísticas (2026-10-20)
+
+APK `lume-0.2.1-release-debugsigned.apk` (3,34 MB), instalado nas duas TVs.
+
+- **O que um app lê (tarefa 4.1)**: nas duas TVs `/proc/stat` é bloqueado para o app (Android 11), e o Lume cai na frequência dos núcleos
+  (`/sys/devices/system/cpu/cpu*/cpufreq`, log `stats: cpu source freq`). Memória (`ActivityManager.MemoryInfo`) e disco (`StatFs`) funcionam
+  sem permissão. **A CPU do painel é, portanto, a frequência atual contra a máxima, não a carga**: com a TV ociosa o governador costuma
+  subir o clock logo após uma tecla (viram-se 73% e 82%).
+- **Botão de entradas**: OK abre o menu nas duas TVs (`START ... act=com.android.tv.action.VIEW_INPUTS`, TCL
+  `EnableViewInputLauncher`, AIWA `InputsPanelActivity`). `<queries>` no manifesto faz o `resolveActivity` enxergar a ação no Android 11.
+- **Engrenagem**: abre `com.android.tv.settings/.MainSettings` (TCL confirmada pelo `dumpsys activity`; a AIWA usa a mesma atividade).
+- **Tile "Lume"**: abre as configurações do Lume; Voltar devolve o foco ao tile (AIWA, captura).
+- **Custo do painel**: com a tela de Configurações aberta por 20 s, 9 a 10 quadros (um a cada 2 s, o painel); fora dela, nenhum quadro
+  além do da saída. PSS na TCL com o painel: 28,6 MB (orçamento 45 MB).
+- **Android 9**: sem emulador Android TV 9 neste ambiente, então a validação em API 28 (instalação, engrenagem e botão escondido
+  quando a ação não resolve) **continua em aberto**; o único risco é a ação de entradas, que no Android 9 não exige `<queries>`.

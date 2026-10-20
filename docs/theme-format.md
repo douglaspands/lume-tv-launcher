@@ -55,7 +55,7 @@ A variable can use another one (`--accent: var(--primary);`), so a theme can set
 
 Only the components below, with at most one pseudo-class: `:focus` (D-pad focus), `:active` (selected) and `:disabled`.
 
-`.app` `.topbar` `.tab` `.clock` `.icon-button` `.button` `.section-title` `.tile` `.tile-label` `.dock` `.dock-label` `.editor-row` `.chip` `.panel` `.breadcrumb` `.settings-item` `.toast`
+`.app` `.topbar` `.tab` `.clock` `.icon-button` `.button` `.button-secondary` `.button-danger` `.section-title` `.tile` `.tile-label` `.dock` `.dock-label` `.editor-row` `.chip` `.panel` `.breadcrumb` `.settings-item` `.toast`
 
 ```css
 .tab { color: rgba(255, 255, 255, 0.7); }

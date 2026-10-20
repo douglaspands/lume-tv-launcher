@@ -1,6 +1,6 @@
-# Translating lume
+# Translating Lume
 
-lume shows its texts in the language of the Android system. Translations are standard Android resource files, so you can edit them with any text editor, Android Studio, Weblate or Crowdin. You do not need to know Rust.
+Lume shows its texts in the language of the Android system. Translations are standard Android resource files, so you can edit them with any text editor, Android Studio, Weblate or Crowdin. You do not need to know Rust.
 
 ## Add a language
 
@@ -19,7 +19,7 @@ lume shows its texts in the language of the Android system. Translations are sta
    cp android/app/src/main/res/values/strings.xml android/app/src/main/res/values-es/strings.xml
    ```
 
-   (Create the `values-es` folder first.) The English file is the reference: it lists every text lume has.
+   (Create the `values-es` folder first.) The English file is the reference: it lists every text Lume has.
 
 3. Translate the text inside each `<string>` and each `<item>` of a `<plurals>`. Do **not** change the `name` attributes.
 
@@ -45,9 +45,9 @@ Texts with a quantity use `<plurals>` with the CLDR categories of your language:
 </plurals>
 ```
 
-Which categories a language uses is defined by the CLDR (see the [plural rules table](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)). lume knows the rules of English and most European languages, Portuguese, French, Russian and Ukrainian, Polish, Czech and Slovak, Arabic, and the languages without plural forms (Japanese, Chinese, Korean, Vietnamese, Thai, Indonesian...).
+Which categories a language uses is defined by the CLDR (see the [plural rules table](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)). Lume knows the rules of English and most European languages, Portuguese, French, Russian and Ukrainian, Polish, Czech and Slovak, Arabic, and the languages without plural forms (Japanese, Chinese, Korean, Vietnamese, Thai, Indonesian...).
 
-If your language follows a rule lume does not know yet, add one line to `family_of` in `crates/lume-core/src/i18n/plural.rs` (or, for a new rule, a new family and its test), and mention it in your pull request. Until then lume uses the English rule for that language.
+If your language follows a rule Lume does not know yet, add one line to `family_of` in `crates/lume-core/src/i18n/plural.rs` (or, for a new rule, a new family and its test), and mention it in your pull request. Until then Lume uses the English rule for that language.
 
 ## What happens when something is wrong
 
@@ -83,9 +83,9 @@ cargo run -p lume-desktop -- --pseudo-locale --screenshot editor /tmp/editor-pse
 
 Nothing should overlap, and texts that do not fit must end with an ellipsis.
 
-## Which language lume chooses
+## Which language Lume chooses
 
-lume reads the user's language list from Android, in order of preference, and uses the first language it has a translation for. For each preference it tries the exact variant first (`pt-BR`), then the language alone (`pt`, which also matches `pt-BR` when that is the only Portuguese available). If nothing matches it uses English.
+Lume reads the user's language list from Android, in order of preference, and uses the first language it has a translation for. For each preference it tries the exact variant first (`pt-BR`), then the language alone (`pt`, which also matches `pt-BR` when that is the only Portuguese available). If nothing matches it uses English.
 
 ## Scripts that are not Latin
 
