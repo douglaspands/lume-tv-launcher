@@ -1,0 +1,79 @@
+name: Release
+
+# A tag such as v0.1.0 (or v0.1.0-rc1 for a pre-release) builds the signed APK and AAB with the
+# same Dockerfile used for local builds, checks them and publishes the APK on a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "LUME_VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "Building lume $version"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Signing key
+        env:
+          LUME_KEYSTORE_BASE64: ${{ secrets.LUME_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$LUME_KEYSTORE_BASE64" || { echo "the LUME_KEYSTORE_BASE64 secret is not set"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/signing"
+          echo "$LUME_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/lume.jks"
+          printf '%s' "${{ secrets.LUME_KEYSTORE_PASSWORD }}" > "$RUNNER_TEMP/signing/store_password"
+          printf '%s' "${{ secrets.LUME_KEY_ALIAS }}" > "$RUNNER_TEMP/signing/key_alias"
+          printf '%s' "${{ secrets.LUME_KEY_PASSWORD }}" > "$RUNNER_TEMP/signing/key_password"
+
+      - name: Build the APK and AAB in the container
+        run: |
+          docker buildx build \
+            --file docker/Dockerfile \
+            --build-arg VARIANT=release \
+            --build-arg LUME_VERSION_NAME="$LUME_VERSION_NAME" \
+            --secret id=lume_keystore,src="$RUNNER_TEMP/signing/lume.jks" \
+            --secret id=lume_store_password,src="$RUNNER_TEMP/signing/store_password" \
+            --secret id=lume_key_alias,src="$RUNNER_TEMP/signing/key_alias" \
+            --secret id=lume_key_password,src="$RUNNER_TEMP/signing/key_password" \
+            --target artifacts \
+            --output type=local,dest=dist \
+            .
+          mv dist/app-release.apk "dist/lume-$LUME_VERSION_NAME.apk"
+          mv dist/app-release.aab "dist/lume-$LUME_VERSION_NAME.aab"
+          rm -rf "$RUNNER_TEMP/signing"
+          ls -l dist
+
+      - name: Check the APK
+        run: python3 scripts/verify-apk.py "dist/lume-$LUME_VERSION_NAME.apk" --version "$LUME_VERSION_NAME"
+
+      - name: Check the permissions with aapt2
+        run: |
+          aapt2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n1)"
+          "$aapt2" dump permissions "dist/lume-$LUME_VERSION_NAME.apk" | tee permissions.txt
+          ! grep -E "INTERNET|QUERY_ALL_PACKAGES" permissions.txt
+
+      - name: Check the version name
+        run: |
+          aapt2="$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -n1)"
+          "$aapt2" dump badging "dist/lume-$LUME_VERSION_NAME.apk" | grep -E "versionName='$LUME_VERSION_NAME'"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lume-${{ env.LUME_VERSION_NAME }}
+          path: dist/*
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/lume-${{ env.LUME_VERSION_NAME }}.apk
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true

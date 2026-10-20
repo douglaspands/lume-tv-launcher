@@ -1,0 +1,18 @@
+[package]
+name = "lume-core"
+description = "Platform-independent lume logic: layout, focus, state, theme and i18n"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+glow = { version = "0.18", default-features = false }
+log = "0.4"
+memmap2 = "0.9"
+ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout"] }
+bytemuck = { version = "1", features = ["derive"] }
+fontdue = { version = "0.9", default-features = false, features = ["hashbrown"] }
+
+[build-dependencies]
+lume-css = { path = "../lume-css" }
+lume-strings = { path = "../lume-strings" }

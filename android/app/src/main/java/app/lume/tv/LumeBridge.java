@@ -1,0 +1,473 @@
+package app.lume.tv;
+
+import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.ChangedPackages;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.Shader;
+import android.graphics.drawable.Drawable;
+import android.os.LocaleList;
+import android.provider.Settings;
+import android.text.format.DateFormat;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.TimeZone;
+
+/**
+ * Everything the Rust side needs from the Android framework, behind one text command.
+ *
+ * Rust calls {@link #handle} through {@link LumeActivity#bridge}. A command and its argument
+ * are strings, and so is the answer: lists have one record per line and fields are separated by
+ * tabs (see crates/lume-core/src/shell/protocol.rs for the formats).
+ */
+public final class LumeBridge {
+    /** Side of the icon bitmap handed to Rust, in pixels. */
+    private static final int ICON_SIZE = 24;
+    /** The tile's corner radius (12) over its width (211), so a banner has the same corners. */
+    private static final float TILE_RADIUS_RATIO = 12f / 211f;
+    /** Side of the icon in a tile, over the tile height. */
+    private static final float ICON_RATIO = 0.5f;
+    /** Reused by every call of {@link #iconPixels}: the final cell and the banner as it is drawn. */
+    private static Bitmap cellBitmap;
+    private static Bitmap sourceBitmap;
+    /** Folder, inside the cache directory, of the saved tile images. */
+    private static final String TILE_CACHE_DIR = "tiles";
+    /** Changes when the drawing of a tile changes, so old files are not reused. */
+    private static final String TILE_CACHE_VERSION = "v1";
+    private static boolean cachePruned;
+
+    /** Sequence number of the last package change report; -1 before the first one. */
+    private static int changeSequence = -1;
+    /** Where the sequence is kept between runs, with the boot count it belongs to. */
+    private static final String SEQUENCE_FILE = "change-sequence.v1";
+
+    private LumeBridge() {}
+
+    public static String handle(Context context, String command, String argument) {
+        try {
+            switch (command) {
+                case "package":
+                    return context.getPackageName();
+                case "apps":
+                    return listApps(context, null);
+                case "query":
+                    return listApps(context, argument);
+                case "icon":
+                    return icon(context, argument);
+                case "changed":
+                    return changed(context);
+                case "start":
+                    return start(context, argument);
+                case "settings":
+                    return openSettings(context);
+                case "locales":
+                    return LocaleList.getDefault().toLanguageTags();
+                case "clock":
+                    return clock(context);
+                default:
+                    return "";
+            }
+        } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    /** `package TAB label TAB activity TAB 1|0` per launchable activity (1 = TV launcher). */
+    private static String listApps(Context context, String onlyPackage) {
+        PackageManager pm = context.getPackageManager();
+        StringBuilder out = new StringBuilder();
+        append(out, pm, launcherIntent(Intent.CATEGORY_LEANBACK_LAUNCHER, onlyPackage), true);
+        append(out, pm, launcherIntent(Intent.CATEGORY_LAUNCHER, onlyPackage), false);
+        return out.toString();
+    }
+
+    private static Intent launcherIntent(String category, String onlyPackage) {
+        Intent intent = new Intent(Intent.ACTION_MAIN).addCategory(category);
+        if (onlyPackage != null) {
+            intent.setPackage(onlyPackage);
+        }
+        return intent;
+    }
+
+    private static void append(StringBuilder out, PackageManager pm, Intent intent, boolean leanback) {
+        List<ResolveInfo> found = pm.queryIntentActivities(intent, 0);
+        for (ResolveInfo info : found) {
+            if (info.activityInfo == null) {
+                continue;
+            }
+            // Plain LAUNCHER entries of system apps are services and setup screens (remote service,
+            // OTA, factory menus), not apps for the user. The TV launcher shows none of them.
+            if (!leanback && isSystemApp(info)) {
+                continue;
+            }
+            out.append(info.activityInfo.packageName)
+                .append('\t')
+                .append(clean(info.loadLabel(pm)))
+                .append('\t')
+                .append(info.activityInfo.name)
+                .append('\t')
+                .append(leanback ? '1' : '0')
+                .append('\n');
+        }
+    }
+
+    private static boolean isSystemApp(ResolveInfo info) {
+        ApplicationInfo app = info.activityInfo.applicationInfo;
+        return app != null
+            && (app.flags & (ApplicationInfo.FLAG_SYSTEM | ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0;
+    }
+
+    /**
+     * What a tile shows for an app, as `width` x `height` premultiplied RGBA bytes plus one last
+     * byte: 1 when it is the app's TV banner, which fills the whole tile, and 0 when it is the
+     * icon, centered on a transparent background (the tile color shows through). `null` when the
+     * app has neither.
+     */
+    static synchronized byte[] iconPixels(
+        Context context, String packageName, String activityName, int width, int height) {
+        File cached = cacheFile(context, packageName, activityName, width, height);
+        byte[] pixels = cached == null ? null : readCache(cached, width * height * 4 + 1);
+        if (pixels != null) {
+            return pixels;
+        }
+        pixels = renderTile(context, packageName, activityName, width, height);
+        if (pixels != null && cached != null) {
+            writeCache(context, cached, packageName, pixels);
+        }
+        return pixels;
+    }
+
+    /** Draws the tile image; this opens the other app's resources, which is what the cache avoids. */
+    private static byte[] renderTile(
+        Context context, String packageName, String activityName, int width, int height) {
+        PackageManager pm = context.getPackageManager();
+        ComponentName component = new ComponentName(packageName, activityName);
+        // The same two bitmaps serve every app: new ones for each would leave the native heap
+        // full of freed pages the allocator takes a while to give back.
+        if (cellBitmap == null || cellBitmap.getWidth() != width || cellBitmap.getHeight() != height) {
+            cellBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            sourceBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        }
+        Bitmap bitmap = cellBitmap;
+        bitmap.eraseColor(Color.TRANSPARENT);
+        boolean banner = false;
+        Drawable drawable = loadBanner(pm, component, packageName);
+        if (drawable != null) {
+            drawBanner(bitmap, sourceBitmap, drawable);
+            banner = true;
+        } else {
+            drawable = loadIcon(pm, component, packageName);
+            if (drawable == null) {
+                return null;
+            }
+            drawIcon(bitmap, drawable);
+        }
+        ByteBuffer buffer = ByteBuffer.allocate(width * height * 4 + 1);
+        bitmap.copyPixelsToBuffer(buffer);
+        buffer.put(width * height * 4, (byte) (banner ? 1 : 0));
+        return buffer.array();
+    }
+
+    /**
+     * Where the image of an activity is cached: the name has the app's last update time, so an
+     * updated app gets a new file, and `TILE_CACHE_VERSION`, which changes when the drawing does.
+     * `null` when the app is not installed.
+     */
+    private static File cacheFile(
+        Context context, String packageName, String activityName, int width, int height) {
+        try {
+            long updated = context.getPackageManager().getPackageInfo(packageName, 0).lastUpdateTime;
+            String name = packageName + "-" + updated + "-" + Integer.toHexString(activityName.hashCode())
+                + "-" + width + "x" + height + "-" + TILE_CACHE_VERSION + ".rgba";
+            return new File(new File(context.getCacheDir(), TILE_CACHE_DIR), name);
+        } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The cached bytes, or `null` when there is no file or it has the wrong size. */
+    private static byte[] readCache(File file, int expectedLength) {
+        if (!file.isFile() || file.length() != expectedLength) {
+            return null;
+        }
+        byte[] bytes = new byte[expectedLength];
+        try (FileInputStream in = new FileInputStream(file)) {
+            int read = 0;
+            while (read < bytes.length) {
+                int n = in.read(bytes, read, bytes.length - read);
+                if (n < 0) {
+                    return null;
+                }
+                read += n;
+            }
+            return bytes;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** Saves the image (written aside and renamed, so a crash never leaves half a file). */
+    private static void writeCache(Context context, File file, String packageName, byte[] pixels) {
+        File dir = file.getParentFile();
+        if (dir == null || (!dir.isDirectory() && !dir.mkdirs())) {
+            return;
+        }
+        File temporary = new File(dir, file.getName() + ".tmp");
+        try (FileOutputStream out = new FileOutputStream(temporary)) {
+            out.write(pixels);
+        } catch (IOException e) {
+            temporary.delete();
+            return;
+        }
+        if (!temporary.renameTo(file)) {
+            temporary.delete();
+            return;
+        }
+        pruneCache(context, dir, packageName, file.getName());
+    }
+
+    /** Deletes older files of this app and, once per run, the files of apps that are gone. */
+    private static void pruneCache(Context context, File dir, String packageName, String keep) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        boolean checkAll = !cachePruned;
+        cachePruned = true;
+        for (File file : files) {
+            String name = file.getName();
+            if (name.equals(keep)) {
+                continue;
+            }
+            // Package names have no dash, so the name up to the first one is the package.
+            int dash = name.indexOf('-');
+            String owner = dash > 0 ? name.substring(0, dash) : name;
+            if (owner.equals(packageName) || (checkAll && !isInstalled(context, owner))) {
+                file.delete();
+            }
+        }
+    }
+
+    private static boolean isInstalled(Context context, String packageName) {
+        try {
+            context.getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        } catch (RuntimeException e) {
+            return true;
+        }
+    }
+
+    private static Drawable loadBanner(PackageManager pm, ComponentName component, String packageName) {
+        try {
+            Drawable banner = pm.getActivityBanner(component);
+            return banner != null ? banner : pm.getApplicationBanner(packageName);
+        } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static Drawable loadIcon(PackageManager pm, ComponentName component, String packageName) {
+        try {
+            return pm.getActivityIcon(component);
+        } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+            try {
+                return pm.getApplicationIcon(packageName);
+            } catch (PackageManager.NameNotFoundException | RuntimeException again) {
+                return null;
+            }
+        }
+    }
+
+    /** The banner stretched over the whole bitmap, with the same rounded corners as a tile. */
+    private static void drawBanner(Bitmap bitmap, Bitmap source, Drawable drawable) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        source.eraseColor(Color.TRANSPARENT);
+        drawable.setBounds(0, 0, width, height);
+        drawable.draw(new Canvas(source));
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        paint.setShader(new BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float radius = width * TILE_RADIUS_RATIO;
+        new Canvas(bitmap).drawRoundRect(new RectF(0, 0, width, height), radius, radius, paint);
+    }
+
+    /** The icon in a square (`ICON_RATIO` of the height) centered in the bitmap, keeping its proportions. */
+    private static void drawIcon(Bitmap bitmap, Drawable drawable) {
+        int box = Math.round(bitmap.getHeight() * ICON_RATIO);
+        int boxLeft = (bitmap.getWidth() - box) / 2;
+        int boxTop = (bitmap.getHeight() - box) / 2;
+        int w = drawable.getIntrinsicWidth();
+        int h = drawable.getIntrinsicHeight();
+        int left = boxLeft;
+        int top = boxTop;
+        int right = boxLeft + box;
+        int bottom = boxTop + box;
+        if (w > 0 && h > 0 && w != h) {
+            if (w > h) {
+                top = boxTop + (box - box * h / w) / 2;
+                bottom = boxTop + box - (box - box * h / w) / 2;
+            } else {
+                left = boxLeft + (box - box * w / h) / 2;
+                right = boxLeft + box - (box - box * w / h) / 2;
+            }
+        }
+        drawable.setBounds(left, top, right, bottom);
+        drawable.draw(new Canvas(bitmap));
+    }
+
+    /** Labels travel in a tab-separated, line-based format. */
+    private static String clean(CharSequence text) {
+        return text == null ? "" : text.toString().replace('\t', ' ').replace('\n', ' ').replace('\r', ' ');
+    }
+
+    /** The app's icon scaled to {@code ICON_SIZE} squared, as hex ARGB words. */
+    private static String icon(Context context, String packageName) {
+        try {
+            Drawable drawable = context.getPackageManager().getApplicationIcon(packageName);
+            Bitmap bitmap = Bitmap.createBitmap(ICON_SIZE, ICON_SIZE, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, ICON_SIZE, ICON_SIZE);
+            drawable.draw(canvas);
+            int[] pixels = new int[ICON_SIZE * ICON_SIZE];
+            bitmap.getPixels(pixels, 0, ICON_SIZE, 0, 0, ICON_SIZE, ICON_SIZE);
+            bitmap.recycle();
+            StringBuilder out = new StringBuilder(pixels.length * 8);
+            for (int pixel : pixels) {
+                String hex = Integer.toHexString(pixel);
+                for (int i = hex.length(); i < 8; i++) {
+                    out.append('0');
+                }
+                out.append(hex);
+            }
+            return out.toString();
+        } catch (PackageManager.NameNotFoundException e) {
+            return "";
+        }
+    }
+
+    /**
+     * Packages that changed since the previous call, one per line, or "-" the first time (there
+     * is no baseline yet, so the caller scans everything).
+     */
+    private static synchronized String changed(Context context) {
+        PackageManager pm = context.getPackageManager();
+        if (changeSequence < 0) {
+            // First call of this process: the sequence of the last run is still good, as long as the
+            // device did not reboot (the numbers start over then). Reading it spares a full scan,
+            // which opens the resources of every installed app to read the labels.
+            changeSequence = readSavedSequence(context);
+            if (changeSequence < 0) {
+                ChangedPackages baseline = pm.getChangedPackages(0);
+                changeSequence = baseline == null ? 0 : baseline.getSequenceNumber();
+                saveSequence(context, changeSequence);
+                return "-";
+            }
+        }
+        ChangedPackages changes = pm.getChangedPackages(changeSequence);
+        if (changes == null) {
+            return "";
+        }
+        changeSequence = changes.getSequenceNumber();
+        saveSequence(context, changeSequence);
+        return String.join("\n", changes.getPackageNames());
+    }
+
+    private static int bootCount(Context context) {
+        return Settings.Global.getInt(context.getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+    }
+
+    private static File sequenceFile(Context context) {
+        return new File(context.getFilesDir(), SEQUENCE_FILE);
+    }
+
+    /** The saved sequence, or -1 when there is none, it is unreadable or it is from another boot. */
+    private static int readSavedSequence(Context context) {
+        int boot = bootCount(context);
+        File file = sequenceFile(context);
+        if (boot < 0 || !file.isFile() || file.length() > 64) {
+            return -1;
+        }
+        try (FileInputStream in = new FileInputStream(file)) {
+            byte[] bytes = new byte[(int) file.length()];
+            if (in.read(bytes) != bytes.length) {
+                return -1;
+            }
+            String[] parts = new String(bytes, StandardCharsets.UTF_8).trim().split("\t");
+            if (parts.length != 2 || Integer.parseInt(parts[0]) != boot) {
+                return -1;
+            }
+            return Math.max(-1, Integer.parseInt(parts[1]));
+        } catch (IOException | RuntimeException e) {
+            return -1;
+        }
+    }
+
+    private static void saveSequence(Context context, int sequence) {
+        int boot = bootCount(context);
+        if (boot < 0) {
+            return;
+        }
+        File file = sequenceFile(context);
+        File temporary = new File(file.getPath() + ".tmp");
+        try (FileOutputStream out = new FileOutputStream(temporary)) {
+            out.write((boot + "\t" + sequence).getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            temporary.delete();
+            return;
+        }
+        if (!temporary.renameTo(file)) {
+            temporary.delete();
+        }
+    }
+
+    /** Argument: package, a line break, and the activity class. Answers "ok" or "missing". */
+    private static String start(Context context, String argument) {
+        String[] parts = argument.split("\n", 2);
+        if (parts.length != 2) {
+            return "missing";
+        }
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.setComponent(new ComponentName(parts[0], parts[1]));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        try {
+            context.startActivity(intent);
+            return "ok";
+        } catch (ActivityNotFoundException | SecurityException e) {
+            return "missing";
+        }
+    }
+
+    private static String openSettings(Context context) {
+        Intent intent = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+            return "ok";
+        } catch (ActivityNotFoundException | SecurityException e) {
+            return "missing";
+        }
+    }
+
+    /** "1" or "0" for the 24-hour setting, a tab, and the UTC offset of the time zone in seconds. */
+    private static String clock(Context context) {
+        String is24 = DateFormat.is24HourFormat(context) ? "1" : "0";
+        int offsetSeconds = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000;
+        return is24 + "\t" + offsetSeconds;
+    }
+}

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">lume</string>
+    <string name="tagline">seu início na TV</string>
+
+    <!-- Barra superior -->
+    <string name="tab_home">Início</string>
+    <string name="tab_apps">Apps</string>
+
+    <!-- Tela Início -->
+    <string name="home_favorites_title">Seus apps favoritos</string>
+    <string name="home_add_favorites">Adicionar favoritos</string>
+    <string name="carousel_open">Abrir</string>
+    <string name="carousel_new_app">Novo: %1$s</string>
+    <string name="carousel_context_new">Novo no seu TV</string>
+    <string name="carousel_context_most_used">Mais usado da semana</string>
+    <string name="carousel_context_just_now">Aberto agora há pouco</string>
+    <string name="carousel_context_start">Toque em Abrir para começar</string>
+    <plurals name="carousel_context_minutes_ago">
+        <item quantity="one">Aberto há %1$d minuto</item>
+        <item quantity="other">Aberto há %1$d minutos</item>
+    </plurals>
+    <plurals name="carousel_context_hours_ago">
+        <item quantity="one">Aberto há %1$d hora</item>
+        <item quantity="other">Aberto há %1$d horas</item>
+    </plurals>
+    <plurals name="carousel_context_days_ago">
+        <item quantity="one">Aberto há %1$d dia</item>
+        <item quantity="other">Aberto há %1$d dias</item>
+    </plurals>
+    <string name="carousel_welcome_title">Bem-vindo ao lume</string>
+    <string name="carousel_welcome_context">Encontre todos os apps da sua TV</string>
+    <string name="carousel_welcome_button">Ver todos os apps</string>
+
+    <!-- Tela Apps -->
+    <string name="apps_title">Todos os apps</string>
+    <string name="apps_settings_tile">Configurações</string>
+
+    <!-- Configurações do lume -->
+    <string name="settings_title">Configurações</string>
+    <string name="settings_home_screen">Tela Início</string>
+    <string name="settings_android">Configurações do Android</string>
+    <string name="settings_about">Sobre o lume</string>
+
+    <!-- Sobre -->
+    <string name="about_title">Sobre o lume</string>
+    <string name="about_version">Versão %1$s</string>
+    <string name="about_license">Licenciado sob GPL-3.0-or-later</string>
+    <string name="about_source">Código-fonte: %1$s</string>
+    <string name="about_third_party">Licenças de terceiros</string>
+
+    <!-- Editor da tela Início -->
+    <string name="editor_breadcrumb_edit">Editar</string>
+    <string name="editor_title">Editar tela Início</string>
+    <string name="editor_instruction">Selecione uma linha e use os botões à esquerda para subir, descer ou ocultar.</string>
+    <string name="editor_done">Concluído</string>
+    <string name="editor_section_carousel">Carrossel de destaque</string>
+    <string name="editor_section_favorites">Apps favoritos</string>
+    <string name="editor_section_hidden">Oculto</string>
+    <plurals name="editor_carousel_summary">
+        <item quantity="one">%1$d app alternando no carrossel</item>
+        <item quantity="other">%1$d apps alternando no carrossel</item>
+    </plurals>
+    <string name="editor_favorites_none">Nenhum favorito ainda</string>
+    <string name="editor_carousel_apps">APPS NO CARROSSEL</string>
+    <string name="editor_carousel_min_one">Pelo menos um app</string>
+    <string name="editor_carousel_interval">Atualizar:</string>
+    <string name="interval_seconds">%1$d s</string>
+    <string name="interval_minutes">%1$d min</string>
+    <string name="editor_favorites_order">APPS FAVORITOS · ORDEM DE EXIBIÇÃO</string>
+    <string name="editor_use_arrows">Use as setas para mover</string>
+    <string name="editor_add_app">Adicionar app:</string>
+    <plurals name="editor_limit_reached">
+        <item quantity="one">Limite de %1$d favorito</item>
+        <item quantity="other">Limite de %1$d favoritos</item>
+    </plurals>
+    <string name="editor_restore_defaults">Restaurar padrão</string>
+    <string name="editor_restore_title">Restaurar a tela Início padrão?</string>
+    <string name="editor_restore_body">Seções, carrossel e favoritos voltam à configuração inicial. O histórico de uso é mantido.</string>
+    <string name="editor_restore_confirm">Restaurar</string>
+    <string name="editor_cancel">Cancelar</string>
+
+    <!-- Mensagens -->
+    <string name="toast_app_not_found">App não encontrado</string>
+</resources>

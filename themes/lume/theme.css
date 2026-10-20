@@ -1,0 +1,300 @@
+/*
+ * lume default theme.
+ *
+ * Derived from the design mockups (mockup/*.png, drawn @2x on a 1280 px wide canvas).
+ * All lengths are px of the 1280x720 logical canvas. See docs/theme-format.md for
+ * the supported subset. Font weights are limited to 500, 700 and 800, the three
+ * faces that ship with the app.
+ */
+
+:root {
+  /* Surfaces */
+  --bg: #0F171E;
+  --surface: #121C25;
+  --surface-row: #17222C;
+  --surface-focus: #1F3040;
+  --surface-icon: #1A252F;
+  --control: #2A3A48;
+  --control-disabled: #1D2A35;
+  --border: #2F4252;
+  --danger-bg: #4A2630;
+  --danger-fg: #FFB4BE;
+
+  /* Text */
+  --text: #F2F5F7;
+  --text-soft: #DDE3E8;
+  --text-muted: #AEB9C2;
+  --text-disabled: #59626A;
+  --accent: #4DB3FF;
+  --on-accent: #0F171E;
+
+  /* Shape */
+  --radius: 12px;
+  --radius-hero: 24px;
+
+  /* Focus */
+  --focus-ring: 4px solid #F2F5F7;
+  --focus-scale: 1.05;
+  --focus-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --focus-time: 150ms ease-out;
+
+  /* Hero carousel */
+  --hero-from: #221A32;
+  --hero-mid: #20152D;
+  --hero-to: #1B0A21;
+  --hero-badge-bg: rgba(15, 23, 30, 0.5);
+  --pager-dot: rgba(255, 255, 255, 0.38);
+  --tab-underline: 2px;
+
+  /* Tile colors of well-known apps (matched by package name in code) */
+  --brand-netflix: #B3121C;
+  --brand-youtube: #C62828;
+  --brand-prime-video: #145A96;
+  --brand-disney-plus: #1B3A89;
+  --brand-max: #4B2FA8;
+  --brand-spotify: #157A3E;
+  --brand-globoplay: #C2501F;
+  --brand-play-store: #1F2D3B;
+  --brand-chrome: #2B6CB0;
+  --tile-settings: #2A3644;
+  --tile-default: #3E4A5C;
+
+  /* Brand dot shown next to the carousel badge (known apps) */
+  --dot-youtube: #FF4E45;
+}
+
+.app {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+/* Top bar */
+.topbar {
+  height: 88px;
+  padding: 24px 64px 0 64px;
+}
+
+.tab {
+  color: var(--text-muted);
+  font-size: 20px;
+  font-weight: 500;
+  transition: var(--focus-time);
+}
+.tab:active {
+  color: var(--text);
+  font-weight: 700;
+}
+.tab:focus {
+  color: var(--text);
+  border-radius: 8px;
+  outline: 2px solid #F2F5F7;
+  outline-offset: 4px;
+}
+
+.clock {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.icon-button {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background: var(--surface-icon);
+  color: var(--text);
+  transition: var(--focus-time);
+}
+.icon-button:focus {
+  outline: 3px solid #F2F5F7;
+  outline-offset: 2px;
+  transform: scale(1.08);
+}
+.icon-button:disabled {
+  background: var(--control-disabled);
+  color: var(--text-disabled);
+}
+
+/* Hero carousel */
+.hero {
+  height: 340px;
+  padding: 8px 48px 24px 48px;
+  border-radius: var(--radius-hero);
+  background: linear-gradient(80deg, var(--hero-from) 0%, var(--hero-mid) 50%, var(--hero-to) 100%);
+}
+
+.hero-badge {
+  height: 30px;
+  padding: 0 16px 0 14px;
+  gap: 8px;
+  border-radius: 15px;
+  background: var(--hero-badge-bg);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.hero-title {
+  color: var(--text);
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.hero-subtitle {
+  color: #C7D0D7;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.button {
+  height: 48px;
+  padding: 0 28px;
+  gap: 10px;
+  border-radius: var(--radius);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 18px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.button:focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  transform: scale(1.04);
+}
+.button:disabled {
+  opacity: 0.4;
+}
+
+.pager-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--pager-dot);
+  transition: var(--focus-time);
+}
+.pager-dot:active {
+  width: 28px;
+  background: var(--text);
+}
+
+/* Rows and tiles */
+.section-title {
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.tile {
+  width: 211px;
+  height: 119px;
+  border-radius: var(--radius);
+  color: #FFFFFF;
+  font-size: 22px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.tile:focus {
+  outline: var(--focus-ring);
+  outline-offset: 0px;
+  transform: scale(1.05);
+  box-shadow: var(--focus-shadow);
+}
+
+.tile-label {
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* Settings */
+.settings-item {
+  height: 72px;
+  padding: 0 28px;
+  gap: 16px;
+  border-radius: var(--radius);
+  background: var(--surface-row);
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.settings-item:focus {
+  background: var(--surface-focus);
+  outline: var(--focus-ring);
+  outline-offset: 0px;
+}
+
+.breadcrumb {
+  color: var(--text-muted);
+  font-size: 17px;
+  font-weight: 500;
+}
+.breadcrumb:active {
+  color: var(--text);
+}
+
+/* Home editor */
+.editor-row {
+  height: 71px;
+  padding: 0 24px;
+  gap: 16px;
+  border-radius: var(--radius);
+  background: var(--surface-row);
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.editor-row:focus {
+  background: var(--surface-focus);
+  outline: var(--focus-ring);
+  outline-offset: 0px;
+}
+
+.panel {
+  padding: 16px 32px;
+  gap: 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.chip {
+  height: 33px;
+  padding: 0 16px;
+  gap: 8px;
+  border-radius: 17px;
+  background: var(--control);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.chip:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.chip:focus {
+  outline: 3px solid #F2F5F7;
+  outline-offset: 2px;
+}
+.chip:disabled {
+  opacity: 0.4;
+}
+
+/* Transient message */
+.toast {
+  padding: 12px 20px;
+  border-radius: var(--radius);
+  background: var(--surface-focus);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}

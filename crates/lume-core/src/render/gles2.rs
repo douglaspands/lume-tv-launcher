@@ -1,0 +1,599 @@
+//! OpenGL ES 2.0 backend built on `glow`.
+//!
+//! The host (Android EGL, or the desktop harness) creates the GL context and hands
+//! over a [`glow::Context`]. Dropping the context's resources is explicit
+//! ([`Gles2Backend::destroy`]) so the app can release all GPU memory when it sleeps.
+
+use super::batch::{Frame, Program, RectVertex, TexVertex, MAX_QUADS_PER_BATCH, QUAD_INDICES};
+use super::geometry::Rect;
+use super::shaders::{IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, TEXT_FRAGMENT, TEX_VERTEX};
+use super::{Backend, Viewport};
+use crate::text::{TextEngine, Update};
+use crate::theme::Color;
+use glow::HasContext;
+use std::mem::size_of;
+
+struct ShaderProgram {
+    program: glow::Program,
+    u_view: Option<glow::UniformLocation>,
+    u_surface: Option<glow::UniformLocation>,
+    u_texture: Option<glow::UniformLocation>,
+}
+
+struct Texture {
+    texture: glow::Texture,
+    width: u32,
+    height: u32,
+}
+
+pub struct Gles2Backend {
+    gl: glow::Context,
+    rect_program: ShaderProgram,
+    text_program: ShaderProgram,
+    image_program: ShaderProgram,
+    rect_vbo: glow::Buffer,
+    tex_vbo: glow::Buffer,
+    index_buffer: glow::Buffer,
+    index_quads: u32,
+    atlas: Option<Texture>,
+    image: Option<Texture>,
+}
+
+impl Gles2Backend {
+    /// Compiles the shaders and creates the buffers. Needs a current GL context.
+    pub fn new(gl: glow::Context) -> Result<Gles2Backend, String> {
+        // SAFETY: the host guarantees a current GLES2-capable context for `gl`.
+        unsafe {
+            let rect_program = link(
+                &gl,
+                RECT_VERTEX,
+                RECT_FRAGMENT,
+                &[
+                    "a_pos_local",
+                    "a_shape",
+                    "a_misc",
+                    "a_stops",
+                    "a_c0",
+                    "a_c1",
+                    "a_c2",
+                ],
+            )?;
+            let text_program = link(&gl, TEX_VERTEX, TEXT_FRAGMENT, &["a_pos_uv", "a_color"])?;
+            let image_program = link(&gl, TEX_VERTEX, IMAGE_FRAGMENT, &["a_pos_uv", "a_color"])?;
+            let rect_vbo = gl.create_buffer()?;
+            let tex_vbo = gl.create_buffer()?;
+            let index_buffer = gl.create_buffer()?;
+            Ok(Gles2Backend {
+                gl,
+                rect_program,
+                text_program,
+                image_program,
+                rect_vbo,
+                tex_vbo,
+                index_buffer,
+                index_quads: 0,
+                atlas: None,
+                image: None,
+            })
+        }
+    }
+
+    /// Creates (or replaces) the 8-bit glyph atlas.
+    pub fn set_atlas(&mut self, width: u32, height: u32, pixels: &[u8]) {
+        assert_eq!(
+            pixels.len(),
+            (width * height) as usize,
+            "the atlas is 8 bits per pixel"
+        );
+        // SAFETY: see `new`.
+        unsafe {
+            let texture = match self.atlas.take() {
+                Some(old) => old.texture,
+                None => self
+                    .gl
+                    .create_texture()
+                    .expect("cannot create the atlas texture"),
+            };
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::ALPHA as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::ALPHA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(pixels)),
+            );
+            set_filtering(&self.gl);
+            self.atlas = Some(Texture {
+                texture,
+                width,
+                height,
+            });
+        }
+    }
+
+    /// Updates a region of the atlas in place.
+    pub fn update_atlas(&mut self, region: [u32; 4], pixels: &[u8]) {
+        let [x, y, w, h] = region;
+        assert_eq!(pixels.len(), (w * h) as usize);
+        let atlas = self.atlas.as_ref().expect("set_atlas must be called first");
+        assert!(
+            x + w <= atlas.width && y + h <= atlas.height,
+            "the region is outside the atlas"
+        );
+        // SAFETY: see `new`.
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(atlas.texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                x as i32,
+                y as i32,
+                w as i32,
+                h as i32,
+                glow::ALPHA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(pixels)),
+            );
+        }
+    }
+
+    /// Creates (or replaces) the RGBA image texture used by [`Program::Image`].
+    pub fn set_image(&mut self, width: u32, height: u32, rgba: &[u8]) {
+        assert_eq!(rgba.len(), (width * height * 4) as usize);
+        // SAFETY: see `new`.
+        unsafe {
+            let texture = match self.image.take() {
+                Some(old) => old.texture,
+                None => self
+                    .gl
+                    .create_texture()
+                    .expect("cannot create the image texture"),
+            };
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(rgba)),
+            );
+            set_filtering(&self.gl);
+            self.image = Some(Texture {
+                texture,
+                width,
+                height,
+            });
+        }
+    }
+
+    /// Creates the RGBA image texture empty, if it does not exist yet. Regions are filled in
+    /// by [`Gles2Backend::update_image`].
+    pub fn ensure_image(&mut self, width: u32, height: u32) {
+        if self.image.is_some() {
+            return;
+        }
+        // SAFETY: see `new`.
+        unsafe {
+            let texture = self
+                .gl
+                .create_texture()
+                .expect("cannot create the image texture");
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                width as i32,
+                height as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(None),
+            );
+            set_filtering(&self.gl);
+            self.image = Some(Texture {
+                texture,
+                width,
+                height,
+            });
+        }
+    }
+
+    /// Replaces a region (`[x, y, width, height]`) of the image texture with premultiplied RGBA
+    /// pixels. [`Gles2Backend::ensure_image`] must have been called first.
+    pub fn update_image(&mut self, region: [u32; 4], rgba: &[u8]) {
+        let [x, y, w, h] = region;
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+        let image = self
+            .image
+            .as_ref()
+            .expect("ensure_image must be called first");
+        assert!(
+            x + w <= image.width && y + h <= image.height,
+            "the region is outside the image"
+        );
+        // SAFETY: see `new`.
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(image.texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                x as i32,
+                y as i32,
+                w as i32,
+                h as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(rgba)),
+            );
+        }
+    }
+
+    /// Uploads whatever changed in the text engine's atlas since the last call.
+    pub fn sync_text_atlas(&mut self, engine: &mut TextEngine) {
+        let updates = engine.take_updates();
+        if updates.iter().any(|u| matches!(u, Update::Full { .. })) {
+            // The bitmap changed shape or content as a whole; regions are already included.
+            let atlas = engine.atlas();
+            self.set_atlas(atlas.width(), atlas.height(), atlas.pixels());
+            return;
+        }
+        for update in updates {
+            if let Update::Region(slot) = update {
+                let pixels = engine.atlas().region_pixels(slot);
+                self.update_atlas([slot.x, slot.y, slot.width, slot.height], &pixels);
+            }
+        }
+    }
+
+    pub fn atlas_size(&self) -> Option<(u32, u32)> {
+        self.atlas.as_ref().map(|t| (t.width, t.height))
+    }
+
+    /// Reads the framebuffer back as tightly packed RGBA rows, top row first.
+    pub fn read_pixels(&self, width: u32, height: u32) -> Vec<u8> {
+        let mut bottom_up = vec![0u8; (width * height * 4) as usize];
+        // SAFETY: see `new`; the buffer is exactly width * height * 4 bytes.
+        unsafe {
+            self.gl.pixel_store_i32(glow::PACK_ALIGNMENT, 1);
+            self.gl.read_pixels(
+                0,
+                0,
+                width as i32,
+                height as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelPackData::Slice(Some(&mut bottom_up)),
+            );
+        }
+        let stride = (width * 4) as usize;
+        bottom_up.chunks(stride).rev().flatten().copied().collect()
+    }
+
+    /// Releases every GL object. The context itself belongs to the host.
+    pub fn destroy(self) {
+        // SAFETY: see `new`.
+        unsafe {
+            for program in [&self.rect_program, &self.text_program, &self.image_program] {
+                self.gl.delete_program(program.program);
+            }
+            for buffer in [self.rect_vbo, self.tex_vbo, self.index_buffer] {
+                self.gl.delete_buffer(buffer);
+            }
+            for texture in [self.atlas, self.image].into_iter().flatten() {
+                self.gl.delete_texture(texture.texture);
+            }
+        }
+    }
+
+    unsafe fn ensure_indices(&mut self, quads: u32) {
+        if quads <= self.index_quads {
+            return;
+        }
+        let quads = quads.clamp(64, MAX_QUADS_PER_BATCH);
+        let mut indices = Vec::with_capacity(quads as usize * 6);
+        for quad in 0..quads {
+            let base = (quad * 4) as u16;
+            indices.extend(QUAD_INDICES.iter().map(|i| base + i));
+        }
+        self.gl
+            .bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer));
+        self.gl.buffer_data_u8_slice(
+            glow::ELEMENT_ARRAY_BUFFER,
+            bytemuck::cast_slice(&indices),
+            glow::STATIC_DRAW,
+        );
+        self.index_quads = quads;
+    }
+
+    unsafe fn bind_rect_attributes(&self, first_quad: u32) {
+        let stride = size_of::<RectVertex>() as i32;
+        let base = first_quad as i32 * 4 * stride;
+        self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.rect_vbo));
+        // Seven vec4 attributes, one after another.
+        for index in 0..7u32 {
+            self.gl.enable_vertex_attrib_array(index);
+            self.gl.vertex_attrib_pointer_f32(
+                index,
+                4,
+                glow::FLOAT,
+                false,
+                stride,
+                base + index as i32 * 16,
+            );
+        }
+    }
+
+    unsafe fn bind_tex_attributes(&self, first_quad: u32) {
+        let stride = size_of::<TexVertex>() as i32;
+        let base = first_quad as i32 * 4 * stride;
+        self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.tex_vbo));
+        for index in 0..2u32 {
+            self.gl.enable_vertex_attrib_array(index);
+            self.gl.vertex_attrib_pointer_f32(
+                index,
+                4,
+                glow::FLOAT,
+                false,
+                stride,
+                base + index as i32 * 16,
+            );
+        }
+    }
+}
+
+impl Backend for Gles2Backend {
+    fn render(&mut self, viewport: &Viewport, clear: Color, frame: &Frame) {
+        let max_quads = frame
+            .batches
+            .iter()
+            .map(|b| b.quad_count)
+            .max()
+            .unwrap_or(0);
+        // SAFETY: see `new`.
+        unsafe {
+            let gl = &self.gl;
+            gl.viewport(0, 0, viewport.width as i32, viewport.height as i32);
+            gl.disable(glow::SCISSOR_TEST);
+            gl.disable(glow::DEPTH_TEST);
+            gl.disable(glow::CULL_FACE);
+            let [r, g, b, a] = clear.to_f32();
+            gl.clear_color(r * a, g * a, b * a, a);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+            if frame.batches.is_empty() {
+                return;
+            }
+            gl.enable(glow::BLEND);
+            gl.blend_func(glow::ONE, glow::ONE_MINUS_SRC_ALPHA);
+            self.ensure_indices(max_quads);
+
+            // Upload this frame's vertices.
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.rect_vbo));
+            self.gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&frame.rect_vertices),
+                glow::STREAM_DRAW,
+            );
+            // Text and image quads share one buffer: text first, then images.
+            let mut tex_data: Vec<TexVertex> =
+                Vec::with_capacity(frame.text_vertices.len() + frame.image_vertices.len());
+            tex_data.extend_from_slice(&frame.text_vertices);
+            tex_data.extend_from_slice(&frame.image_vertices);
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.tex_vbo));
+            self.gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&tex_data),
+                glow::STREAM_DRAW,
+            );
+            let image_quad_base = (frame.text_vertices.len() / 4) as u32;
+
+            self.gl
+                .bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index_buffer));
+            let mut scissor_on = false;
+            for batch in &frame.batches {
+                match batch.clip {
+                    Some(clip) => {
+                        let [x, y, w, h] = device_scissor(&clip, viewport);
+                        self.gl.enable(glow::SCISSOR_TEST);
+                        self.gl.scissor(x, y, w, h);
+                        scissor_on = true;
+                    }
+                    None if scissor_on => {
+                        self.gl.disable(glow::SCISSOR_TEST);
+                        scissor_on = false;
+                    }
+                    None => {}
+                }
+                let program = match batch.program {
+                    Program::Rect => &self.rect_program,
+                    Program::Text => &self.text_program,
+                    Program::Image => &self.image_program,
+                };
+                self.gl.use_program(Some(program.program));
+                self.gl.uniform_4_f32(
+                    program.u_view.as_ref(),
+                    viewport.scale,
+                    viewport.offset_x,
+                    viewport.offset_y,
+                    0.0,
+                );
+                self.gl.uniform_2_f32(
+                    program.u_surface.as_ref(),
+                    viewport.width as f32,
+                    viewport.height as f32,
+                );
+                match batch.program {
+                    Program::Rect => self.bind_rect_attributes(batch.first_quad),
+                    Program::Text => {
+                        self.bind_texture(self.atlas.as_ref(), program);
+                        self.bind_tex_attributes(batch.first_quad);
+                    }
+                    Program::Image => {
+                        self.bind_texture(self.image.as_ref(), program);
+                        self.bind_tex_attributes(image_quad_base + batch.first_quad);
+                    }
+                }
+                self.gl.draw_elements(
+                    glow::TRIANGLES,
+                    batch.quad_count as i32 * 6,
+                    glow::UNSIGNED_SHORT,
+                    0,
+                );
+            }
+            self.gl.disable(glow::SCISSOR_TEST);
+        }
+    }
+}
+
+impl Gles2Backend {
+    unsafe fn bind_texture(&self, texture: Option<&Texture>, program: &ShaderProgram) {
+        self.gl.active_texture(glow::TEXTURE0);
+        self.gl
+            .bind_texture(glow::TEXTURE_2D, texture.map(|t| t.texture));
+        self.gl.uniform_1_i32(program.u_texture.as_ref(), 0);
+    }
+}
+
+/// Converts a logical clip rectangle to a GL scissor box (device pixels, origin bottom-left).
+fn device_scissor(clip: &Rect, viewport: &Viewport) -> [i32; 4] {
+    let left = (clip.x * viewport.scale + viewport.offset_x)
+        .floor()
+        .max(0.0);
+    let top = (clip.y * viewport.scale + viewport.offset_y)
+        .floor()
+        .max(0.0);
+    let right = ((clip.right()) * viewport.scale + viewport.offset_x)
+        .ceil()
+        .min(viewport.width as f32);
+    let bottom = ((clip.bottom()) * viewport.scale + viewport.offset_y)
+        .ceil()
+        .min(viewport.height as f32);
+    let (w, h) = ((right - left).max(0.0), (bottom - top).max(0.0));
+    [
+        left as i32,
+        (viewport.height as f32 - bottom).max(0.0) as i32,
+        w as i32,
+        h as i32,
+    ]
+}
+
+unsafe fn set_filtering(gl: &glow::Context) {
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_MIN_FILTER,
+        glow::LINEAR as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_MAG_FILTER,
+        glow::LINEAR as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_WRAP_S,
+        glow::CLAMP_TO_EDGE as i32,
+    );
+    gl.tex_parameter_i32(
+        glow::TEXTURE_2D,
+        glow::TEXTURE_WRAP_T,
+        glow::CLAMP_TO_EDGE as i32,
+    );
+}
+
+unsafe fn compile(gl: &glow::Context, kind: u32, source: &str) -> Result<glow::Shader, String> {
+    let shader = gl.create_shader(kind)?;
+    gl.shader_source(shader, source);
+    gl.compile_shader(shader);
+    if gl.get_shader_compile_status(shader) {
+        Ok(shader)
+    } else {
+        let log = gl.get_shader_info_log(shader);
+        gl.delete_shader(shader);
+        let stage = if kind == glow::VERTEX_SHADER {
+            "vertex"
+        } else {
+            "fragment"
+        };
+        Err(format!("{stage} shader failed to compile: {log}"))
+    }
+}
+
+unsafe fn link(
+    gl: &glow::Context,
+    vertex: &str,
+    fragment: &str,
+    attributes: &[&str],
+) -> Result<ShaderProgram, String> {
+    let vertex = compile(gl, glow::VERTEX_SHADER, vertex)?;
+    let fragment = compile(gl, glow::FRAGMENT_SHADER, fragment)?;
+    let program = gl.create_program()?;
+    gl.attach_shader(program, vertex);
+    gl.attach_shader(program, fragment);
+    for (index, name) in attributes.iter().enumerate() {
+        gl.bind_attrib_location(program, index as u32, name);
+    }
+    gl.link_program(program);
+    let linked = gl.get_program_link_status(program);
+    // The shaders are no longer needed once linked.
+    gl.detach_shader(program, vertex);
+    gl.detach_shader(program, fragment);
+    gl.delete_shader(vertex);
+    gl.delete_shader(fragment);
+    if !linked {
+        let log = gl.get_program_info_log(program);
+        gl.delete_program(program);
+        return Err(format!("program failed to link: {log}"));
+    }
+    Ok(ShaderProgram {
+        program,
+        u_view: gl.get_uniform_location(program, "u_view"),
+        u_surface: gl.get_uniform_location(program, "u_surface"),
+        u_texture: gl.get_uniform_location(program, "u_texture"),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scissor_is_flipped_and_rounded_outwards() {
+        let viewport = Viewport {
+            width: 1920,
+            height: 1080,
+            scale: 1.5,
+            offset_x: 0.0,
+            offset_y: 0.0,
+        };
+        // Logical (10.2, 20.2)-(110.2, 70.2) -> device (15.3, 30.3)-(165.3, 105.3).
+        let [x, y, w, h] = device_scissor(&Rect::new(10.2, 20.2, 100.0, 50.0), &viewport);
+        assert_eq!([x, w], [15, 151]);
+        assert_eq!([y, h], [1080 - 106, 76]);
+    }
+
+    #[test]
+    fn scissor_accounts_for_the_canvas_offset_and_stays_inside_the_surface() {
+        let viewport = Viewport {
+            width: 1000,
+            height: 800,
+            scale: 1.0,
+            offset_x: 100.0,
+            offset_y: 50.0,
+        };
+        let [x, y, w, h] = device_scissor(&Rect::new(-500.0, -500.0, 5000.0, 5000.0), &viewport);
+        assert_eq!([x, w, h], [0, 1000, 800]);
+        assert_eq!(y, 0);
+    }
+}
