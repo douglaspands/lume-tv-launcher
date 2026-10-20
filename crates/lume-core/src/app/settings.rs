@@ -14,9 +14,7 @@ use crate::theme::{vars, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
 /// Where the source code lives, shown on the About screen.
-pub const SOURCE_URL: &str = "https://github.com/douglaspands/lume-tv-launcher";
-/// The version of the app, from the Cargo package.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const SOURCE_URL: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// The settings screen is split in two equal columns with a 48 px gutter: items and statistics.
 const COLUMN_WIDTH: f32 = (WIDTH - 48.0) / 2.0;
@@ -88,7 +86,10 @@ impl LumeApp {
         self.draw_stats(p);
 
         // The installed version, at the bottom right.
-        let version = t.format(StringId::AboutVersion, &[Arg::Str(VERSION)]);
+        let version = t.format(
+            StringId::AboutVersion,
+            &[Arg::Str(&lume_version::display())],
+        );
         let style = p.style(&THEME.breadcrumb, StateFlags::NONE);
         let bottom = p.display.safe_area().bottom();
         let line = Rect::new(LEFT, bottom - 40.0, WIDTH, 24.0);
@@ -202,7 +203,10 @@ impl LumeApp {
         let lines = licenses::lines();
         let mut blocks: Vec<(String, f32, bool)> = vec![
             (
-                t.format(StringId::AboutVersion, &[Arg::Str(VERSION)]),
+                t.format(
+                    StringId::AboutVersion,
+                    &[Arg::Str(&lume_version::display())],
+                ),
                 24.0,
                 true,
             ),
