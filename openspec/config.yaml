@@ -30,3 +30,12 @@ schema: spec-driven
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+
+rules:
+  tasks:
+    - >-
+      O último grupo de tarefas SHALL incluir uma tarefa que revisa a tela Sobre (Configurações do Lume › Sobre o Lume)
+      e a atualiza se a change trouxe algo novo: componente de terceiros (crate, fonte, ícones) e sua licença,
+      endereço do repositório (https://github.com/douglaspands/lume-tv-launcher) ou versão; sem novidade, a tarefa
+      registra "Sobre revisado, sem mudança". Verificar com `cargo run -p lume-desktop -- --screenshot about`.
+    - Nunca escrever IPs da rede do autor nas tarefas; citar as TVs só por nome (a TCL, a AIWA).

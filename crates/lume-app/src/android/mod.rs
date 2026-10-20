@@ -88,7 +88,7 @@ fn android_main(app: AndroidApp) {
             .with_tag("lume"),
     );
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
-    log::info!("lume {} starting", env!("CARGO_PKG_VERSION"));
+    log::info!("lume {} starting", lume_version::VERSION);
     *WAKER.lock().expect("waker lock") = Some(app.create_waker());
 
     let Some(files) = app.internal_data_path() else {

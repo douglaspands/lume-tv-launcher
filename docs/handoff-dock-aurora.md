@@ -72,12 +72,12 @@ A change antiga `lume-launcher-v0-1-0` foi encerrada com as tarefas abertas marc
 ```
 cargo test --workspace && cargo clippy --workspace --all-targets   # deve ficar limpo
 cargo run -p lume-desktop -- --size 1920x1080 --favorites 12 --keys right,right --screenshot home h.png
-scripts/container-build.sh release            # dist/lume-0.2.0-release-debugsigned.apk (assinado com chave de debug)
-python3 scripts/verify-apk.py dist/lume-0.2.0-release-debugsigned.apk   # limite 6 MB
+scripts/container-build.sh release            # dist/lume-<versão>-release-debugsigned.apk (assinado com chave de debug)
+python3 scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 6 MB
 ```
 
-TV de referência (TCL 55C715, 2 GB RAM, 4 núcleos): `adb -s 192.168.0.6:5555` (o usuário autorizou o acesso por adb).
-Instalar: `adb uninstall app.lume.tv; adb install dist/lume-0.2.0-release-debugsigned.apk; adb shell cmd package
+TV de referência (TCL 55C715, 2 GB RAM, 4 núcleos): `adb -s <ip-da-tv>:5555` (o IP muda e não fica no repositório; o usuário autorizou o acesso por adb).
+Instalar: `adb uninstall app.lume.tv; adb install dist/lume-<versão>-release-debugsigned.apk; adb shell cmd package
 set-home-activity app.lume.tv/.LumeActivity`. Capturas: `adb exec-out screencap -p > x.png`.
 
 Testes que guardam os requisitos: `app/tests.rs` (navegação, dock, abas, retorno, sublinhado, contraste),
@@ -88,3 +88,7 @@ Testes que guardam os requisitos: `app/tests.rs` (navegação, dock, abas, retor
 
 Ver a seção "Análise de desempenho da v0.2.0" em `docs/device-notes.md` (resumo: 17 MB de PSS em primeiro plano e 16 MB em
 segundo, abertura a frio 371 ms, retorno a quente 127 ms, 0,2% de um núcleo ocioso e 11% navegando).
+
+## Versão do build
+
+A versão vem do build (tag normalizada no release; hash curto, `-dirty` ou `dev` no build local), definida igual em `crates/lume-version/build.rs`, `android/app/build.gradle` e `scripts/container-build.sh`. Exemplo: `LUME_VERSION_NAME=v0.3.0 scripts/container-build.sh release` gera `dist/lume-0.3.0-release-debugsigned.apk`.

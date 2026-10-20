@@ -4,8 +4,10 @@ description = "Platform-independent lume logic: layout, focus, state, theme and 
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
+lume-version = { path = "../lume-version" }
 glow = { version = "0.18", default-features = false }
 log = "0.4"
 memmap2 = "0.9"

@@ -37,7 +37,7 @@ You will send the app to the TV from your computer with a small tool called **ad
 
 ### 1. Download Lume
 
-1. Open the **Releases** page of this project on GitHub.
+1. Open the [**Releases** page](https://github.com/douglaspands/lume-tv-launcher/releases) of this project on GitHub.
 2. Under the newest version, download the file named like **`lume-0.1.0.apk`**.
 3. Remember where you saved it (for example, your Downloads folder).
 
@@ -183,7 +183,7 @@ scripts/container-build.sh release    # APK and AAB for arm64 and armv7
 
 The result is written to `dist/`. The first build downloads the Android SDK/NDK and Rust and takes a while; later builds reuse the cache. Set `LUME_CONTAINER` to force a runtime.
 
-Install it on your TV or emulator with `adb install -r dist/lume-0.1.0-debug.apk`.
+Install it on your TV or emulator with `adb install -r dist/lume-<version>-debug.apk`.
 
 **Signing a release.** Without a key, the release is signed with the debug key and named `...-release-debugsigned.apk`: fine to install yourself, not to publish. To sign with your own key, set these before running the script (they are passed to the build as secrets and never stored in the image):
 
@@ -192,12 +192,12 @@ export LUME_KEYSTORE=/path/to/lume.jks
 export LUME_KEYSTORE_PASSWORD=...
 export LUME_KEY_ALIAS=...
 export LUME_KEY_PASSWORD=...
-scripts/container-build.sh release    # dist/lume-0.1.0-release.apk
+scripts/container-build.sh release    # dist/lume-<version>-release-debugsigned.apk
 ```
 
-Keep the keystore outside the repository and back it up: the same key must sign every update. `LUME_VERSION_NAME=0.2.0` builds another version.
+Keep the keystore outside the repository and back it up: the same key must sign every update. `The version comes from the build, not from a file: a release tag `v0.3.0` gives `0.3.0` (`LUME_VERSION_NAME=v0.3.0` does the same), and a local build uses the short git commit (`4d8438b`, with `-dirty` for uncommitted changes to tracked files; `dev` without git), so the file is named `dist/lume-4d8438b-release-debugsigned.apk`.
 
-**Checking an APK.** `scripts/verify-apk.py dist/lume-0.1.0-release.apk` checks the size (6 MB), the ABIs, the 16 KB alignment of the native libraries, and that the app asks for neither `INTERNET` nor `QUERY_ALL_PACKAGES`.
+**Checking an APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` checks the size (6 MB), the ABIs, the 16 KB alignment of the native libraries, and that the app asks for neither `INTERNET` nor `QUERY_ALL_PACKAGES`.
 
 ### Build without a container
 

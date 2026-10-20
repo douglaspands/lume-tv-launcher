@@ -107,8 +107,9 @@ fn the_settings_and_about_screens_are_dimmed_too() {
     let about = render(&[Key::Up, Key::Right, Key::Down, Key::Ok, Key::Down, Key::Ok]).unwrap();
     for (name, pixels) in [("settings", settings), ("about", about)] {
         // The right half below the header has no text on these screens, except the statistics
-        // card (which has its own surface) on the settings: look below it.
-        let background = brightest(&pixels, (800, 500, W, H), &[]);
+        // card (which has its own surface) on the settings: look below it. The version line at the
+        // bottom right is text too (its length depends on the build), so it is left out.
+        let background = brightest(&pixels, (800, 500, W, H), &[(800, 620, W, H)]);
         let ratio = contrast(vars::TEXT_MUTED, background);
         assert!(
             ratio >= 4.5,

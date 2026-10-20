@@ -26,13 +26,27 @@ verificação em emulador Android TV (a máquina de desenvolvimento não tem emu
 imagem `system-images;android-28;android-tv;x86`, para validar o Android 9, tarefa 5.3 da `v0-2-1`, encerrada sem essa validação e deixada para uma spec futura de testes) e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
 gasta cerca de 400 ms só na troca de janelas, o Lume 75 a 110 ms; a proposta é medir só a parte do Lume, até 150 ms).
 
+## Versão do build
+
+Sem arquivo para editar: a tag `vX.Y.Z` vira `X.Y.Z` (`LUME_VERSION_NAME`, tirando os "v" do início); build local usa o hash curto do
+commit (`-dirty` se há mudança rastreada não commitada; `dev` sem git) e `versionCode` = contagem de commits. A regra vive em
+`crates/lume-version/build.rs`, `android/app/build.gradle` e `scripts/container-build.sh`. O `version` do `Cargo.toml` (1.0.0) não é a versão do build.
+
 ## Como trabalhar aqui
 
 - **Uma branch por change OpenSpec**: logo após `openspec new change "<nome>"`, `git checkout -b feat/<nome>`.
 - **Não commitar sem o autor pedir.** Quando pedir, commits por tema; o fechamento é `/opsx:archive` e merge **squash** na `main`.
+- **Tela Sobre ao fim de cada change**: a última tarefa de toda change revisa a tela Sobre (Configurações do Lume › Sobre o Lume)
+  e a atualiza se a change trouxe algo novo: componente de terceiros (crate, fonte, ícones), licença, endereço do repositório
+  (`https://github.com/douglaspands/lume-tv-launcher`, uma fonte só) ou versão. Sem novidade, registre "Sobre revisado, sem mudança".
 - Fluxo OpenSpec: `/opsx:propose`, `/opsx:apply`, `/opsx:archive`. Validar com `openspec validate <change> --strict`.
 - Idioma: respostas, specs e commits do projeto em português do Brasil; código, comentários e mensagens de commit em inglês.
 - Neste ambiente use `/usr/bin/python3` (o `python3` do asdf pode falhar).
+- **Economize contexto e tokens**: prefira comandos que tragam só o necessário. Use `grep -n`/`rg` com padrão
+  específico, `sed -n 'A,Bp'` ou leitura por faixa de linhas em vez de arquivos inteiros, `head`/`tail`/`wc -l`
+  para saídas longas, `--json` com filtro (`python3 -c`, `jq`) nos comandos do `openspec`, `--quiet`/`-q` em
+  `cargo`, `gradle` e `git` quando o detalhe não importa, e `2>&1 | tail -n 30` em builds. Não releia arquivos já
+  lidos nem repita buscas cujo resultado já está na conversa.
 
 ## Comandos
 
@@ -40,13 +54,13 @@ gasta cerca de 400 ms só na troca de janelas, o Lume 75 a 110 ms; a proposta é
 cargo test --workspace && cargo clippy --workspace --all-targets   # deve ficar limpo; cargo fmt --all
 cargo run -p lume-desktop -- --size 1920x1080 --locale en --keys right --screenshot home h.png   # telas: home apps settings about editor
 scripts/container-build.sh release       # APK em dist/ (runtime: wslc, docker, podman, nesta ordem; LUME_CONTAINER força outro)
-/usr/bin/python3 scripts/verify-apk.py dist/lume-0.2.1-release-debugsigned.apk   # limite 6 MB
+/usr/bin/python3 scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 6 MB
 ```
 
 ## TV de referência (testes por adb)
 
-TCL 55C715 (2 GB de RAM, 4 núcleos), `adb -s 192.168.0.6:5555`; o autor autorizou testar nela. A TCL roda o firmware global (Android 11); o firmware original do Brasil é Android 9.
-Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`), `adb -s 192.168.0.3:5555`. Comparação em `docs/device-notes.md`.
+TCL 55C715 (2 GB de RAM, 4 núcleos); o autor autorizou testar nela. A TCL roda o firmware global (Android 11); o firmware original do Brasil é Android 9.
+Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). Os IPs mudam e não ficam no repositório: pergunte ao autor (`adb -s <ip>:5555`). Comparação em `docs/device-notes.md`.
 
 - Instalar: `adb uninstall app.lume.tv` antes (a chave de debug muda a cada build no container), depois `adb install dist/<apk>` e
   `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity`.
