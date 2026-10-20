@@ -55,6 +55,13 @@
     <string name="editor_restore_confirm">Restore</string>
     <string name="editor_cancel">Cancel</string>
 
+    <!-- Context menu (the Menu button) -->
+    <string name="menu_add_home">Add to Home</string>
+    <string name="menu_remove_home">Remove from Home</string>
+    <string name="menu_move">Move</string>
+    <string name="menu_app_info">App info</string>
+    <string name="menu_uninstall">Uninstall</string>
+
     <!-- Messages -->
     <string name="toast_app_not_found">App not found</string>
 </resources>

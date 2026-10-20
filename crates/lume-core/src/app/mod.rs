@@ -6,7 +6,9 @@
 //! (an animation, the clock), so the shell can sleep otherwise.
 
 mod apps;
+mod context_menu;
 mod dock;
+mod dock_move;
 mod editor;
 mod home;
 mod page;
@@ -28,6 +30,7 @@ fn assert_on_ruler(measures: &[(&str, f32)]) {
     }
 }
 
+pub use context_menu::{ContextMenu, MenuAction};
 pub use painter::Painter;
 
 use crate::app_icons::{AppIcons, Art};
@@ -55,6 +58,8 @@ pub mod ids {
     pub const GRID_BASE: FocusId = 2000;
     pub const GRID_SETTINGS: FocusId = 2999;
     pub const SETTINGS_BASE: FocusId = 3000;
+    /// The items of the context menu (only their focus animations use these).
+    pub const MENU_BASE: FocusId = 5000;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +79,8 @@ pub enum Key {
     Ok,
     Back,
     Home,
+    /// Opens the context menu of the focused item, where it has one.
+    Menu,
 }
 
 /// What the platform shell has to do for the app.
@@ -85,6 +92,14 @@ pub enum Effect {
     },
     OpenAndroidSettings,
     OpenInputs,
+    /// The app's page in the Android settings.
+    OpenAppInfo {
+        package: String,
+    },
+    /// The system uninstaller for the app (it asks the user; the removal arrives as a package change).
+    Uninstall {
+        package: String,
+    },
     /// The home configuration changed and must be written to disk.
     SaveConfig,
     /// The usage history changed and must be written to disk.
@@ -113,6 +128,16 @@ enum Anim {
     DockAmplitude,
     /// How visible the content of the tab is while it fades in after a tab change, 0.0 to 1.0.
     TabFade,
+    /// How visible the context menu is while it opens or closes, 0.0 to 1.0.
+    MenuFade,
+    /// What is left of a dock icon's slide to its new place, in units (by its place in the dock).
+    DockShift(usize),
+    /// What is left of a dock icon's change of size on that slide.
+    DockGrow(usize),
+    /// A favorite that left the dock, shrinking where it was: 1.0 to 0.0.
+    DockGhost,
+    /// How much room the neighbors of a favorite being moved leave for its arrows, 0.0 to 1.0.
+    DockRoom,
 }
 
 /// The fade of the content when the tab changes.
@@ -148,6 +173,18 @@ pub struct LumeApp {
     /// Whether the system has a TV inputs panel: the top bar shows its button only then.
     pub inputs_available: bool,
     editor: editor::EditorState,
+    /// The context menu, while it is open or fading out.
+    context_menu: Option<ContextMenu>,
+    /// The place in the Apps grid of the focused tile, as drawn in the last frame.
+    grid_position: Option<usize>,
+    /// The favorite being moved along the dock ("Move" in its context menu).
+    dock_move: Option<dock_move::DockMove>,
+    /// The dock icons as drawn in the last frame.
+    dock_drawn: Vec<dock::DrawnIcon>,
+    /// Where the icons were before the favorites changed: they slide from there at the next frame.
+    dock_from: Option<Vec<dock::DrawnIcon>>,
+    /// A favorite that left the dock, fading where it was.
+    dock_ghost: Option<dock::DrawnIcon>,
     about_scroll: f32,
     /// The last TV statistics read while the settings were on screen, and the CPU use from them.
     stats: Option<crate::stats::Stats>,
@@ -206,6 +243,12 @@ impl LumeApp {
             screen: Screen::Main(Tab::Home),
             inputs_available: false,
             editor: editor::EditorState::default(),
+            context_menu: None,
+            grid_position: None,
+            dock_move: None,
+            dock_drawn: Vec::new(),
+            dock_from: None,
+            dock_ghost: None,
             about_scroll: 0.0,
             stats: None,
             cpu_use: None,
@@ -271,7 +314,11 @@ impl LumeApp {
         if effects.iter().any(|e| {
             matches!(
                 e,
-                Effect::OpenApp { .. } | Effect::OpenAndroidSettings | Effect::OpenInputs
+                Effect::OpenApp { .. }
+                    | Effect::OpenAndroidSettings
+                    | Effect::OpenInputs
+                    | Effect::OpenAppInfo { .. }
+                    | Effect::Uninstall { .. }
             )
         }) {
             self.return_point = Some(ReturnPoint {
@@ -284,6 +331,26 @@ impl LumeApp {
     }
 
     fn dispatch_key(&mut self, key: Key) -> Vec<Effect> {
+        // A favorite being moved and an open menu take every key. Home ends them and then does
+        // what it always does.
+        let trapped = if self.dock_move.is_some() {
+            Some(self.dock_move_key(key))
+        } else if self.menu_is_open() {
+            Some(self.menu_key(key))
+        } else {
+            None
+        };
+        match trapped {
+            Some(effects) if key != Key::Home => effects,
+            Some(mut effects) => {
+                effects.extend(self.screen_key(key));
+                effects
+            }
+            None => self.screen_key(key),
+        }
+    }
+
+    fn screen_key(&mut self, key: Key) -> Vec<Effect> {
         match key {
             Key::Up | Key::Down if self.screen == Screen::About => {
                 self.scroll_about(if key == Key::Up { -1.0 } else { 1.0 });
@@ -308,6 +375,10 @@ impl LumeApp {
                     // lume was already on screen: Home is the way back to the start.
                     _ => self.go_home(),
                 }
+                vec![]
+            }
+            Key::Menu => {
+                self.open_context_menu();
                 vec![]
             }
         }
@@ -384,9 +455,27 @@ impl LumeApp {
     /// The Home button: back to the Home tab, scrolled to the top, focus on its first element.
     pub fn go_home(&mut self) {
         self.editor = editor::EditorState::default();
+        self.context_menu = None;
+        self.end_dock_move_quietly();
         self.screen = Screen::Main(Tab::Home);
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::FirstContent);
+    }
+
+    /// The catalog changed (apps installed, updated or removed). A tile that left the grid passes
+    /// the focus to the tile now in its place, or to the last one; a menu whose app is gone closes.
+    pub fn catalog_changed(&mut self) {
+        self.check_context_menu();
+        self.check_dock_move();
+        // A favorite that was uninstalled leaves the dock with the same slide as a removal.
+        self.begin_dock_transition(None);
+        if self.screen == Screen::Main(Tab::Apps) {
+            if let Some(position) = self.grid_position {
+                if let Some(id) = self.grid_id_at(position) {
+                    self.pending_focus = Some(PendingFocus::Id(id));
+                }
+            }
+        }
     }
 
     /// lume left the screen (another app is in front).
@@ -414,6 +503,8 @@ impl LumeApp {
     /// Puts the screen, the focused element and the scrolling back as they were when an app was opened.
     fn restore(&mut self, point: ReturnPoint) {
         self.editor = editor::EditorState::default();
+        self.context_menu = None;
+        self.end_dock_move_quietly();
         self.screen = point.screen;
         self.scroll_y = point.scroll_y;
         self.anim.set(Anim::ScrollY, point.scroll_y);
@@ -562,9 +653,12 @@ impl LumeApp {
             Screen::About => self.draw_about(p),
             Screen::Editor => self.draw_editor(p),
         }
+        self.draw_context_menu(p);
         self.draw_toast(p);
-        self.anim
-            .prune(now_ms, |key| if *key == Anim::TabFade { 1.0 } else { 0.0 });
+        self.anim.prune(now_ms, |key| match key {
+            Anim::TabFade | Anim::MenuFade => 1.0,
+            _ => 0.0,
+        });
     }
 
     fn draw_toast(&mut self, p: &mut Painter) {

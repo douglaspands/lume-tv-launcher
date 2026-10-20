@@ -1,6 +1,6 @@
 //! The interactive window: the launcher on a regular computer, with the keyboard as the remote.
 //!
-//! Arrow keys move, Enter or Space is OK, Escape or Backspace is Back, and H or Home is Home.
+//! Arrow keys move, Enter or Space is OK, Escape or Backspace is Back, H or Home is Home, and M or the context menu key is Menu.
 //! Rendering uses the same OpenGL ES 2.0 renderer as the TV (off-screen), copied to the window.
 
 use crate::screenshot::Session;
@@ -25,6 +25,7 @@ pub fn map_key(code: KeyCode) -> Option<Key> {
         KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space => Key::Ok,
         KeyCode::Escape | KeyCode::Backspace => Key::Back,
         KeyCode::Home | KeyCode::KeyH => Key::Home,
+        KeyCode::ContextMenu | KeyCode::KeyM => Key::Menu,
         _ => return None,
     })
 }
@@ -85,6 +86,8 @@ impl Viewer {
                 }
                 Effect::OpenAndroidSettings => println!("open the Android settings"),
                 Effect::OpenInputs => println!("open the TV inputs"),
+                Effect::OpenAppInfo { package } => println!("open the app info of {package}"),
+                Effect::Uninstall { package } => println!("uninstall {package}"),
                 Effect::SaveConfig => println!("save the configuration"),
                 Effect::SaveUsage => println!("save the usage history"),
             }
@@ -212,6 +215,8 @@ mod tests {
         assert_eq!(map_key(KeyCode::Escape), Some(Key::Back));
         assert_eq!(map_key(KeyCode::Backspace), Some(Key::Back));
         assert_eq!(map_key(KeyCode::KeyH), Some(Key::Home));
+        assert_eq!(map_key(KeyCode::KeyM), Some(Key::Menu));
+        assert_eq!(map_key(KeyCode::ContextMenu), Some(Key::Menu));
         assert_eq!(map_key(KeyCode::KeyA), None);
     }
 }

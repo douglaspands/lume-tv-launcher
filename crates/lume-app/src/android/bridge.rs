@@ -186,6 +186,16 @@ impl Bridge {
         self.call("open-inputs", "").as_deref() == Some("ok")
     }
 
+    /// Opens the app's page in the Android settings.
+    pub fn open_app_info(&self, package: &str) -> bool {
+        self.call("app-info", package).as_deref() == Some("ok")
+    }
+
+    /// Opens the system uninstaller for the app. Its result arrives as a package change.
+    pub fn uninstall(&self, package: &str) -> bool {
+        self.call("uninstall", package).as_deref() == Some("ok")
+    }
+
     /// Every launchable app. Icons are fetched only for apps that need a color derived from them:
     /// not the well-known ones and not the ones already in `known`.
     pub fn scan_all(&self, known: Option<&Catalog>) -> Vec<Discovered> {

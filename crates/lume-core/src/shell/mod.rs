@@ -309,6 +309,7 @@ impl Shell {
                 CONFIG_FILE,
             );
         }
+        self.app.catalog_changed();
         save_log(
             self.app.catalog.save(&self.files.join(CATALOG_FILE)),
             CATALOG_FILE,
@@ -427,6 +428,7 @@ mod tests {
             label: label.to_string(),
             activity: format!("{package}.Main"),
             leanback: true,
+            system: false,
             icon: None,
         }
     }

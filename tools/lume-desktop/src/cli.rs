@@ -26,7 +26,7 @@ usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] 
   --size WxH               surface size, e.g. 1280x720 (default) or 1920x1080
   --locale TAG             language to show, e.g. pt-BR or en
   --pseudo-locale          lengthen texts by 40% and accent them
-  --keys LIST              press keys first, e.g. down,right,right,ok (up down left right ok back home)
+  --keys LIST              press keys first, e.g. down,right,right,ok (up down left right ok back home menu)
   --clock-12h              show the clock in 12-hour format
   --favorites N            put the first N demo apps in the dock (0 to 12)
   --screenshot SCREEN FILE render SCREEN to a PNG file and exit

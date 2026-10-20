@@ -1,9 +1,10 @@
 //! The Home tab: the wallpaper, the top bar and, at the bottom, the dock with the favorites.
 
+use super::context_menu::Origin;
 use super::dock;
 use super::painter::Painter;
 use super::topbar::{self, BarLayout, TopBar};
-use super::{ids, Effect, LumeApp, Tab};
+use super::{ids, Anim, Effect, LumeApp, Tab};
 use crate::display::CANVAS_WIDTH;
 use crate::i18n::StringId;
 use crate::ui::focus::{Focusable, Row};
@@ -40,8 +41,18 @@ impl LumeApp {
         let focus = self.dock_focus_index(&items);
         self.track_dock(focus);
         let (position, amplitude) = self.dock_motion();
-        let layout = dock::layout(items.len(), position, amplitude, center, bottom);
+        let room = self.anim.get(Anim::DockRoom, 0.0, self.now_ms);
+        let mut layout =
+            dock::layout_with_room(items.len(), position, amplitude, center, bottom, room);
+        self.slide_dock(&items, &mut layout);
         self.draw_dock(p, &items, &layout);
+        self.draw_dock_ghost(p);
+        if room > 0.0 {
+            self.draw_move_arrows(p, &layout.items, position.round() as usize, room);
+        }
+        for (index, rect) in layout.items.iter().enumerate() {
+            self.anchor_context_menu(Origin::Dock(index), *rect);
+        }
         // The bubble follows the animated position of the focus, so it glides with the icons.
         let anchor_position = if self.dock_focus.is_some() {
             position
