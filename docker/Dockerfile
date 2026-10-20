@@ -75,6 +75,9 @@ RUN --mount=type=cache,target=/opt/cargo/registry \
         export LUME_KEY_ALIAS="$(cat /run/secrets/lume_key_alias)"; \
         export LUME_KEY_PASSWORD="$(cat /run/secrets/lume_key_password)"; \
     fi; \
+    # The project's sources must look newer than anything in the cached target directory: with a
+    # container clock ahead of the host's, cargo took fresh edits for already compiled code.
+    find /src/crates /src/tools -name '*.rs' -exec touch {} +; \
     cd android; \
     if [ "${VARIANT}" = "release" ]; then \
         ./gradlew --no-daemon assembleRelease bundleRelease; \

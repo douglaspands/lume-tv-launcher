@@ -136,7 +136,8 @@ impl Shell {
     }
 
     /// Up to `limit` apps (package and activity) whose icon is not in the icon texture yet and that
-    /// the platform has not already failed to load: the favorites first, then the app list.
+    /// the platform has not already failed to load: the visible tiles the splash waits for first,
+    /// then the favorites, then the app list.
     pub fn icons_wanted(
         &self,
         skip: &std::collections::HashSet<String>,
@@ -145,13 +146,19 @@ impl Shell {
         if !self.is_active() || !self.app.icons.has_room() {
             return Vec::new();
         }
+        let splash = self
+            .app
+            .splash_missing_tiles()
+            .iter()
+            .filter_map(|p| self.app.catalog.get(p));
         let favorites = self
             .app
             .config
             .favorites
             .iter()
             .filter_map(|p| self.app.catalog.get(p));
-        favorites
+        splash
+            .chain(favorites)
             .chain(self.app.catalog.apps().iter())
             .filter(|app| !self.app.icons.has(&app.package) && !skip.contains(&app.package))
             .map(|app| (app.package.clone(), app.activity.clone()))
@@ -187,16 +194,25 @@ impl Shell {
 
     /// Reserves the dock cell of `package`; the platform uploads its icon to the returned region
     /// (`[x, y, width, height]`).
-    pub fn reserve_dock_icon(&mut self, package: &str) -> Option<[u32; 4]> {
+    /// `now_ms` is when it arrives: with the interface on screen, it fades in from then.
+    pub fn reserve_dock_icon(&mut self, package: &str, now_ms: u64) -> Option<[u32; 4]> {
         let region = self.app.icons.reserve_dock(package)?;
+        self.app.icon_arrived(package, true, now_ms);
         self.dirty = true;
         Some(region)
     }
 
     /// Reserves the texture cell of `package` for its banner or icon; the platform uploads the pixels to the
     /// returned region (`[x, y, width, height]`).
-    pub fn reserve_icon(&mut self, package: &str, art: crate::app_icons::Art) -> Option<[u32; 4]> {
+    /// `now_ms` is when it arrives: with the interface on screen, it fades in from then.
+    pub fn reserve_icon(
+        &mut self,
+        package: &str,
+        art: crate::app_icons::Art,
+        now_ms: u64,
+    ) -> Option<[u32; 4]> {
         let region = self.app.icons.reserve(package, art)?;
+        self.app.icon_arrived(package, false, now_ms);
         self.dirty = true;
         Some(region)
     }
@@ -230,6 +246,32 @@ impl Shell {
             }
         }
         platform
+    }
+
+    /// The platform could not give the dock icon (`dock`) or the tile image of `package`: the
+    /// splash stops waiting for it.
+    pub fn icon_failed(&mut self, package: &str, dock: bool) {
+        self.app.icon_failed(package, dock);
+        if self.app.in_splash() {
+            self.dirty = true;
+        }
+    }
+
+    /// While the splash waits for icons, how long until it stops waiting (ms).
+    pub fn splash_time_left(&self, now_ms: u64) -> Option<u64> {
+        self.app
+            .splash_deadline()
+            .map(|at| at.saturating_sub(now_ms))
+    }
+
+    /// Whether the interface is being revealed after the splash.
+    pub fn is_revealing(&self) -> bool {
+        self.app.is_revealing()
+    }
+
+    /// Whether the interface became ready (the splash ended) since the last call.
+    pub fn take_interface_ready(&mut self) -> bool {
+        self.app.take_interface_ready()
     }
 
     /// The platform could not open `package` (it was removed meanwhile).
@@ -366,10 +408,11 @@ impl Shell {
         self.dirty = true;
     }
 
-    /// Whether the screen is changing right now (a key was just handled, or an animation runs).
-    /// Slow work that can wait, like loading icons, should wait for this to end.
+    /// Whether the screen is changing right now (a key was just handled, or something moves; the
+    /// fades of the splash logo and of arriving icons do not count). Slow work that can wait, like
+    /// loading icons, should wait for this to end.
     pub fn is_busy(&self, now_ms: u64) -> bool {
-        self.is_active() && (self.dirty || self.app.is_animating(now_ms))
+        self.is_active() && (self.dirty || self.app.is_moving(now_ms))
     }
 
     /// Whether the screen must be redrawn at `now_ms`.
@@ -466,12 +509,15 @@ mod tests {
     }
 
     /// Draws the frames the loop would ask for until nothing moves; returns the time it settled.
+    /// Draws frames until nothing moves: past the splash (which waits up to 600 ms for icons no
+    /// one loads here) and its reveal.
     fn settle(shell: &mut Shell, mut now: u64) -> u64 {
         for _ in 0..300 {
-            if !shell.frame_due(now) {
+            if shell.frame_due(now) {
+                shell.build_frame(now).unwrap();
+            } else if !shell.app().in_splash() {
                 return now;
             }
-            shell.build_frame(now).unwrap();
             now += 16;
         }
         panic!("the animation never settled");
@@ -777,7 +823,7 @@ mod tests {
         // Only the favorites, a few at a time, in dock order.
         let first = shell.dock_icons_wanted(&none, 1);
         assert_eq!(first, [(NETFLIX.to_string(), format!("{NETFLIX}.Main"))]);
-        let region = shell.reserve_dock_icon(NETFLIX).unwrap();
+        let region = shell.reserve_dock_icon(NETFLIX, 0).unwrap();
         assert_eq!(region[2..], [crate::app_icons::DOCK_CELL; 2]);
         let next = shell.dock_icons_wanted(&none, 5);
         assert_eq!(
@@ -795,8 +841,8 @@ mod tests {
         let mut shell = start(&dir);
         let none = std::collections::HashSet::new();
         shell.wake(1280, 720);
-        shell.reserve_dock_icon(NETFLIX).unwrap();
-        shell.reserve_dock_icon(YOUTUBE).unwrap();
+        shell.reserve_dock_icon(NETFLIX, 0).unwrap();
+        shell.reserve_dock_icon(YOUTUBE, 0).unwrap();
         assert!(shell.dock_icons_wanted(&none, 5).is_empty(), "all loaded");
         shell.app_mut_for_test().config.remove_favorite(0);
         assert!(shell.dock_icons_wanted(&none, 5).is_empty());
@@ -812,7 +858,7 @@ mod tests {
         let dir = dir("dock-sleep");
         let mut shell = start(&dir);
         shell.wake(1280, 720);
-        shell.reserve_dock_icon(NETFLIX).unwrap();
+        shell.reserve_dock_icon(NETFLIX, 0).unwrap();
         assert!(shell.app().icons.has_dock(NETFLIX));
         shell.sleep();
         assert!(!shell.app().icons.has_dock(NETFLIX));
@@ -837,7 +883,7 @@ mod tests {
         assert_eq!(wanted, [NETFLIX, YOUTUBE, "com.demo.x"]);
         assert_eq!(shell.icons_wanted(&none, 1).len(), 1, "the limit holds");
 
-        let region = shell.reserve_icon(NETFLIX, Art::Icon).unwrap();
+        let region = shell.reserve_icon(NETFLIX, Art::Icon, 0).unwrap();
         assert_eq!(region[2], crate::app_icons::CELL_WIDTH);
         let wanted = packages(shell.icons_wanted(&none, 5));
         assert_eq!(wanted, [YOUTUBE, "com.demo.x"]);
@@ -851,7 +897,7 @@ mod tests {
         let dir = dir("icons-sleep");
         let mut shell = start(&dir);
         shell.wake(1280, 720);
-        shell.reserve_icon(NETFLIX, Art::Icon).unwrap();
+        shell.reserve_icon(NETFLIX, Art::Icon, 0).unwrap();
         shell.sleep();
         shell.wake(1280, 720);
         assert!(!shell.app().icons.has(NETFLIX));

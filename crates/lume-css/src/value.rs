@@ -414,7 +414,8 @@ fn parse_curve(tok: &str) -> Option<Curve> {
     }
 }
 
-fn parse_transition(v: &str) -> Result<Transition, String> {
+/// Parses a transition such as `150ms ease-out`.
+pub fn parse_transition(v: &str) -> Result<Transition, String> {
     let (mut duration, mut curve) = (None, Curve::Ease);
     for tok in split_ws(v) {
         if tok == "all" {

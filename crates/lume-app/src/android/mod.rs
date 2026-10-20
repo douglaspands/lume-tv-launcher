@@ -42,8 +42,16 @@ pub extern "system" fn Java_app_lume_tv_LumeActivity_nativeHomePressed(
     }
 }
 
-/// Icons fetched per turn of the loop, so keys are still answered while they load.
+/// Icons fetched per call, so keys are still answered while they load.
 const ICONS_PER_TURN: usize = 1;
+/// How long a turn of the loop may load icons: while the splash waits for them (nothing moves and
+/// nobody sees them come), with the interface at rest (one frame, so a key is not kept waiting),
+/// and while a faint fade runs (the splash logo or an icon coming in: a slice of a frame).
+const SPLASH_BATCH: Duration = Duration::from_millis(40);
+const IDLE_BATCH: Duration = Duration::from_millis(16);
+const FADE_BATCH: Duration = Duration::from_millis(6);
+/// No icon is started this close to the splash's deadline (one can take this long).
+const SPLASH_MARGIN_MS: u64 = 60;
 
 /// `mallopt` option that returns freed heap pages to the system (bionic, Android 10+).
 const M_PURGE: libc::c_int = -101;
@@ -58,6 +66,27 @@ fn purge_memory() {
     // SAFETY: mallopt only adjusts allocator behavior; unsupported options are ignored.
     unsafe {
         mallopt(M_PURGE, 0);
+    }
+}
+
+/// Where the time of loading the icons of a window goes: fetching them from the platform (the
+/// bridge) and uploading them to the GPU.
+#[derive(Default)]
+struct IconTimes {
+    /// When the window appeared, until the log line is written.
+    from: Option<Instant>,
+    count: u32,
+    bridge: Duration,
+    upload: Duration,
+    /// The slowest single fetch.
+    slowest: Duration,
+}
+
+impl IconTimes {
+    fn fetched(&mut self, took: Duration) {
+        self.count += 1;
+        self.bridge += took;
+        self.slowest = self.slowest.max(took);
     }
 }
 
@@ -76,6 +105,12 @@ struct Runtime {
     started: Instant,
     /// When the current window appeared, until its first frame is drawn and logged.
     first_frame_from: Option<Instant>,
+    /// How the icons of the current window were loaded, logged once they all are.
+    icon_times: IconTimes,
+    /// When the frames of the reveal after the splash were shown, to log how many were late.
+    reveal_frames: Vec<Instant>,
+    /// When the current window appeared, until the interface is ready (the splash ended) and logged.
+    ready_from: Option<Instant>,
     /// Size of the render buffer, once a window exists.
     running: bool,
 }
@@ -117,6 +152,9 @@ fn android_main(app: AndroidApp) {
         icons_pending: false,
         started: Instant::now(),
         first_frame_from: None,
+        ready_from: None,
+        reveal_frames: Vec::new(),
+        icon_times: IconTimes::default(),
         running: true,
     };
     runtime.run();
@@ -166,7 +204,8 @@ impl Runtime {
             // Loading an icon takes tens of milliseconds: it waits for the animation to end, or the
             // frames would be late and the movement would stutter.
             if !self.shell.is_busy(self.now_ms()) {
-                self.load_icons();
+                self.prepare_wallpaper();
+                self.load_icons_batch();
             }
         }
     }
@@ -216,6 +255,11 @@ impl Runtime {
             Ok(graphics) => {
                 self.graphics = Some(graphics);
                 self.first_frame_from = Some(Instant::now());
+                self.ready_from = self.first_frame_from;
+                self.icon_times = IconTimes {
+                    from: self.first_frame_from,
+                    ..IconTimes::default()
+                };
                 self.shell.wake(width, height);
                 log::info!("window {width}x{height}");
             }
@@ -366,8 +410,45 @@ impl Runtime {
         }
     }
 
+    /// While the splash is on screen (it does not draw the wallpaper), uploads the wallpaper texture
+    /// for the reveal: uploaded by the reveal's first frame, it made that frame ~70 ms late.
+    fn prepare_wallpaper(&mut self) {
+        if let Some(graphics) = self.graphics.as_mut() {
+            if self.shell.app().in_splash() && !graphics.backend().has_wallpaper() {
+                graphics.backend().ensure_wallpaper();
+            }
+        }
+    }
+
+    /// Loads icons for a turn of the loop, as many as fit in the turn's budget (see
+    /// [`SPLASH_BATCH`]); the screen is drawn once for all of them. Loading one icon per turn cost a
+    /// frame per icon, which is what made them appear one by one. During the splash it stops in time
+    /// for the deadline, which an icon on its way would delay.
+    fn load_icons_batch(&mut self) {
+        let now = self.now_ms();
+        let budget = if self.shell.app().is_animating(now) {
+            FADE_BATCH
+        } else if self.shell.app().in_splash() {
+            SPLASH_BATCH
+        } else {
+            IDLE_BATCH
+        };
+        let start = Instant::now();
+        loop {
+            self.load_icons();
+            let time_left = self.shell.splash_time_left(self.now_ms());
+            if !self.icons_pending
+                || start.elapsed() >= budget
+                || time_left.is_some_and(|left| left < SPLASH_MARGIN_MS)
+            {
+                break;
+            }
+        }
+    }
+
     /// Fetches the next few missing icons and uploads them to the icon texture.
     fn load_icons(&mut self) {
+        let now = self.now_ms();
         let Some(graphics) = self.graphics.as_mut() else {
             self.icons_pending = false;
             return;
@@ -378,18 +459,25 @@ impl Runtime {
             .shell
             .dock_icons_wanted(&self.dock_failed, ICONS_PER_TURN);
         for (package, activity) in &dock {
-            let region = self
-                .bridge
-                .dock_icon(package, activity)
-                .and_then(|pixels| self.shell.reserve_dock_icon(package).map(|r| (r, pixels)));
+            let fetch = Instant::now();
+            let pixels = self.bridge.dock_icon(package, activity);
+            self.icon_times.fetched(fetch.elapsed());
+            let region = pixels.and_then(|pixels| {
+                self.shell
+                    .reserve_dock_icon(package, now)
+                    .map(|r| (r, pixels))
+            });
             match region {
                 Some((region, pixels)) => {
+                    let upload = Instant::now();
                     let backend = graphics.backend();
                     backend.ensure_image(icons::ATLAS_WIDTH, icons::ATLAS_HEIGHT);
                     backend.update_image(region, &pixels);
+                    self.icon_times.upload += upload.elapsed();
                 }
                 None => {
                     self.dock_failed.insert(package.clone());
+                    self.shell.icon_failed(package, true);
                 }
             }
         }
@@ -399,21 +487,26 @@ impl Runtime {
         }
         let wanted = self.shell.icons_wanted(&self.icons_failed, ICONS_PER_TURN);
         for (package, activity) in &wanted {
+            let fetch = Instant::now();
             let art = self
                 .bridge
                 .tile_art(package, activity)
                 .filter(|(p, _)| p.len() == (icons::CELL_WIDTH * icons::CELL_HEIGHT * 4) as usize);
+            self.icon_times.fetched(fetch.elapsed());
             let region = art
                 .as_ref()
-                .and_then(|(_, art)| self.shell.reserve_icon(package, *art));
+                .and_then(|(_, art)| self.shell.reserve_icon(package, *art, now));
             match (art, region) {
                 (Some((pixels, _)), Some(region)) => {
+                    let upload = Instant::now();
                     let backend = graphics.backend();
                     backend.ensure_image(icons::ATLAS_WIDTH, icons::ATLAS_HEIGHT);
                     backend.update_image(region, &pixels);
+                    self.icon_times.upload += upload.elapsed();
                 }
                 _ => {
                     self.icons_failed.insert(package.clone());
+                    self.shell.icon_failed(package, false);
                 }
             }
         }
@@ -422,10 +515,25 @@ impl Runtime {
                 .shell
                 .dock_icons_wanted(&self.dock_failed, 1)
                 .is_empty();
+        if !self.icons_pending {
+            let times = &mut self.icon_times;
+            if let Some(from) = times.from.take() {
+                log::info!(
+                    "icons: {} in {} ms after the window (bridge {} ms, slowest {} ms; upload {} ms)",
+                    times.count,
+                    from.elapsed().as_millis(),
+                    times.bridge.as_millis(),
+                    times.slowest.as_millis(),
+                    times.upload.as_millis()
+                );
+            }
+        }
     }
 
     fn draw(&mut self) {
         let now = self.now_ms();
+        // The frame that ends the reveal is drawn after it stops being "revealing": it counts too.
+        let revealing = self.shell.is_revealing();
         let Some(frame) = self.shell.build_frame(now) else {
             return;
         };
@@ -442,7 +550,8 @@ impl Runtime {
         };
         let _: Color = background;
         graphics.backend().render(&viewport, background, &frame);
-        if let Err(e) = graphics.egl.swap_buffers() {
+        let swapped = graphics.egl.swap_buffers();
+        if let Err(e) = &swapped {
             log::warn!("{e}");
         } else if let Some(from) = self.first_frame_from.take() {
             log::info!(
@@ -450,6 +559,27 @@ impl Runtime {
                 from.elapsed().as_millis(),
                 self.started.elapsed().as_millis()
             );
+        }
+        if swapped.is_ok() && (revealing || self.shell.is_revealing()) {
+            self.reveal_frames.push(Instant::now());
+        }
+        if self.shell.take_interface_ready() {
+            let frames = std::mem::take(&mut self.reveal_frames);
+            let gaps: Vec<u128> = frames
+                .windows(2)
+                .map(|pair| (pair[1] - pair[0]).as_millis())
+                .collect();
+            let late = gaps.iter().filter(|gap| **gap >= 33).count();
+            if let Some(from) = self.ready_from.take() {
+                log::info!(
+                    "interface ready: {} ms after the window, {} ms after the process started; reveal: {} frames, {} of 33 ms or more {:?}",
+                    from.elapsed().as_millis(),
+                    self.started.elapsed().as_millis(),
+                    frames.len(),
+                    late,
+                    gaps
+                );
+            }
         }
     }
 }

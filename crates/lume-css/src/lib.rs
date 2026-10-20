@@ -12,8 +12,8 @@ use std::collections::HashMap;
 
 pub use diag::{Diagnostic, Severity};
 pub use value::{
-    parse_color, parse_length, Color, Curve, Decl, GradientStop, LinearGradient, Outline, Paint,
-    Shadow, Transition, MAX_GRADIENT_STOPS, PROPERTIES,
+    parse_color, parse_length, parse_transition, Color, Curve, Decl, GradientStop, LinearGradient,
+    Outline, Paint, Shadow, Transition, MAX_GRADIENT_STOPS, PROPERTIES,
 };
 
 /// Accepted component selectors.
@@ -97,6 +97,11 @@ impl Stylesheet {
     /// Length in px of a variable such as `--tab-underline`.
     pub fn length_variable(&self, name: &str) -> Option<f32> {
         value::parse_length(self.variable(name)?)
+    }
+
+    /// Duration and curve of a variable such as `--focus-time`.
+    pub fn transition_variable(&self, name: &str) -> Option<Transition> {
+        value::parse_transition(self.variable(name)?).ok()
     }
 
     /// All declarations of a component in a state (rules add up, the last one wins).

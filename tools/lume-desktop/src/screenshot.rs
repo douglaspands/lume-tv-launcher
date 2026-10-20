@@ -99,12 +99,15 @@ pub fn save(
 /// The "empty" screen: only the theme's background.
 pub fn draw_empty(_scene: &mut Scene) {}
 
-/// The launcher after pressing `keys` (one every 100 ms), drawn once everything has settled.
+/// The launcher after pressing `keys` (one every 100 ms), drawn once everything has settled. With
+/// `splash`, lume then leaves the screen and comes back, and the picture is the frame `splash` ms
+/// after the first splash frame.
 pub fn render_app(
     width: u32,
     height: u32,
     app: &mut LumeApp,
     keys: &[Key],
+    splash: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     let mut session = Session::new(width, height)?;
     let mut now = 0u64;
@@ -131,6 +134,18 @@ pub fn render_app(
     // Let every animation finish before the picture that is kept.
     now += 2000;
     frame(&mut session, app, now);
+    if let Some(after) = splash {
+        app.went_to_background();
+        app.came_to_foreground();
+        let first = now + 100;
+        // Frames as the loop would draw them, so the splash sees its deadline and the reveal runs.
+        let mut at = first;
+        while at < first + after {
+            frame(&mut session, app, at);
+            at += 16;
+        }
+        now = first + after;
+    }
     // A glyph first drawn in a pass that rebuilds the atlas can still be missing from that pass: one more
     // frame, with everything already in the atlas, is the one that is kept.
     frame(&mut session, app, now);

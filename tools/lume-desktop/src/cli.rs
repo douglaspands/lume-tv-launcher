@@ -18,10 +18,13 @@ pub struct Options {
     pub clock_12h: bool,
     /// How many favorites to put in the dock (the first N demo apps) instead of the first-use setup.
     pub favorites: Option<usize>,
+    /// Take the screenshot this many ms after the first splash frame (lume leaves and comes back
+    /// after the keys), to see the splash and its reveal.
+    pub splash: Option<u64>,
 }
 
 pub const USAGE: &str = "\
-usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] [--favorites N] [--screenshot SCREEN FILE.png]
+usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] [--favorites N] [--splash MS] [--screenshot SCREEN FILE.png]
 
   --size WxH               surface size, e.g. 1280x720 (default) or 1920x1080
   --locale TAG             language to show, e.g. pt-BR or en
@@ -29,6 +32,8 @@ usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] 
   --keys LIST              press keys first, e.g. down,right,right,ok (up down left right ok back home menu)
   --clock-12h              show the clock in 12-hour format
   --favorites N            put the first N demo apps in the dock (0 to 12)
+  --splash MS              come back to lume after the keys and shoot MS ms after the first splash
+                           frame (no icons load here: the reveal starts at 600)
   --screenshot SCREEN FILE render SCREEN to a PNG file and exit
 ";
 
@@ -42,6 +47,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
         keys: None,
         clock_12h: false,
         favorites: None,
+        splash: None,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -75,6 +81,13 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
                     return Err(format!("the dock holds at most 12 favorites, not {count}"));
                 }
                 options.favorites = Some(count);
+            }
+            "--splash" => {
+                let ms = value("--splash")?;
+                options.splash = Some(
+                    ms.parse()
+                        .map_err(|_| format!("invalid splash time '{ms}'"))?,
+                );
             }
             "--screenshot" => {
                 let screen = value("--screenshot")?;
@@ -145,5 +158,7 @@ mod tests {
         assert!(parse_args(&["--nope"]).is_err());
         assert!(parse_args(&["--favorites", "13"]).is_err());
         assert!(parse_args(&["--favorites", "many"]).is_err());
+        assert!(parse_args(&["--splash", "soon"]).is_err());
+        assert_eq!(parse_args(&["--splash", "725"]).unwrap().splash, Some(725));
     }
 }

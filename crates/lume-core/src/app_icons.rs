@@ -75,6 +75,11 @@ impl AppIcons {
         Some(Self::region(slot))
     }
 
+    /// The cell of `package`, by number.
+    pub fn slot(&self, package: &str) -> Option<usize> {
+        self.slots.get(package).map(|&(slot, _)| slot)
+    }
+
     /// What the cell of `package` holds.
     pub fn art(&self, package: &str) -> Option<Art> {
         self.slots.get(package).map(|&(_, art)| art)
@@ -147,7 +152,8 @@ impl AppIcons {
         self.dock = Default::default();
     }
 
-    fn dock_slot(&self, package: &str) -> Option<usize> {
+    /// The dock cell of `package`, by number.
+    pub fn dock_slot(&self, package: &str) -> Option<usize> {
         self.dock
             .iter()
             .position(|holder| holder.as_deref() == Some(package))

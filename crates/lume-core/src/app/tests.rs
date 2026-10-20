@@ -2496,3 +2496,339 @@ fn twelve_favorites_with_room_for_the_arrows_fit_the_safe_area() {
         );
     }
 }
+
+// The splash.
+
+use crate::render::{Cmd, RectCmd, RectKind};
+use crate::theme::{vars, Paint};
+
+/// lume goes to the background and comes back; the first frame back is drawn.
+fn come_back(rig: &mut Rig) -> DisplayList {
+    rig.app.went_to_background();
+    rig.app.icons.clear();
+    rig.app.came_to_foreground();
+    rig.frame()
+}
+
+/// The splash logo's square in a frame, if it is drawn.
+fn splash_logo(list: &DisplayList) -> Option<RectCmd> {
+    list.cmds().iter().find_map(|cmd| match cmd {
+        Cmd::Rect(r) if r.rect.w == vars::SPLASH_LOGO && r.rect.h == vars::SPLASH_LOGO => Some(*r),
+        _ => None,
+    })
+}
+
+/// The alpha the logo's square is painted with (0 to 255).
+fn logo_alpha(list: &DisplayList) -> Option<u8> {
+    match splash_logo(list)?.kind {
+        RectKind::Fill(Paint::Solid(color)) => Some(color.a),
+        _ => None,
+    }
+}
+
+/// The alpha the wallpaper is drawn with (0 to 255), if it is drawn.
+fn wallpaper_alpha(list: &DisplayList) -> Option<u8> {
+    list.cmds().iter().find_map(|cmd| match cmd {
+        Cmd::Wallpaper(quad) => Some(quad.color.a),
+        _ => None,
+    })
+}
+
+/// The top edge of the dock's background.
+fn dock_top(list: &DisplayList) -> f32 {
+    list.cmds()
+        .iter()
+        .find_map(|cmd| match cmd {
+            Cmd::Rect(r) if r.radius == 28.0 && matches!(r.kind, RectKind::Fill(_)) => {
+                Some(r.rect.y)
+            }
+            _ => None,
+        })
+        .expect("the dock is drawn")
+}
+
+fn load_dock_icons(rig: &mut Rig) {
+    for package in rig.app.config.favorites.clone() {
+        rig.app.icons.reserve_dock(&package).unwrap();
+    }
+}
+
+/// Gives every app of the grid its tile image.
+fn load_grid_tiles(rig: &mut Rig) {
+    for i in 0..rig.app.catalog.apps().len() {
+        let package = rig.app.catalog.apps()[i].package.clone();
+        rig.app
+            .icons
+            .reserve(&package, crate::app_icons::Art::Icon)
+            .unwrap();
+    }
+}
+
+#[test]
+fn the_splash_is_only_the_logo_centered_on_the_background() {
+    let mut rig = Rig::new();
+    let first = come_back(&mut rig);
+    assert!(rig.app.in_splash());
+    // The logo fades in on the background the system's window already shows.
+    assert_eq!(logo_alpha(&first), Some(0));
+    rig.now += vars::SPLASH_LOGO_IN.duration_ms as u64 / 2;
+    let half = logo_alpha(&rig.frame()).unwrap();
+    assert!(half > 0 && half < 255, "{half}");
+    rig.now += vars::SPLASH_LOGO_IN.duration_ms as u64;
+    let list = rig.frame();
+    // The four shapes of the mark and nothing else: no wallpaper, no screen, nothing under the
+    // logo in the band kept for a loading indicator.
+    assert_eq!(list.len(), 4, "{:?}", list.cmds());
+    let logo = splash_logo(&list).expect("the logo");
+    assert_eq!(logo.rect.center(), (640.0, 360.0));
+    assert_eq!(logo_alpha(&list), Some(255));
+    assert!(matches!(logo.kind, RectKind::Fill(Paint::Solid(c)) if c == vars::PRIMARY));
+}
+
+#[test]
+fn the_splash_holds_while_a_dock_icon_is_missing_and_lets_go_when_it_loads() {
+    let mut rig = Rig::new();
+    let favorites = rig.app.config.favorites.clone();
+    assert!(favorites.len() >= 2);
+    come_back(&mut rig);
+    assert_eq!(rig.app.splash_progress(), 0.0);
+    load_grid_tiles(&mut rig);
+    for package in &favorites[1..] {
+        rig.app.icons.reserve_dock(package).unwrap();
+    }
+    rig.advance(50);
+    assert!(rig.app.in_splash(), "one icon is missing");
+    let partial = rig.app.splash_progress();
+    assert!(partial > 0.0 && partial < 1.0, "{partial}");
+    rig.app.icons.reserve_dock(&favorites[0]).unwrap();
+    rig.advance(10);
+    assert!(
+        !rig.app.in_splash(),
+        "all icons are there: the reveal starts"
+    );
+    assert_eq!(rig.app.splash_progress(), 1.0);
+}
+
+#[test]
+fn an_icon_that_failed_counts_as_ready() {
+    let mut rig = Rig::new();
+    let favorites = rig.app.config.favorites.clone();
+    come_back(&mut rig);
+    load_grid_tiles(&mut rig);
+    for package in &favorites[1..] {
+        rig.app.icons.reserve_dock(package).unwrap();
+    }
+    rig.app.icon_failed(&favorites[0], true);
+    rig.advance(10);
+    assert!(!rig.app.in_splash());
+}
+
+#[test]
+fn the_splash_lets_go_after_600_ms_without_asking_for_frames_meanwhile() {
+    let mut rig = Rig::new();
+    come_back(&mut rig);
+    let since = rig.now;
+    // Once the logo is in nothing moves while it waits: the next frame is the 600 ms deadline (the
+    // clock's minute is further away), so the loop sleeps and keeps loading icons.
+    rig.advance(vars::SPLASH_LOGO_IN.duration_ms as u64);
+    assert!(!rig.app.is_animating(rig.now));
+    assert_eq!(rig.app.next_deadline(rig.now), Some(since + 600));
+    rig.advance(599 - vars::SPLASH_LOGO_IN.duration_ms as u64);
+    assert!(rig.app.in_splash());
+    rig.advance(1);
+    assert!(!rig.app.in_splash(), "the wait has a limit");
+}
+
+#[test]
+fn the_splash_waits_for_the_visible_tiles_of_the_grid_it_returns_to() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.press(Key::Down);
+    let focus = rig.focused();
+    rig.press(Key::Ok);
+    come_back(&mut rig);
+    rig.press(Key::Home);
+    assert!(
+        rig.app.in_splash(),
+        "the Home press that brings lume back keeps the splash"
+    );
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    assert_eq!(
+        rig.focused(),
+        focus,
+        "the focus is restored behind the splash"
+    );
+    let missing = rig.app.splash_missing_tiles().to_vec();
+    assert_eq!(
+        missing.len(),
+        rig.app.catalog.apps().len(),
+        "all tiles fit the view"
+    );
+    for package in &missing {
+        rig.app
+            .icons
+            .reserve(package, crate::app_icons::Art::Icon)
+            .unwrap();
+    }
+    rig.advance(10);
+    assert!(
+        rig.app.in_splash(),
+        "the dock icons, for a move to Home, are missing"
+    );
+    load_dock_icons(&mut rig);
+    rig.advance(10);
+    assert!(!rig.app.in_splash());
+}
+
+#[test]
+fn the_home_splash_also_waits_for_the_first_screen_of_the_grid() {
+    let mut rig = Rig::new();
+    come_back(&mut rig);
+    load_dock_icons(&mut rig);
+    rig.advance(10);
+    // A move to the Apps tab right after the reveal must not show tiles arriving.
+    assert!(rig.app.in_splash());
+    assert_eq!(
+        rig.app.splash_missing_tiles().len(),
+        rig.app.catalog.apps().len()
+    );
+    load_grid_tiles(&mut rig);
+    rig.advance(10);
+    assert!(!rig.app.in_splash());
+}
+
+#[test]
+fn a_key_during_the_splash_ends_it_and_is_applied() {
+    let mut rig = Rig::new();
+    let first = rig.focused();
+    come_back(&mut rig);
+    rig.press(Key::Right);
+    assert!(!rig.app.in_splash());
+    assert!(
+        rig.app.take_interface_ready(),
+        "the interface is ready at once"
+    );
+    assert_ne!(rig.focused(), first, "the focus moved to the right");
+    let list = rig.frame();
+    assert_eq!(logo_alpha(&list), None, "no reveal: the logo is gone");
+    assert_eq!(wallpaper_alpha(&list), Some(255));
+}
+
+#[test]
+fn home_during_the_splash_follows_the_usual_rules() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    come_back(&mut rig);
+    // Not back from an app opened by lume: Home goes to the start, behind the splash.
+    rig.press(Key::Home);
+    assert!(rig.app.in_splash());
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+}
+
+#[test]
+fn the_reveal_brings_up_the_wallpaper_and_the_content_and_fades_the_logo() {
+    let mut rig = Rig::new();
+    let rest = dock_top(&rig.frame());
+    for (cold, duration) in [
+        (true, vars::SPLASH_REVEAL_COLD.duration_ms),
+        (false, vars::SPLASH_REVEAL_WARM.duration_ms),
+    ] {
+        come_back(&mut rig);
+        rig.advance(vars::SPLASH_LOGO_IN.duration_ms as u64);
+        load_dock_icons(&mut rig);
+        load_grid_tiles(&mut rig);
+        let start = rig.frame();
+        assert!(!rig.app.in_splash(), "cold: {cold}");
+        assert_eq!(logo_alpha(&start), Some(255));
+        assert_eq!(
+            wallpaper_alpha(&start),
+            None,
+            "intensity 0: only the background"
+        );
+
+        rig.now += (duration / 2.0) as u64;
+        let middle = rig.frame();
+        let t = crate::ui::animation::ease(crate::theme::Curve::EaseOut, 0.5);
+        let alpha = |v: f32| (255.0 * v).round() as i32;
+        assert!((i32::from(wallpaper_alpha(&middle).unwrap()) - alpha(t)).abs() <= 1);
+        assert!((i32::from(logo_alpha(&middle).unwrap()) - alpha(1.0 - t)).abs() <= 1);
+        assert!((dock_top(&middle) - rest - 24.0 * (1.0 - t)).abs() < 0.01);
+        assert!(!rig.app.take_interface_ready());
+
+        rig.now += duration as u64;
+        let end = rig.frame();
+        assert_eq!(logo_alpha(&end), None);
+        assert_eq!(wallpaper_alpha(&end), Some(255));
+        assert_eq!(dock_top(&end), rest);
+        assert!(rig.app.take_interface_ready(), "the end of the reveal");
+        assert!(!rig.app.is_animating(rig.now));
+    }
+}
+
+#[test]
+fn the_logo_fades_only_where_it_is() {
+    let mut rig = Rig::new();
+    come_back(&mut rig);
+    load_dock_icons(&mut rig);
+    rig.frame();
+    rig.now += 100;
+    let list = rig.frame();
+    // Only the logo's four shapes are translucent paint over the whole frame: no full-screen layer.
+    let full_screen = list
+        .cmds()
+        .iter()
+        .any(|cmd| matches!(cmd, Cmd::Rect(r) if r.rect.w >= 1280.0 && r.rect.h >= 720.0));
+    assert!(!full_screen);
+}
+
+/// The alpha of the dock icon images in a frame (dock cells are the square images).
+fn dock_image_alphas(list: &DisplayList) -> Vec<u8> {
+    list.cmds()
+        .iter()
+        .filter_map(|cmd| match cmd {
+            Cmd::Image(t) if (t.dest.w - t.dest.h).abs() < 0.01 => Some(t.color.a),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn an_icon_that_arrives_with_the_interface_on_screen_fades_in() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    let netflix = rig.app.config.favorites[0].clone();
+    rig.app.icons.reserve_dock(&netflix).unwrap();
+    rig.app.icon_arrived(&netflix, true, rig.now);
+    let start = rig.frame();
+    assert_eq!(dock_image_alphas(&start), [0]);
+    // A faint fade: icons go on loading under it.
+    assert!(rig.app.is_animating(rig.now));
+    assert!(!rig.app.is_moving(rig.now));
+
+    rig.now += vars::ICON_IN.duration_ms as u64 / 2;
+    let half = dock_image_alphas(&rig.frame())[0];
+    assert!(half > 0 && half < 255, "{half}");
+
+    rig.now += vars::ICON_IN.duration_ms as u64;
+    assert_eq!(dock_image_alphas(&rig.frame()), [255]);
+}
+
+#[test]
+fn icons_that_arrive_during_the_splash_do_not_fade_in() {
+    let mut rig = Rig::new();
+    come_back(&mut rig);
+    rig.advance(vars::SPLASH_LOGO_IN.duration_ms as u64);
+    for package in rig.app.config.favorites.clone() {
+        rig.app.icons.reserve_dock(&package).unwrap();
+        rig.app.icon_arrived(&package, true, rig.now);
+    }
+    load_grid_tiles(&mut rig);
+    rig.frame();
+    // The reveal brings them in with the rest; once it is over they are all there.
+    rig.now += 1000;
+    let list = rig.frame();
+    let alphas = dock_image_alphas(&list);
+    assert!(!alphas.is_empty());
+    assert!(alphas.iter().all(|a| *a == 255), "{alphas:?}");
+}
