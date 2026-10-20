@@ -24,15 +24,19 @@ Quando outro app passa ao primeiro plano, o lume SHALL liberar superfície, cont
 - **THEN** o lume libera todos os caches recriáveis, mantendo só a configuração e o catálogo em memória
 
 ### Requirement: Retorno rápido
-Ao pressionar Home, a tela Início SHALL estar desenhada e respondendo ao controle em até 300 ms quando o processo do lume ainda existe (retorno a quente) e em até 800 ms quando o processo foi encerrado (abertura a frio), no dispositivo de referência.
+Ao pressionar Home, o primeiro quadro do Lume (o splash) SHALL aparecer, e o Lume SHALL estar respondendo ao controle, em até 300 ms quando o processo do lume ainda existe (retorno a quente) e em até 800 ms quando o processo foi encerrado (abertura a frio), no dispositivo de referência. A interface completa (fim da revelação do splash, ver `launcher-shell`) SHALL estar na tela no máximo 600 ms mais a duração da revelação depois do primeiro quadro. O Lume SHALL registrar no log o tempo do primeiro quadro e o da interface pronta.
 
 #### Scenario: Retorno a quente
 - **WHEN** o lume está em segundo plano, com recursos gráficos liberados, e o usuário pressiona Home
-- **THEN** o primeiro quadro completo da tela Início aparece em até 300 ms
+- **THEN** o primeiro quadro (o splash) aparece em até 300 ms, e a tela Início completa em até 820 ms depois dele
 
 #### Scenario: Abertura a frio
 - **WHEN** o processo do lume foi encerrado e o usuário pressiona Home
-- **THEN** o primeiro quadro completo aparece em até 800 ms, usando o catálogo em cache sem esperar pela consulta completa de apps
+- **THEN** o primeiro quadro aparece em até 800 ms, usando o catálogo em cache sem esperar pela consulta completa de apps, e a tela Início completa em até 900 ms depois dele
+
+#### Scenario: Log da interface pronta
+- **WHEN** a revelação do splash termina
+- **THEN** o log do Lume registra o tempo desde a janela e desde o início do processo
 
 ### Requirement: Renderização sob demanda
 O lume SHALL desenhar quadros apenas quando algo visível muda (entrada do usuário, animação em curso, virada de minuto do relógio, mudança no catálogo). Ocioso, SHALL NOT desenhar quadros nem manter threads acordadas em laço. O papel de parede e o dock SHALL NOT manter animação contínua.

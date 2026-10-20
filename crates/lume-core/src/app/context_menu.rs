@@ -20,14 +20,16 @@ const PADDING: f32 = 8.0;
 const ITEM_GAP: f32 = 0.0;
 /// Height of a disabled item, which has its reason under the name.
 const NOTE_ITEM_HEIGHT: f32 = 72.0;
-const MIN_WIDTH: f32 = 240.0;
+/// Only for very short menus: the longest item decides the width, so both sides keep the same margin.
+const MIN_WIDTH: f32 = 200.0;
 /// Room left after the longest text (see `draw_context_menu`).
 const TEXT_SLACK: f32 = 4.0;
-/// Space between the card and the name bubble of the favorite it belongs to, over the dock.
-const DOCK_GAP: f32 = 16.0;
-/// Space between the card and the tile it belongs to, over the grid: a focused tile grows by 1.05
-/// and has a 4-unit ring, so about 16 of it stays visible.
-const GRID_GAP: f32 = 24.0;
+/// Space between the card and the name box of the favorite it belongs to, over the dock. The box
+/// has room above the letters, so the name is still about 18 below the card.
+const DOCK_GAP: f32 = 4.0;
+/// Space between the card and the focus ring of the tile it belongs to, over the grid: close enough
+/// to read as the tile's. The card's top is the ring's top.
+const GRID_GAP: f32 = 8.0;
 /// Where the name of a disabled item sits in it, and its reason below: the two lines are centered
 /// in the 72 of the item (by their ink, measured with scripts/measure-ink.py).
 const NOTE_NAME_TOP: f32 = 11.0;

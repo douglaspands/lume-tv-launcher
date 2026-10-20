@@ -149,10 +149,26 @@ impl<K: Eq + Hash + Copy> Animations<K> {
         self.values.values().any(|t| t.is_animating(now))
     }
 
+    /// Whether one of the values `which` picks is moving.
+    pub fn is_animating_where(&self, now: u64, which: impl Fn(&K) -> bool) -> bool {
+        self.values
+            .iter()
+            .any(|(key, t)| which(key) && t.is_animating(now))
+    }
+
     /// When the next frame is due: one frame from `now` while something moves, `None` when
     /// everything is at rest (so the event loop can sleep).
     pub fn next_deadline(&self, now: u64) -> Option<u64> {
         self.is_animating(now).then_some(now + FRAME_MS)
+    }
+
+    /// Ends every animation but those `keep` picks at its target, as if its time had run out.
+    pub fn settle(&mut self, keep: impl Fn(&K) -> bool) {
+        for (key, tween) in self.values.iter_mut() {
+            if !keep(key) {
+                *tween = Tween::at(tween.target());
+            }
+        }
     }
 
     /// Forgets values that finished at their resting value, to keep the set small.

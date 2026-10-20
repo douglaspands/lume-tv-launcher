@@ -124,6 +124,26 @@ impl DisplayList {
         }
     }
 
+    /// Moves commands `start..end` (indexes from [`len`](Self::len)) down by `dy`, clips included.
+    pub fn translate_range(&mut self, start: usize, end: usize, dy: f32) {
+        let end = end.min(self.cmds.len());
+        for cmd in &mut self.cmds[start.min(end)..end] {
+            match cmd {
+                Cmd::Rect(r) => r.rect = r.rect.translate(0.0, dy),
+                Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) => {
+                    t.dest = t.dest.translate(0.0, dy);
+                }
+                Cmd::PushClip(rect) => *rect = rect.translate(0.0, dy),
+                Cmd::PopClip => {}
+            }
+        }
+    }
+
+    /// Drops the commands from `start` on.
+    pub fn truncate(&mut self, start: usize) {
+        self.cmds.truncate(start);
+    }
+
     pub fn push_clip(&mut self, rect: Rect) {
         self.cmds.push(Cmd::PushClip(rect));
     }

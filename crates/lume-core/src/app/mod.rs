@@ -14,6 +14,7 @@ mod home;
 mod page;
 mod painter;
 mod settings;
+mod splash;
 #[cfg(test)]
 mod tests;
 mod topbar;
@@ -138,6 +139,16 @@ enum Anim {
     DockGhost,
     /// How much room the neighbors of a favorite being moved leave for its arrows, 0.0 to 1.0.
     DockRoom,
+    /// How far the reveal of the interface after the splash has got, 0.0 to 1.0.
+    Reveal,
+    /// How visible the splash logo is while it fades in, 0.0 to 1.0.
+    SplashLogo,
+    /// How visible an icon that arrived with the interface on screen is, 0.0 to 1.0: the tile cell
+    /// `slot`, or the dock cell with `dock`.
+    IconIn {
+        dock: bool,
+        slot: usize,
+    },
 }
 
 /// The fade of the content when the tab changes.
@@ -215,6 +226,14 @@ pub struct LumeApp {
     wake_pending: bool,
     /// When the first frame after coming back was drawn.
     foreground_since: Option<u64>,
+    /// The splash, while it is on screen or the interface is being revealed.
+    phase: splash::Phase,
+    /// lume has come to the screen before (so the next time is not a cold start).
+    woke_before: bool,
+    /// The interface became ready since the platform last asked.
+    interface_ready: bool,
+    /// Where the top bar starts in the display list, on the main screens.
+    bar_start: Option<usize>,
     now_ms: u64,
 }
 
@@ -268,6 +287,10 @@ impl LumeApp {
             foreground: true,
             wake_pending: false,
             foreground_since: None,
+            phase: splash::Phase::Normal,
+            woke_before: false,
+            interface_ready: false,
+            bar_start: None,
             now_ms: 0,
         }
     }
@@ -306,6 +329,11 @@ impl LumeApp {
     /// Handles a key press.
     pub fn handle_key(&mut self, key: Key, now_ms: u64) -> Vec<Effect> {
         self.now_ms = now_ms;
+        // A key ends the splash at once and goes to the interface. Home does not: it is what brings
+        // lume back, and it only decides which screen the splash reveals.
+        if key != Key::Home {
+            self.cut_splash();
+        }
         // Only the Home press that brings lume back can use the place where an app was opened.
         if key != Key::Home {
             self.return_point = None;
@@ -488,6 +516,7 @@ impl LumeApp {
         self.foreground = true;
         self.wake_pending = true;
         self.foreground_since = None;
+        self.start_splash();
     }
 
     /// Whether a Home press now is the one that brought lume back from another app: it comes while
@@ -593,6 +622,9 @@ impl LumeApp {
         if let Some((_, until)) = &self.toast {
             consider(*until);
         }
+        if let Some(at) = self.splash_deadline() {
+            consider(at);
+        }
         deadline
     }
 
@@ -623,9 +655,54 @@ impl LumeApp {
         self.anim.is_animating(self.now_ms.max(now_ms))
     }
 
+    /// Whether something is moving that loading an icon would make stutter. The splash logo and the
+    /// icons fading in are not: they are faint fades, and icons go on loading during them (in small
+    /// batches), or the splash would hold and the icons would come one per fade.
+    pub fn is_moving(&self, now_ms: u64) -> bool {
+        self.anim
+            .is_animating_where(self.now_ms.max(now_ms), |key| {
+                !matches!(key, Anim::SplashLogo | Anim::IconIn { .. })
+            })
+    }
+
+    /// The icon of `package` (its dock icon with `dock`) was just uploaded. With the interface on
+    /// screen it fades in over the app's color and initial; during the splash nobody sees it come.
+    pub fn icon_arrived(&mut self, package: &str, dock: bool, now_ms: u64) {
+        if self.phase != splash::Phase::Normal {
+            return;
+        }
+        let slot = if dock {
+            self.icons.dock_slot(package)
+        } else {
+            self.icons.slot(package)
+        };
+        if let Some(slot) = slot {
+            self.anim.animate_to(
+                Anim::IconIn { dock, slot },
+                0.0,
+                1.0,
+                now_ms,
+                Some(crate::theme::vars::ICON_IN),
+            );
+        }
+    }
+
+    /// How visible the icon of `package` is (1.0 once it has faded in).
+    pub(super) fn icon_visibility(&self, package: &str, dock: bool) -> f32 {
+        let slot = if dock {
+            self.icons.dock_slot(package)
+        } else {
+            self.icons.slot(package)
+        };
+        slot.map_or(1.0, |slot| {
+            self.anim.get(Anim::IconIn { dock, slot }, 1.0, self.now_ms)
+        })
+    }
+
     /// Fades the content drawn so far in this frame (not the top bar, which is drawn after it)
-    /// while the tab that was just selected appears.
-    pub(super) fn fade_tab_content(&self, p: &mut painter::Painter) {
+    /// while the tab that was just selected appears, and notes where the top bar starts.
+    pub(super) fn fade_tab_content(&mut self, p: &mut painter::Painter) {
+        self.bar_start = Some(p.list.len());
         let visible = self.anim.get(Anim::TabFade, 1.0, self.now_ms);
         if visible < 1.0 {
             p.list.fade_from(self.content_start, visible);
@@ -644,8 +721,10 @@ impl LumeApp {
                 self.toast = None;
             }
         }
-        p.wallpaper(self.screen != Screen::Main(Tab::Home));
+        self.splash_frame_start(now_ms);
+        p.wallpaper_at(self.screen != Screen::Main(Tab::Home), self.reveal());
         self.content_start = p.list.len();
+        self.bar_start = None;
         match self.screen {
             Screen::Main(Tab::Home) => self.draw_home(p),
             Screen::Main(Tab::Apps) => self.draw_apps(p),
@@ -655,8 +734,14 @@ impl LumeApp {
         }
         self.draw_context_menu(p);
         self.draw_toast(p);
+        let content_end = self.bar_start.unwrap_or(p.list.len());
+        self.splash_frame_end(p, content_end);
         self.anim.prune(now_ms, |key| match key {
-            Anim::TabFade | Anim::MenuFade => 1.0,
+            Anim::TabFade
+            | Anim::MenuFade
+            | Anim::Reveal
+            | Anim::SplashLogo
+            | Anim::IconIn { .. } => 1.0,
             _ => 0.0,
         });
     }
@@ -795,7 +880,10 @@ impl LumeApp {
         let (Some(uv), Some(art)) = (self.icons.uv(package), self.icons.art(package)) else {
             return;
         };
-        let tint = painter::fade(crate::theme::Color::WHITE, style.opacity);
+        let tint = painter::fade(
+            crate::theme::Color::WHITE,
+            style.opacity * self.icon_visibility(package, false),
+        );
         match art {
             Art::Banner => p.list.image(tile, uv, tint),
             Art::Icon if name_on_tile => {
@@ -817,7 +905,18 @@ impl LumeApp {
         name_on_tile: bool,
     ) {
         let tile = rect.scaled_about_center(style.scale);
-        match package.and_then(|package| self.icons.art(package)) {
+        let art = package.and_then(|package| self.icons.art(package));
+        // While an image fades in, the name it replaces fades out under it.
+        let fading = package
+            .filter(|_| art.is_some() && !name_on_tile)
+            .map_or(1.0, |package| self.icon_visibility(package, false));
+        if fading < 1.0 {
+            let mut faded = *style;
+            faded.color = painter::fade(style.color, 1.0 - fading);
+            p.text(label, tile.grow(-12.0), crate::text::Align::Center, &faded);
+            return;
+        }
+        match art {
             None => p.text(label, tile.grow(-12.0), crate::text::Align::Center, style),
             Some(Art::Icon) if name_on_tile => {
                 let name = Rect::new(

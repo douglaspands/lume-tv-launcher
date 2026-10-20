@@ -6,7 +6,7 @@
 //!
 //! Warnings are forwarded as `cargo:warning`; any error fails the build.
 
-use lume_css::{Color, Curve, Decl, Paint, Severity, State};
+use lume_css::{Color, Curve, Decl, Paint, Severity, State, Transition};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
@@ -173,8 +173,8 @@ fn generate(sheet: &lume_css::Stylesheet) -> String {
     }
     out.push_str("};\n\n");
 
-    // Color and length variables become typed constants.
-    out.push_str("/// Theme variables (`--name` becomes `NAME`).\n#[allow(dead_code)]\npub mod vars {\n    use super::Color;\n\n");
+    // Color, length and transition variables become typed constants.
+    out.push_str("/// Theme variables (`--name` becomes `NAME`).\n#[allow(dead_code)]\npub mod vars {\n    use super::{Color, Curve, Transition};\n\n");
     for (name, _) in &sheet.variables {
         let ident = name
             .trim_start_matches("--")
@@ -184,6 +184,13 @@ fn generate(sheet: &lume_css::Stylesheet) -> String {
             writeln!(out, "    pub const {ident}: Color = {};", color(c)).unwrap();
         } else if let Some(px) = sheet.length_variable(name) {
             writeln!(out, "    pub const {ident}: f32 = {px:?};").unwrap();
+        } else if let Some(t) = sheet.transition_variable(name) {
+            writeln!(
+                out,
+                "    pub const {ident}: Transition = {};",
+                transition(&t)
+            )
+            .unwrap();
         }
     }
     out.push_str("}\n");
@@ -196,6 +203,21 @@ fn field_name(component: &str) -> String {
 
 fn color(c: Color) -> String {
     format!("Color {{ r: {}, g: {}, b: {}, a: {} }}", c.r, c.g, c.b, c.a)
+}
+
+fn transition(t: &Transition) -> String {
+    let curve = match t.curve {
+        Curve::Linear => "Curve::Linear".to_string(),
+        Curve::Ease => "Curve::Ease".to_string(),
+        Curve::EaseIn => "Curve::EaseIn".to_string(),
+        Curve::EaseOut => "Curve::EaseOut".to_string(),
+        Curve::EaseInOut => "Curve::EaseInOut".to_string(),
+        Curve::CubicBezier(a, b, c, d) => format!("Curve::CubicBezier({a:?}, {b:?}, {c:?}, {d:?})"),
+    };
+    format!(
+        "Transition {{ duration_ms: {:?}, curve: {curve} }}",
+        t.duration_ms
+    )
 }
 
 fn some(inner: String) -> String {
@@ -260,15 +282,7 @@ fn style_literal(sheet: &lume_css::Stylesheet, component: &str, state: State) ->
             Decl::Height(v) => set("height", some(format!("{v:?}"))),
             Decl::TransformScale(v) => set("scale", some(format!("{v:?}"))),
             Decl::Transition(t) => {
-                let curve = match t.curve {
-                    Curve::Linear => "Curve::Linear".to_string(),
-                    Curve::Ease => "Curve::Ease".to_string(),
-                    Curve::EaseIn => "Curve::EaseIn".to_string(),
-                    Curve::EaseOut => "Curve::EaseOut".to_string(),
-                    Curve::EaseInOut => "Curve::EaseInOut".to_string(),
-                    Curve::CubicBezier(a, b, c, d) => format!("Curve::CubicBezier({a:?}, {b:?}, {c:?}, {d:?})"),
-                };
-                set("transition", some(format!("Transition {{ duration_ms: {:?}, curve: {curve} }}", t.duration_ms)));
+                set("transition", some(transition(t)));
             }
         }
     }

@@ -74,7 +74,7 @@ fn brightest(pixels: &[u8], area: (u32, u32, u32, u32), covered: &[(u32, u32, u3
 
 fn render(keys: &[Key]) -> Option<Vec<u8>> {
     let mut app = empty_app();
-    match screenshot::render_app(W, H, &mut app, keys) {
+    match screenshot::render_app(W, H, &mut app, keys, None) {
         Ok(pixels) => Some(pixels),
         Err(e) if e.contains("EGL") || e.contains("GL context") => {
             eprintln!("skipped: {e}");

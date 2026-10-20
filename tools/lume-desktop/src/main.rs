@@ -70,7 +70,7 @@ fn main() {
             if let Some(list) = &options.keys {
                 keys.extend(demo::parse_keys(list).unwrap_or_else(|e| fail(&e)));
             }
-            screenshot::render_app(width, height, &mut app, &keys)
+            screenshot::render_app(width, height, &mut app, &keys, options.splash)
                 .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
         }
         other => fail(&format!(

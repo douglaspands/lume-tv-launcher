@@ -33,11 +33,21 @@ impl Painter<'_> {
     /// drawn at the remaining share, and the frame is cleared to `--bg`, so the premultiplied
     /// blend gives `image * (1 - dim) + bg * dim`.
     pub fn wallpaper(&mut self, dimmed: bool) {
+        self.wallpaper_at(dimmed, 1.0);
+    }
+
+    /// The wallpaper at `intensity` (0.0, only the `--bg` the frame is cleared to, to 1.0, as
+    /// [`wallpaper`](Self::wallpaper) draws it): the splash reveals it this way, by the color it is
+    /// drawn with and not with a layer over it.
+    pub fn wallpaper_at(&mut self, dimmed: bool, intensity: f32) {
         let keep = if dimmed {
             1.0 - f32::from(TEXT_SCREEN_DIM.a) / 255.0
         } else {
             1.0
-        };
+        } * intensity.clamp(0.0, 1.0);
+        if keep <= 0.0 {
+            return;
+        }
         let visible = self.display.visible_rect();
         let wallpaper = crate::wallpaper::current();
         let uv = cover_uv(

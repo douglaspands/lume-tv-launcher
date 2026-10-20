@@ -59,6 +59,20 @@
   --menu-text: #1B2630;
   --menu-text-muted: #5E6A75;
 
+  /* Splash: the logo fades in centered on --bg (the color of the system's starting window) while
+     the screen behind it gets ready, then the reveal. The status band under it is kept empty for
+     a future loading indicator. */
+  --splash-logo: 128px;
+  --splash-logo-in: 120ms ease-out;
+  --splash-status-top: 32px;    /* from the logo's bottom edge */
+  --splash-status-height: 24px;
+  --splash-reveal-cold: 300ms ease-out;
+  --splash-reveal-warm: 220ms ease-out;
+  --splash-rise: 24px;          /* the content comes up this much while it is revealed */
+  /* An icon that arrives once the interface is on screen fades in over the app's color and initial,
+     instead of popping in. */
+  --icon-in: 150ms ease-out;
+
   /* Tabs */
   --tab-underline: 2px;
 
@@ -290,17 +304,20 @@
 .menu {
   border-radius: 20px;
   background: var(--menu-surface);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  /* Close to the card and all around it, so the light card stands apart from a white tile. */
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
 
 .menu-item {
   height: 56px;
-  padding: 0 24px;
+  /* With the card's 8, the text starts 24 from its edge. */
+  padding: 0 16px;
   border-radius: var(--radius);
   background: rgba(0, 0, 0, 0);
   color: var(--menu-text);
-  font-size: var(--font-body);
-  font-weight: 700;
+  /* The size and weight of the app names: at 20/700 the dark text on the light card read heavy. */
+  font-size: var(--font-label);
+  font-weight: 500;
   transition: var(--focus-time);
 }
 .menu-item:focus {

@@ -271,16 +271,30 @@ impl LumeApp {
         for (item, rect) in items.iter().zip(&layout.items) {
             let uv = item.package.as_deref().and_then(|p| self.icons.dock_uv(p));
             if let Some(uv) = uv {
-                p.list.image(*rect, uv, Color::WHITE);
+                let visible = item
+                    .package
+                    .as_deref()
+                    .map_or(1.0, |p| self.icon_visibility(p, true));
+                p.list
+                    .image(*rect, uv, super::painter::fade(Color::WHITE, visible));
             }
         }
-        // While the icon has not arrived, the app's color carries its first letter (or a plus).
+        // While the icon has not arrived, the app's color carries its first letter (or a plus); while
+        // it fades in, the letter fades out under it.
         for (item, rect) in items.iter().zip(&layout.items) {
             let has_icon = item
                 .package
                 .as_deref()
                 .is_some_and(|p| self.icons.has_dock(p));
-            if has_icon {
+            let letter = if has_icon {
+                1.0 - item
+                    .package
+                    .as_deref()
+                    .map_or(1.0, |p| self.icon_visibility(p, true))
+            } else {
+                1.0
+            };
+            if letter <= 0.0 {
                 continue;
             }
             if item.package.is_none() {
@@ -292,7 +306,7 @@ impl LumeApp {
                     *rect,
                     Align::Center,
                     &style,
-                    Color::WHITE,
+                    super::painter::fade(Color::WHITE, letter),
                 );
             }
         }

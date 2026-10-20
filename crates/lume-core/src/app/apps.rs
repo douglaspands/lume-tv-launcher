@@ -32,6 +32,11 @@ pub(super) struct Cell {
     color: crate::theme::Color,
 }
 
+/// The bottom of the grid's view.
+pub(super) fn view_bottom(p: &Painter) -> f32 {
+    p.display.visible_rect().bottom()
+}
+
 impl LumeApp {
     pub(super) fn grid_cells(&self) -> Vec<Cell> {
         let mut cells: Vec<Cell> = self
@@ -109,8 +114,18 @@ impl LumeApp {
             self.scroll_to(0.0);
         }
         let scroll_y = self.current_scroll_y();
+        // The menu goes next to the tile as it looks with the focus: grown, with its ring around it.
+        let focused = p.focus_style(&THEME.tile, 1.0);
+        let ring = focused
+            .outline
+            .map_or(0.0, |o| o.width + focused.outline_offset);
         for cell in &cells {
-            self.anchor_context_menu(Origin::Grid(cell.id), cell.rect.translate(0.0, -scroll_y));
+            let drawn = cell
+                .rect
+                .translate(0.0, -scroll_y)
+                .scaled_about_center(focused.scale)
+                .grow(ring);
+            self.anchor_context_menu(Origin::Grid(cell.id), drawn);
         }
 
         let visible = p.display.visible_rect();
@@ -185,6 +200,19 @@ impl LumeApp {
             focus: &progress,
         }
         .draw(p);
+    }
+
+    /// The apps whose tiles are at least partly in the grid's view (from below the top bar to
+    /// `bottom`) with the grid scrolled by `scroll_y`.
+    pub(super) fn visible_grid_packages(&self, bottom: f32, scroll_y: f32) -> Vec<String> {
+        self.grid_cells()
+            .into_iter()
+            .filter(|cell| {
+                let rect = cell.rect.translate(0.0, -scroll_y);
+                rect.bottom() > CLIP_TOP && rect.y < bottom
+            })
+            .filter_map(|cell| cell.package)
+            .collect()
     }
 
     /// The id of the tile at `position` of the grid, or of the last one when there are fewer.

@@ -334,3 +334,64 @@ APK de release da change `escala-tipografica` (3,40 MB; a fonte de ícones, agor
   Para achar o código de um botão, use o log do Lume: `adb logcat | grep "not used"`.
 - `screencap -p` na AIWA escreve duas linhas de texto antes do PNG: corte até o cabeçalho `\x89PNG`.
 - **TCL:** o botão Menu do controle chega como `KEYCODE_MENU` (82) e abre o menu (conferido pelo autor).
+
+## Splash (change `splash`, 2026-10-20)
+
+APK de release da change `splash` (3,28 MB), as duas TVs reiniciadas antes das medidas. Os tempos vêm dos logs do Lume,
+contados a partir da janela: `first frame`, `icons: N in X ms` (todos os ícones das duas abas carregados) e
+`interface ready` (fim da revelação, com o número de quadros da revelação e quantos levaram 33 ms ou mais).
+
+| | Rodadas | Primeiro quadro | Ícones prontos | Interface pronta | Revelação |
+|---|---|---|---|---|---|
+| TCL, retorno a quente para o Início | 10 | 71–87 ms | 189–229 ms | 420–460 ms | 15 quadros, 0 de 33 ms ou mais |
+| TCL, retorno para a grade | 10 | 76–89 ms | 201–215 ms | 437–448 ms | 15 quadros, 0 |
+| TCL, abertura a frio | 5 | 75–77 ms | 211–225 ms | 521–535 ms | 20 quadros, 0 |
+| AIWA, retorno a quente para o Início | 10 | 88–107 ms | 167–297 ms | 400–533 ms | 15 quadros, 0 |
+| AIWA, retorno para a grade | 10 | 85–105 ms | 158–253 ms | 395–487 ms | 15 quadros, 0 |
+| AIWA, abertura a frio | 5 | 99–118 ms | 204–268 ms | 530–580 ms | 20 quadros, 0 |
+
+Em nenhuma das 50 rodadas um ícone chegou depois da revelação. A revelação dura 220 ms no retorno a quente e 300 ms a frio;
+o resto da espera é o splash: o logo entra em 120 ms enquanto os ícones carregam.
+
+| Memória (`dumpsys meminfo`, `TOTAL`: PSS e Private Dirty) | TCL 55C715 | AIWA (`low_ram`) | Orçamento |
+|---|---|---|---|
+| Primeiro plano, 30 s parado | PSS 20,5–26,5 MB (privada 12–19) | PSS 39,0–43,4 MB (privada 21–23) | PSS ≤ 45 MB |
+| Segundo plano, 15 s depois de abrir o YouTube | PSS 15,5 MB (privada 7,4) | PSS 23,2–25,8 MB (privada 5–6) | PSS ≤ 20 MB |
+
+- **AIWA acima do orçamento em segundo plano pelo PSS.** A memória própria do Lume lá é de 5 a 6 MB; o resto do PSS são
+  páginas compartilhadas com o sistema (`System` ~23 MB, `.apk mmap` e `.so mmap`), que no aparelho `low_ram`, com
+  menos processos, ficam divididas entre menos donos. O build sem o splash também passou do orçamento na AIWA (30 a
+  36 MB em segundo plano numa medida avulsa), então não é efeito do splash. O PSS da AIWA varia muito entre medidas
+  (de 30 a 43 MB em segundo plano para o mesmo build): use a memória privada para comparar builds. Decisão pendente do
+  autor: definir o orçamento de segundo plano pela memória privada, ou por aparelho.
+
+### Como foi medido e o que se aprendeu
+
+- **O `--latency` não vê a revelação.** Depois que a janela é recriada, o `dumpsys SurfaceFlinger --latency` da camada
+  do Lume não registra os primeiros quadros (mesmo nome de camada, histórico vazio). Por isso o Lume mede a revelação
+  ele mesmo (intervalo entre as trocas de buffer) e escreve no log `interface ready`.
+- **TV com horas ligada fica lenta.** Antes de reiniciar, a revelação na TCL saía com quadros de 40 a 100 ms (o
+  `render` esperava um buffer livre do compositor) e a AIWA tinha um processo de sistema travado ("Service dumps
+  disabled due to hung system process"). Depois do restart, os mesmos builds ficaram com 0 quadros atrasados. Reinicie
+  as TVs antes de medir quadros.
+- **Ícones:** buscar e enviar os 14 a 16 ícones custa 30 a 140 ms no total (o cache em disco é de pixels crus, ~2 ms por
+  ícone). O que fazia os ícones surgirem um a um era carregar um por volta do laço, com um quadro inteiro entre eles;
+  agora cada volta carrega em lote (40 ms com o splash parado, 16 ms com a interface parada, 6 ms durante um fade).
+- **Primeiro quadro da revelação:** a textura do papel de parede era criada nele (~70 ms de atraso); agora é criada
+  durante o splash, enquanto o Lume espera os ícones.
+- **Logo na janela do sistema (descartado).** Um `windowBackground` com o logo em VectorDrawable mostrava o logo desde o
+  primeiro instante, mas o `NativeActivity` avisa o sistema que a janela foi desenhada antes do primeiro quadro do Lume,
+  e aparecia um quadro preto. A correção exigia Java (`surfaceRedrawNeededAsync`); o autor preferiu o splash todo em
+  Rust. A janela do sistema mostra só `--bg`, e o logo do Lume entra com fade.
+- **`screenrecord --output-format=frames --size 640x360`** grava quadros crus que um script em Python lê sem
+  decodificador: na TCL serve para conferir a passagem da janela do sistema para o splash (sem salto nem quadro preto).
+  Na AIWA ele só capta a tela anterior e a interface pronta, não a transição. Os arquivos ocupam 20 a 40 MB em
+  `/data/local/tmp`: apague depois (a AIWA ficou sem espaço para instalar).
+- **AIWA cheia:** com 22 MB livres na partição de 4 GB, o `adb install` falha ("not enough space"); `pm trim-caches`
+  liberou pouco, e o restart da TV liberou ~860 MB.
+- **Um retorno a frio de 2,1 s na AIWA** (1 em 8, logo depois de uma gravação de tela): o teto de 600 ms não segura
+  quando o laço fica preso numa chamada à ponte (ícones e sincronização do catálogo rodam na mesma thread do splash). Não
+  se repetiu nas 7 aberturas seguintes.
+- A grade de nenhuma das TVs rola (12 e 10 apps): o retorno para a grade rolada só está coberto pelos testes.
+- **Build no contêiner:** o `cargo` às vezes reaproveitava código Rust antigo dentro do contêiner (dois builds com Rust
+  diferente saíram com a mesma `liblume.so`); o `docker/Dockerfile` passou a tocar os `.rs` do projeto antes de compilar.

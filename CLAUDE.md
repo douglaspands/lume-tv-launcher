@@ -6,7 +6,7 @@ com uma camada fina de Java (`LumeActivity` e `LumeBridge`, só onde o Android e
 ## Onde está a verdade
 
 - `openspec/specs/`: o comportamento atual, por capacidade (home-screen, apps-screen, launcher-shell, wallpaper, theming, resource-efficiency...).
-- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`, `2026-10-20-escala-tipografica`, `2026-10-20-menu-de-contexto`). Ativa, do plano da v0.3.0: `splash`.
+- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`, `2026-10-20-escala-tipografica`, `2026-10-20-menu-de-contexto`, `2026-10-20-splash`.
 - `docs/handoff-dock-aurora.md`: decisões do v0.2.0, armadilhas já resolvidas, como rodar e testar.
 - `docs/device-notes.md`: medidas na TV de referência (memória, quadros, CPU, tempos).
 - `docs/theme-format.md`, `docs/wallpaper.md`, `docs/translations.md`: formato do tema, papel de parede e traduções.
@@ -19,9 +19,7 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 ## Estado
 
 v0.2.0, v0.2.1, a versão do build e a `escala-tipografica` (escala de texto de 6 níveis, barra superior, régua de layout para todas as
-telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo
-Mover no dock) arquivada em `openspec/changes/archive/2026-10-20-menu-de-contexto`, na branch `feat/menu-de-contexto`, com PR aberta para a `main`
-(falta, na TV, desinstalar um app de teste e conferir "Informações do app"). Próxima change: `splash`. A tag `v0.3.0` sai quando as duas estiverem prontas. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
+telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. A tag `v0.3.0` sai depois do merge. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
 Pendências conhecidas, que dependem do autor: assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
@@ -74,6 +72,9 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Decisões fixas do autor
 
+- **Construção 100% Rust.** Java só quando a funcionalidade não tem como ser feita sem consumir ou usar um recurso
+  do Java (API do Android sem equivalente no NDK). Antes de escrever ou mudar qualquer Java, pergunte ao autor no chat,
+  explicando por que o Rust não resolve; sem o sim dele, não entra Java.
 - Papel de parede: aurora gerada pelo projeto (`tools/wallpaper/aurora06.py`); nenhuma foto de terceiros.
 - Tela Início: só o dock (até 12 favoritos, Magnification). Sem carrossel nem seções.
 - Abas: mover o foco para uma aba troca a tela sem OK, com fade de 180 ms. Sublinhado azul com o foco na barra, branco com o foco no conteúdo.
