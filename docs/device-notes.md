@@ -321,3 +321,16 @@ APK de release da change `escala-tipografica` (3,40 MB; a fonte de ícones, agor
 - O PSS fica na linha `TOTAL PSS:` do `dumpsys meminfo app.lume.tv`; a coluna "TOTAL" da tabela de cima não é o PSS.
 - A AIWA passou a responder "Service dumps disabled due to hung system process" ao `dumpsys meminfo`: o sistema dela desliga os relatórios quando um processo do sistema trava. Reiniciar a TV deve resolver; refazer a medida depois.
 - `am start -a android.settings.SETTINGS` pode abrir um painel por cima sem tirar o Lume da tela; para medir o segundo plano, abrir um app de verdade (`monkey -p com.android.vending -c android.intent.category.LEANBACK_LAUNCHER 1`).
+
+## Botão Menu dos controles (change `menu-de-contexto`, 2026-10-20)
+
+- **AIWA (KTC, firmware MediaTek):** o botão Menu do controle chega aos apps como `KEYCODE_BOOKMARK` (174), visto no log
+  do Lume (`key 174 not used`) com o autor apertando só esse botão. O Lume mapeia 174 como Menu.
+- Teclas injetadas por adb na AIWA (`input keyevent`, com o Lume na tela): `MENU` (82) abre o menu; `INFO` (165),
+  `TV_CONTENTS_MENU` (256), `BOOKMARK` (174), `PROG_RED`/`PROG_BLUE` (183/186) e `HELP` (259) chegam ao Lume;
+  `SETTINGS` (176), `TV_MEDIA_CONTEXT_MENU` (257) e `TV_INPUT` (178) ficam com o sistema; `GUIDE` (172) abre outra tela.
+- Na AIWA, `getevent` não mostra o controle IR (o receptor MStar injeta as teclas por um serviço do sistema) e o
+  `HotKeyDispatcher` da MediaTek consome os botões globais (um deles abre as configurações do Android) antes dos apps.
+  Para achar o código de um botão, use o log do Lume: `adb logcat | grep "not used"`.
+- `screencap -p` na AIWA escreve duas linhas de texto antes do PNG: corte até o cabeçalho `\x89PNG`.
+- **TCL:** o botão Menu do controle chega como `KEYCODE_MENU` (82) e abre o menu (conferido pelo autor).

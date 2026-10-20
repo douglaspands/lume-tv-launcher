@@ -11,6 +11,10 @@
         android:glEsVersion="0x00020000"
         android:required="true" />
 
+    <!-- A normal permission, granted at install: since Android 9 the system uninstaller opens only
+         for apps that hold it. Used only when the user picks "Uninstall" in a context menu. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
     <!-- App visibility through intent queries; no QUERY_ALL_PACKAGES. -->
     <queries>
         <intent>

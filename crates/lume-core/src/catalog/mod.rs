@@ -10,7 +10,7 @@ use known::KnownApp;
 use std::path::Path;
 
 /// Version of the `catalog.v1` file format.
-const CACHE_VERSION: u32 = 1;
+const CACHE_VERSION: u32 = 2;
 
 /// One entry the platform reports for an app's launcher activity.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,6 +22,8 @@ pub struct Discovered {
     pub activity: String,
     /// `true` for a LEANBACK_LAUNCHER activity, `false` for a plain LAUNCHER one.
     pub leanback: bool,
+    /// A system app (preinstalled or an update of one), which cannot be uninstalled.
+    pub system: bool,
     /// The icon as ARGB pixels, [`color::ICON_SIZE`] squared, used to derive a color.
     pub icon: Option<Vec<u32>>,
 }
@@ -34,6 +36,8 @@ pub struct App {
     pub activity: String,
     /// Tile background; white text on it has a contrast of at least 4.5:1.
     pub color: Color,
+    /// A system app, which cannot be uninstalled.
+    pub system: bool,
 }
 
 impl App {
@@ -55,6 +59,7 @@ impl App {
             label: entry.label.clone(),
             activity: entry.activity.clone(),
             color,
+            system: entry.system,
         }
     }
 }
@@ -205,6 +210,7 @@ impl Catalog {
                 &format!("a{i}.color"),
                 format!("{:02x}{:02x}{:02x}", app.color.r, app.color.g, app.color.b),
             );
+            kv.set(&format!("a{i}.system"), if app.system { "1" } else { "0" });
         }
         kv
     }
@@ -222,6 +228,11 @@ impl Catalog {
                 label: kv.get(&format!("a{i}.label"))?.to_string(),
                 activity: kv.get(&format!("a{i}.activity"))?.to_string(),
                 color: Color::rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8),
+                system: match kv.get(&format!("a{i}.system"))? {
+                    "1" => true,
+                    "0" => false,
+                    _ => return None,
+                },
             });
         }
         catalog.apps.retain(|a| a.package != own_package);
@@ -265,6 +276,7 @@ mod tests {
             label: label.to_string(),
             activity: format!("{package}.Main"),
             leanback,
+            system: false,
             icon: None,
         }
     }
@@ -461,9 +473,15 @@ mod tests {
                 entry("com.netflix.ninja", "Netflix", true),
                 entry("p.m", "Música & Som\nlinha 2", true),
                 entry("p.é", "Ürün", false),
+                Discovered {
+                    system: true,
+                    ..entry("com.android.tv.settings", "Settings", true)
+                },
             ],
             OWN,
         );
+        assert!(catalog.get("com.android.tv.settings").unwrap().system);
+        assert!(!catalog.get("p.m").unwrap().system);
         let path = temp("roundtrip");
         catalog.save(&path).unwrap();
         assert_eq!(Catalog::load(&path, OWN), Some(catalog));
@@ -479,11 +497,35 @@ mod tests {
         let mut kv = Kv::new();
         kv.set("count", "1");
         kv.set("a0.package", "p.a");
-        storage::save(&path, 1, &kv).unwrap();
+        storage::save(&path, CACHE_VERSION, &kv).unwrap();
         assert_eq!(Catalog::load(&path, OWN), None);
         // Unknown version.
         storage::save(&path, 9, &Kv::new()).unwrap();
         assert_eq!(Catalog::load(&path, OWN), None);
+    }
+
+    #[test]
+    fn a_cache_of_the_previous_version_is_read_again() {
+        // Version 1 had no system mark: it is a miss, so the apps are discovered again.
+        let path = temp("v1");
+        let mut kv = Kv::new();
+        kv.set("count", "1");
+        kv.set("a0.package", "p.a");
+        kv.set("a0.label", "A");
+        kv.set("a0.activity", "p.a.Main");
+        kv.set("a0.color", "112233");
+        storage::save(&path, 1, &kv).unwrap();
+        assert_eq!(Catalog::load(&path, OWN), None);
+        // The same entry with the mark, in the current version, is read.
+        kv.set("a0.system", "1");
+        storage::save(&path, CACHE_VERSION, &kv).unwrap();
+        assert!(
+            Catalog::load(&path, OWN)
+                .unwrap()
+                .get("p.a")
+                .unwrap()
+                .system
+        );
     }
 
     #[test]
@@ -494,6 +536,7 @@ mod tests {
             label: "lume".into(),
             activity: "x".into(),
             color: Color::rgb(1, 2, 3),
+            system: false,
         });
         let path = temp("self");
         with_self.save(&path).unwrap();

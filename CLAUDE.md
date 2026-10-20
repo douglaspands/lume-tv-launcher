@@ -6,7 +6,7 @@ com uma camada fina de Java (`LumeActivity` e `LumeBridge`, só onde o Android e
 ## Onde está a verdade
 
 - `openspec/specs/`: o comportamento atual, por capacidade (home-screen, apps-screen, launcher-shell, wallpaper, theming, resource-efficiency...).
-- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`, `2026-10-20-escala-tipografica`). Ativas, do plano da v0.3.0: `menu-de-contexto` e `splash`.
+- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`, `2026-10-20-escala-tipografica`, `2026-10-20-menu-de-contexto`). Ativa, do plano da v0.3.0: `splash`.
 - `docs/handoff-dock-aurora.md`: decisões do v0.2.0, armadilhas já resolvidas, como rodar e testar.
 - `docs/device-notes.md`: medidas na TV de referência (memória, quadros, CPU, tempos).
 - `docs/theme-format.md`, `docs/wallpaper.md`, `docs/translations.md`: formato do tema, papel de parede e traduções.
@@ -18,9 +18,10 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 
 ## Estado
 
-v0.2.0, v0.2.1 e a versão do build mescladas na `main` por squash (2026-10-20). `escala-tipografica` (escala de texto de 6 níveis, barra superior,
-régua de layout para todas as telas, ícones Lucide com traço 1,75) arquivada em `openspec/changes/archive/2026-10-20-escala-tipografica`,
-na branch `feat/escala-tipografica`, com PR aberta para a `main`. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
+v0.2.0, v0.2.1, a versão do build e a `escala-tipografica` (escala de texto de 6 níveis, barra superior, régua de layout para todas as
+telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo
+Mover no dock) arquivada em `openspec/changes/archive/2026-10-20-menu-de-contexto`, na branch `feat/menu-de-contexto`, com PR aberta para a `main`
+(falta, na TV, desinstalar um app de teste e conferir "Informações do app"). Próxima change: `splash`. A tag `v0.3.0` sai quando as duas estiverem prontas. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
 Pendências conhecidas, que dependem do autor: assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
@@ -90,6 +91,10 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 - Carregar ícones durante uma animação trava o dock: o laço só carrega quando `Shell::is_busy` é falso.
 - `entry_down`/`entry_up` de `Row` são do destino do foco, não da origem.
 - O Android da TCL encerra o processo do Lume em segundo plano quando um app pesado abre; o retorno é então uma abertura a frio.
+- Botão Menu: a TCL envia `KEYCODE_MENU` (82), a AIWA `KEYCODE_BOOKMARK` (174); os dois abrem o menu de contexto. Para achar o código
+  de um botão novo, o Lume registra os que ignora: `adb logcat | grep "not used"` (na AIWA, `getevent` não vê o controle IR).
+- Na AIWA, `screencap -p` escreve texto antes do PNG (corte até `\x89PNG`). Confira o `Success` do `adb install` em cada TV: um
+  `tail -1` esconde a falha de assinatura quando a desinstalação foi esquecida.
 
 ## Orçamentos (spec `resource-efficiency`)
 

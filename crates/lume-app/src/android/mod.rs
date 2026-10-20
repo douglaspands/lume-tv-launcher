@@ -300,7 +300,14 @@ impl Runtime {
                                 }
                                 InputStatus::Handled
                             }
-                            None => InputStatus::Unhandled,
+                            None => {
+                                // Which code a remote sends for a button lume does not use, for
+                                // mapping remotes that differ (see docs/device-notes.md).
+                                if key.action() == KeyAction::Down {
+                                    log::info!("key {code} not used");
+                                }
+                                InputStatus::Unhandled
+                            }
                         }
                     }
                     _ => InputStatus::Unhandled,
@@ -342,6 +349,16 @@ impl Runtime {
             Effect::OpenInputs => {
                 if !self.bridge.open_inputs() {
                     log::warn!("the TV inputs panel could not be opened");
+                }
+            }
+            Effect::OpenAppInfo { package } => {
+                if !self.bridge.open_app_info(&package) {
+                    log::warn!("the app info of {package} could not be opened");
+                }
+            }
+            Effect::Uninstall { package } => {
+                if !self.bridge.uninstall(&package) {
+                    log::warn!("the uninstaller of {package} could not be opened");
                 }
             }
             // The shell already saved these.

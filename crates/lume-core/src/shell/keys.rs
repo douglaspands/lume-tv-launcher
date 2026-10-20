@@ -10,6 +10,10 @@ pub const KEYCODE_DPAD_LEFT: i32 = 21;
 pub const KEYCODE_DPAD_RIGHT: i32 = 22;
 pub const KEYCODE_DPAD_CENTER: i32 = 23;
 pub const KEYCODE_ENTER: i32 = 66;
+/// The Menu button of the remote and of a keyboard.
+pub const KEYCODE_MENU: i32 = 82;
+/// What the Menu button of the AIWA (KTC) remote sends; its firmware labels it "bookmark".
+pub const KEYCODE_BOOKMARK: i32 = 174;
 pub const KEYCODE_ESCAPE: i32 = 111;
 pub const KEYCODE_NUMPAD_ENTER: i32 = 160;
 /// "Select" on some remotes and game controllers.
@@ -26,6 +30,7 @@ pub fn from_android(code: i32) -> Option<Key> {
         KEYCODE_DPAD_CENTER | KEYCODE_ENTER | KEYCODE_NUMPAD_ENTER | KEYCODE_BUTTON_A => Key::Ok,
         KEYCODE_BACK | KEYCODE_ESCAPE | KEYCODE_BUTTON_B => Key::Back,
         KEYCODE_HOME => Key::Home,
+        KEYCODE_MENU | KEYCODE_BOOKMARK => Key::Menu,
         _ => return None,
     })
 }
@@ -46,11 +51,13 @@ mod tests {
         assert_eq!(from_android(4), Some(Key::Back));
         assert_eq!(from_android(111), Some(Key::Back), "Escape on a keyboard");
         assert_eq!(from_android(3), Some(Key::Home));
+        assert_eq!(from_android(82), Some(Key::Menu));
+        assert_eq!(from_android(174), Some(Key::Menu), "the AIWA remote's Menu");
     }
 
     #[test]
     fn other_keys_are_ignored() {
-        for code in [0, 7, 24, 25, 82, 85, 126, 164, 9999, -1] {
+        for code in [0, 7, 24, 25, 85, 126, 164, 9999, -1] {
             assert_eq!(from_android(code), None, "{code}");
         }
     }

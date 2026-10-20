@@ -50,6 +50,13 @@
     <string name="editor_restore_confirm">Restaurar</string>
     <string name="editor_cancel">Cancelar</string>
 
+    <!-- Menu de contexto (botão Menu) -->
+    <string name="menu_add_home">Adicionar ao Início</string>
+    <string name="menu_remove_home">Remover do Início</string>
+    <string name="menu_move">Mover</string>
+    <string name="menu_app_info">Informações do app</string>
+    <string name="menu_uninstall">Desinstalar</string>
+
     <!-- Mensagens -->
     <string name="toast_app_not_found">App não encontrado</string>
 </resources>

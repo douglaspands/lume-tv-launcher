@@ -96,6 +96,25 @@ Na raiz da tela Início, o botão Voltar SHALL devolver o foco ao primeiro item 
 - **WHEN** o usuário está na aba Apps e pressiona Voltar
 - **THEN** a aba Início volta a ficar ativa
 
+### Requirement: Botão Menu
+O Lume SHALL reconhecer o botão Menu do controle remoto e do teclado (`KEYCODE_MENU`). Com o foco num item que tem menu de contexto (um app da grade de Apps ou um favorito do dock), Menu SHALL abrir o menu de contexto desse item (capacidades `apps-screen` e `home-screen`). Em qualquer outro lugar (barra superior, tile "Lume", item "Adicionar favoritos", Configurações, Sobre, modo edição), Menu SHALL NOT fazer nada. Com um menu aberto, Menu ou Voltar SHALL fechá-lo sem executar nenhuma ação e devolver o foco ao item de origem; OK SHALL executar o item em foco e fechar o menu. Enquanto o menu estiver aberto, o foco SHALL ficar preso nele, e Home SHALL fechá-lo antes de seguir o comportamento normal de Home. O mesmo vale para o modo de mover um favorito (`home-screen`): ele prende as teclas, e Home o cancela antes de seguir.
+
+#### Scenario: Abrir sobre um app
+- **WHEN** o foco está num app da grade e o usuário pressiona Menu
+- **THEN** o menu de contexto do app aparece junto do tile, com o foco no primeiro item
+
+#### Scenario: Sem menu na barra superior
+- **WHEN** o foco está na engrenagem e o usuário pressiona Menu
+- **THEN** nada muda na tela
+
+#### Scenario: Fechar sem ação
+- **WHEN** o menu de contexto está aberto e o usuário pressiona Voltar
+- **THEN** o menu fecha, nada é alterado e o foco volta ao item de origem
+
+#### Scenario: Foco preso
+- **WHEN** o menu está aberto com o foco no último item e o usuário pressiona Baixo
+- **THEN** o foco permanece no menu
+
 ### Requirement: Retorno depois de abrir um app
 Quando o usuário abre um app a partir do lume (OK num item do dock, num tile da grade de Apps ou nos itens que abrem as Configurações do Android) e volta ao lume com o botão Home, o lume SHALL reaparecer na mesma tela, com o foco no mesmo elemento e com a rolagem de antes, em vez de ir à tela Início. Esse retorno SHALL valer uma única vez e SHALL ser descartado assim que o usuário pressionar qualquer outra tecla no lume, ou quando o app não puder ser aberto. O botão Home pressionado com o lume já visível na tela (ou mais de 2 segundos depois de ele voltar) SHALL sempre levar à aba Início, com o foco no primeiro item do dock. O estado SHALL ficar só na memória: se o sistema encerrar o processo do lume, ele abre na tela Início.
 

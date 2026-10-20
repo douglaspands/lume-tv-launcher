@@ -5,7 +5,7 @@
 //! constants; the theme only styles the bar (`.dock`) and the name bubble (`.dock-label`).
 
 use super::painter::{fade, Painter};
-use super::{ids, Anim, LumeApp};
+use super::{ids, Anim, LumeApp, Screen, Tab};
 use crate::render::Rect;
 use crate::text::{Align, TextStyle};
 use crate::theme::{vars, Color, Paint, StateFlags, THEME};
@@ -27,11 +27,21 @@ const MOVE: crate::theme::Transition = crate::theme::Transition {
     duration_ms: 210.0,
     curve: crate::theme::Curve::EaseOut,
 };
+/// Space added on each side of a favorite being moved, where its arrows go.
+pub const MOVE_ROOM: f32 = 24.0;
+/// Side of the arrows beside a favorite being moved.
+const ARROW_SIZE: f32 = 24.0;
+/// How long the icons take to slide to their new places when the favorites change, and the
+/// neighbors of a favorite being moved to make room for its arrows.
+const SLIDE: crate::theme::Transition = crate::theme::Transition {
+    duration_ms: 240.0,
+    curve: crate::theme::Curve::EaseInOut,
+};
 /// Corner radius of an icon over its side.
 const RADIUS_RATIO: f32 = 0.22;
 /// Space between the top of the focused icon and the name bubble.
-const LABEL_GAP: f32 = 12.0;
-const LABEL_HEIGHT: f32 = 40.0;
+pub(super) const LABEL_GAP: f32 = 12.0;
+pub(super) const LABEL_HEIGHT: f32 = 40.0;
 
 /// The growth of an icon `distance` places away from the focus (1.0 at the focus, 0.0 far away).
 pub fn falloff(distance: f32) -> f32 {
@@ -67,10 +77,32 @@ pub fn layout(
     center_x: f32,
     bottom: f32,
 ) -> DockLayout {
+    layout_with_room(count, position, amplitude, center_x, bottom, 0.0)
+}
+
+/// Like [`layout`], with `room` (0.0 to 1.0) of [`MOVE_ROOM`] added to the two gaps beside the
+/// icon at `position`: the space for the arrows while a favorite is being moved.
+pub fn layout_with_room(
+    count: usize,
+    position: f32,
+    amplitude: f32,
+    center_x: f32,
+    bottom: f32,
+    room: f32,
+) -> DockLayout {
     let sizes: Vec<f32> = (0..count)
         .map(|i| BASE * scale(i, position, amplitude))
         .collect();
-    let gaps = count.saturating_sub(1) as f32 * GAP;
+    let moving = position.round() as usize;
+    // The gap before the icon at `i` (from the second icon on).
+    let gap = |i: usize| {
+        GAP + if i == moving || i == moving + 1 {
+            MOVE_ROOM * room
+        } else {
+            0.0
+        }
+    };
+    let gaps: f32 = (1..count).map(gap).sum();
     let inner = sizes.iter().sum::<f32>() + gaps;
     let bar = Rect::new(
         center_x - (inner + 2.0 * PADDING) / 2.0,
@@ -81,9 +113,13 @@ pub fn layout(
     let mut x = bar.x + PADDING;
     let items = sizes
         .iter()
-        .map(|&size| {
+        .enumerate()
+        .map(|(i, &size)| {
+            if i > 0 {
+                x += gap(i);
+            }
             let rect = Rect::new(x, bar.bottom() - PADDING - size, size, size);
-            x += size + GAP;
+            x += size;
             rect
         })
         .collect();
@@ -127,6 +163,14 @@ pub fn label_rect(icon: Rect, width: f32, safe: Rect) -> Rect {
     let width = width.min(safe.w);
     let x = (icon.center().0 - width / 2.0).clamp(safe.x, (safe.right() - width).max(safe.x));
     Rect::new(x, icon.y - LABEL_GAP - LABEL_HEIGHT, width, LABEL_HEIGHT)
+}
+
+/// An icon as it was drawn, to slide it from there when the favorites change.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct DrawnIcon {
+    pub package: Option<String>,
+    pub color: Color,
+    pub rect: Rect,
 }
 
 /// What one dock icon shows.
@@ -254,6 +298,130 @@ impl LumeApp {
         }
     }
 
+    /// The favorites are about to change while the dock is on screen: the icons slide from where
+    /// they are drawn now to their new places. `focus`, the place the focus goes to, is taken by
+    /// the Magnification at once, so the slide alone carries the movement and no icon changes
+    /// size on the way.
+    pub(super) fn begin_dock_transition(&mut self, focus: Option<usize>) {
+        if self.screen != Screen::Main(Tab::Home) {
+            return;
+        }
+        self.dock_from = Some(self.dock_drawn.clone());
+        if let Some(index) = focus {
+            self.dock_last = index;
+            if self.dock_focus.is_some() {
+                self.dock_focus = Some(index);
+            }
+            self.anim.set(Anim::DockPosition, index as f32);
+        }
+    }
+
+    /// Starts the slide on the first frame after a change, then moves each icon by what is left of
+    /// it. The bar follows its icons. A favorite that left the dock shrinks and fades where it was.
+    pub(super) fn slide_dock(&mut self, items: &[DockItem], layout: &mut DockLayout) {
+        let now = self.now_ms;
+        if let Some(from) = self.dock_from.take() {
+            for (index, (item, rect)) in items.iter().zip(&layout.items).enumerate() {
+                let old = from
+                    .iter()
+                    .find(|d| d.package.is_some() && d.package == item.package);
+                let Some(old) = old else { continue };
+                let shift = old.rect.center().0 - rect.center().0;
+                let grow = old.rect.w - rect.w;
+                // From the value as drawn now, even when a slide was still running.
+                self.anim.set(Anim::DockShift(index), shift);
+                self.anim
+                    .animate_to(Anim::DockShift(index), shift, 0.0, now, Some(SLIDE));
+                self.anim.set(Anim::DockGrow(index), grow);
+                self.anim
+                    .animate_to(Anim::DockGrow(index), grow, 0.0, now, Some(SLIDE));
+            }
+            let gone = from
+                .into_iter()
+                .find(|d| d.package.is_some() && !items.iter().any(|i| i.package == d.package));
+            if let Some(gone) = gone {
+                self.dock_ghost = Some(gone);
+                self.anim.set(Anim::DockGhost, 1.0);
+                self.anim
+                    .animate_to(Anim::DockGhost, 1.0, 0.0, now, Some(SLIDE));
+            }
+        }
+        for (index, rect) in layout.items.iter_mut().enumerate() {
+            let shift = self.anim.get(Anim::DockShift(index), 0.0, now);
+            let grow = self.anim.get(Anim::DockGrow(index), 0.0, now);
+            if shift != 0.0 || grow != 0.0 {
+                let side = rect.w + grow;
+                let center = rect.center().0 + shift;
+                *rect = Rect::new(center - side / 2.0, rect.bottom() - side, side, side);
+            }
+        }
+        if let (Some(first), Some(last)) = (layout.items.first(), layout.items.last()) {
+            layout.bar.x = first.x - PADDING;
+            layout.bar.w = last.right() + PADDING - layout.bar.x;
+        }
+        self.dock_drawn = items
+            .iter()
+            .zip(&layout.items)
+            .map(|(item, rect)| DrawnIcon {
+                package: item.package.clone(),
+                color: item.color,
+                rect: *rect,
+            })
+            .collect();
+    }
+
+    /// The favorite that left the dock, shrinking and fading where it was.
+    pub(super) fn draw_dock_ghost(&mut self, p: &mut Painter) {
+        let Some(ghost) = self.dock_ghost.clone() else {
+            return;
+        };
+        let left = self.anim.get(Anim::DockGhost, 0.0, self.now_ms);
+        if left <= 0.0 {
+            self.dock_ghost = None;
+            return;
+        }
+        let rect = ghost.rect.scaled_about_center(left);
+        p.list.fill(
+            rect,
+            rect.w * RADIUS_RATIO,
+            Paint::Solid(fade(ghost.color, left)),
+        );
+        if let Some(uv) = ghost.package.as_deref().and_then(|p| self.icons.dock_uv(p)) {
+            p.list.image(rect, uv, fade(Color::WHITE, left));
+        }
+    }
+
+    /// The arrows beside the favorite being moved, in the gaps the neighbors left for them; none
+    /// at an end of the dock. `room` is how far the neighbors have moved away (0.0 to 1.0).
+    pub(super) fn draw_move_arrows(
+        &self,
+        p: &mut Painter,
+        items: &[Rect],
+        index: usize,
+        room: f32,
+    ) {
+        let Some(icon) = items.get(index) else { return };
+        let color = fade(vars::TEXT, room);
+        let y = icon.center().1 - ARROW_SIZE / 2.0;
+        if let Some(before) = index.checked_sub(1).and_then(|i| items.get(i)) {
+            let x = (before.right() + icon.x) / 2.0 - ARROW_SIZE / 2.0;
+            let rect = Rect::new(x, y, ARROW_SIZE, ARROW_SIZE);
+            p.icon(crate::icons::CHEVRON_LEFT, rect, ARROW_SIZE, color);
+        }
+        if let Some(after) = items.get(index + 1) {
+            let x = (icon.right() + after.x) / 2.0 - ARROW_SIZE / 2.0;
+            let rect = Rect::new(x, y, ARROW_SIZE, ARROW_SIZE);
+            p.icon(crate::icons::CHEVRON_RIGHT, rect, ARROW_SIZE, color);
+        }
+    }
+
+    /// Opens or closes the room for the arrows beside a favorite being moved.
+    pub(super) fn animate_move_room(&mut self, open: bool) {
+        let (from, to) = if open { (0.0, 1.0) } else { (1.0, 0.0) };
+        self.anim
+            .animate_to(Anim::DockRoom, from, to, self.now_ms, Some(SLIDE));
+    }
+
     /// Draws the bubble with the name of the focused app above its (grown) icon.
     pub(super) fn draw_dock_label(
         &mut self,
@@ -299,6 +467,8 @@ mod tests {
             ("PADDING", PADDING),
             ("LABEL_GAP", LABEL_GAP),
             ("LABEL_HEIGHT", LABEL_HEIGHT),
+            ("MOVE_ROOM", MOVE_ROOM),
+            ("ARROW_SIZE", ARROW_SIZE),
         ]);
     }
 

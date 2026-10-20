@@ -145,6 +145,7 @@ mod tests {
                 label: p.to_string(),
                 activity: "Main".into(),
                 leanback: true,
+                system: false,
                 icon: None,
             })
             .collect();

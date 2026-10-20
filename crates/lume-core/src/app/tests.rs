@@ -19,6 +19,7 @@ pub(super) fn discovered(package: &str, label: &str) -> Discovered {
         label: label.to_string(),
         activity: format!("{package}.Main"),
         leanback: true,
+        system: false,
         icon: None,
     }
 }
@@ -1967,4 +1968,531 @@ fn the_cpu_comes_from_two_readings() {
             .unwrap();
     rig.app.apply_stats(later, 2000);
     assert!((rig.app.cpu_use.unwrap() - 0.3).abs() < 1e-6);
+}
+
+// ---- the context menu (the Menu button) ------------------------------------------------------
+
+use super::MenuAction;
+
+fn menu_actions(rig: &Rig) -> Vec<MenuAction> {
+    let menu = rig.app.context_menu().expect("a menu is open");
+    menu.items.iter().map(|i| i.action).collect()
+}
+
+fn selected_action(rig: &Rig) -> MenuAction {
+    let menu = rig.app.context_menu().expect("a menu is open");
+    menu.items[menu.selected].action
+}
+
+/// Opens the Apps tab and the menu of the app `package`.
+fn open_grid_menu(rig: &mut Rig, package: &str) -> FocusId {
+    open_apps(rig);
+    let id = grid_id_of(rig, package);
+    focus_on(rig, id);
+    rig.press(Key::Menu);
+    id
+}
+
+/// Opens the menu of the favorite at `index` of the dock.
+fn open_dock_menu(rig: &mut Rig, index: usize) {
+    focus_on(rig, ids::FAVORITE_BASE + index as u32);
+    rig.press(Key::Menu);
+}
+
+#[test]
+fn menu_on_an_app_of_the_grid_opens_with_the_focus_on_the_first_item() {
+    let mut rig = Rig::new();
+    let chrome = open_grid_menu(&mut rig, "com.demo.chrome");
+    assert_eq!(
+        menu_actions(&rig),
+        [
+            MenuAction::AddToHome,
+            MenuAction::AppInfo,
+            MenuAction::Uninstall
+        ]
+    );
+    assert_eq!(selected_action(&rig), MenuAction::AddToHome);
+    assert_eq!(
+        rig.focused(),
+        Some(chrome),
+        "the tile keeps the focus under the menu"
+    );
+}
+
+#[test]
+fn menu_does_nothing_on_the_top_bar_the_lume_tile_add_favorites_and_the_settings() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    focus_on(&mut rig, ids::GEAR);
+    assert!(rig.press(Key::Menu).is_empty());
+    assert!(rig.app.context_menu().is_none());
+    assert_eq!(rig.focused(), Some(ids::GEAR));
+
+    focus_on(&mut rig, ids::GRID_SETTINGS);
+    rig.press(Key::Menu);
+    assert!(rig.app.context_menu().is_none());
+
+    rig.press(Key::Ok);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    rig.press(Key::Menu);
+    assert!(rig.app.context_menu().is_none());
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+
+    let mut rig = Rig::new();
+    rig.app.config.favorites.clear();
+    rig.advance(0);
+    focus_on(&mut rig, ids::FAVORITES_ADD);
+    rig.press(Key::Menu);
+    assert!(rig.app.context_menu().is_none());
+}
+
+#[test]
+fn back_or_menu_close_the_menu_without_changing_anything() {
+    for key in [Key::Back, Key::Menu] {
+        let mut rig = Rig::new();
+        let chrome = open_grid_menu(&mut rig, "com.demo.chrome");
+        let favorites = rig.app.config.favorites.clone();
+        assert!(rig.press(key).is_empty());
+        assert!(rig.app.context_menu().is_none(), "{key:?}");
+        assert_eq!(rig.app.config.favorites, favorites);
+        assert_eq!(rig.focused(), Some(chrome));
+        assert_eq!(
+            rig.app.screen(),
+            &Screen::Main(Tab::Apps),
+            "Back did not leave the tab"
+        );
+    }
+}
+
+#[test]
+fn the_focus_is_trapped_in_the_menu() {
+    let mut rig = Rig::new();
+    let chrome = open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down]);
+    assert_eq!(
+        selected_action(&rig),
+        MenuAction::Uninstall,
+        "stops at the last item"
+    );
+    rig.press_all(&[Key::Left, Key::Right]);
+    assert!(rig.app.context_menu().is_some());
+    assert_eq!(rig.focused(), Some(chrome), "the grid did not move");
+    rig.press_all(&[Key::Up, Key::Up, Key::Up, Key::Up]);
+    assert_eq!(selected_action(&rig), MenuAction::AddToHome);
+    assert_eq!(
+        rig.focused(),
+        Some(chrome),
+        "nor did the top bar take the focus"
+    );
+}
+
+#[test]
+fn the_menu_fades_in_and_out_in_150_ms() {
+    let mut rig = Rig::new();
+    open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.advance(200);
+    assert_eq!(rig.app.anim.get(Anim::MenuFade, 1.0, rig.now), 1.0);
+    rig.app.handle_key(Key::Back, rig.now);
+    rig.advance(50);
+    let half = rig.app.anim.get(Anim::MenuFade, 1.0, rig.now);
+    assert!(half > 0.0 && half < 1.0, "{half}");
+    assert!(rig.app.context_menu.is_some(), "still fading");
+    rig.advance(150);
+    rig.advance(0);
+    assert!(rig.app.context_menu.is_none(), "gone after the fade");
+}
+
+#[test]
+fn home_closes_the_menu_and_goes_home() {
+    let mut rig = Rig::new();
+    open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.press(Key::Home);
+    assert!(rig.app.context_menu().is_none());
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+}
+
+#[test]
+fn add_to_home_from_the_grid_appends_the_app_and_saves() {
+    let mut rig = Rig::new();
+    let chrome = open_grid_menu(&mut rig, "com.demo.chrome");
+    let effects = rig.press(Key::Ok);
+    assert_eq!(effects, [Effect::SaveConfig]);
+    assert_eq!(rig.app.config.favorites.last().unwrap(), "com.demo.chrome");
+    assert!(rig.app.context_menu().is_none());
+    assert_eq!(rig.focused(), Some(chrome));
+    // The next menu on it offers to remove it.
+    rig.press(Key::Menu);
+    assert_eq!(menu_actions(&rig)[0], MenuAction::RemoveFromHome);
+}
+
+#[test]
+fn remove_from_home_from_the_grid_takes_the_favorite_out() {
+    let mut rig = Rig::new();
+    let youtube = open_grid_menu(&mut rig, YOUTUBE);
+    assert_eq!(selected_action(&rig), MenuAction::RemoveFromHome);
+    assert_eq!(rig.press(Key::Ok), [Effect::SaveConfig]);
+    assert!(!rig.app.config.favorites.iter().any(|p| p == YOUTUBE));
+    assert_eq!(rig.focused(), Some(youtube));
+}
+
+#[test]
+fn with_twelve_favorites_add_is_disabled_and_skipped() {
+    let apps: Vec<(String, String)> = (0..13)
+        .map(|i| (format!("com.demo.app{i:02}"), format!("App {i:02}")))
+        .collect();
+    let refs: Vec<(&str, &str)> = apps.iter().map(|(p, l)| (p.as_str(), l.as_str())).collect();
+    let mut rig = Rig::with_catalog(catalog(&refs));
+    rig.app.config.favorites = apps[..12].iter().map(|(p, _)| p.clone()).collect();
+    rig.advance(0);
+    open_grid_menu(&mut rig, "com.demo.app12");
+    let menu = rig.app.context_menu().unwrap();
+    assert_eq!(menu.items[0].action, MenuAction::AddToHome);
+    assert!(!menu.items[0].enabled);
+    assert_eq!(
+        selected_action(&rig),
+        MenuAction::AppInfo,
+        "the focus starts after it"
+    );
+    rig.press(Key::Up);
+    assert_eq!(
+        selected_action(&rig),
+        MenuAction::AppInfo,
+        "it never takes the focus"
+    );
+}
+
+#[test]
+fn a_system_app_cannot_be_uninstalled() {
+    let mut entries: Vec<Discovered> = [
+        (NETFLIX, "Netflix"),
+        ("com.android.tv.settings", "Configurações"),
+    ]
+    .iter()
+    .map(|(p, l)| discovered(p, l))
+    .collect();
+    entries[1].system = true;
+    let mut rig = Rig::with_catalog(Catalog::from_discovered(&entries, "app.lume.tv"));
+    open_grid_menu(&mut rig, "com.android.tv.settings");
+    assert_eq!(
+        menu_actions(&rig),
+        [MenuAction::AddToHome, MenuAction::AppInfo]
+    );
+}
+
+#[test]
+fn app_info_and_uninstall_ask_the_platform() {
+    let mut rig = Rig::new();
+    open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.press(Key::Down);
+    assert_eq!(
+        rig.press(Key::Ok),
+        [Effect::OpenAppInfo {
+            package: "com.demo.chrome".into()
+        }]
+    );
+    rig.press(Key::Menu);
+    rig.press_all(&[Key::Down, Key::Down]);
+    assert_eq!(
+        rig.press(Key::Ok),
+        [Effect::Uninstall {
+            package: "com.demo.chrome".into()
+        }]
+    );
+}
+
+#[test]
+fn an_uninstalled_app_leaves_the_focus_on_the_tile_in_its_place() {
+    // The grid: Chrome, Disney+, Jogos, Lume, Netflix, Prime Video, Spotify, YouTube.
+    let mut rig = Rig::new();
+    open_grid_menu(&mut rig, DISNEY);
+    rig.press(Key::Back);
+    assert_eq!(rig.app.grid_position, Some(1));
+    rig.app.catalog.apply(&[], &[DISNEY.to_string()]);
+    rig.app.config.remove_uninstalled(&rig.app.catalog);
+    rig.app.catalog_changed();
+    rig.advance(0);
+    assert!(
+        !rig.app.config.favorites.iter().any(|p| p == DISNEY),
+        "out of the dock"
+    );
+    assert_eq!(rig.app.grid_position, Some(1));
+    assert_eq!(
+        rig.focused(),
+        Some(grid_id_of(&rig, "com.demo.games")),
+        "Jogos took its place"
+    );
+    // The last tile gives the focus to the new last one.
+    let youtube = grid_id_of(&rig, YOUTUBE);
+    focus_on(&mut rig, youtube);
+    assert_eq!(rig.app.grid_position, Some(6));
+    rig.app.catalog.apply(&[], &[YOUTUBE.to_string()]);
+    rig.app.catalog_changed();
+    rig.advance(0);
+    assert_eq!(rig.app.grid_position, Some(5));
+    assert_eq!(rig.focused(), Some(grid_id_of(&rig, SPOTIFY)));
+}
+
+#[test]
+fn a_menu_whose_app_is_uninstalled_closes() {
+    let mut rig = Rig::new();
+    open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.app.catalog.apply(&[], &["com.demo.chrome".to_string()]);
+    rig.app.catalog_changed();
+    assert!(rig.app.context_menu().is_none());
+}
+
+#[test]
+fn the_dock_menu_has_move_remove_and_app_info() {
+    let mut rig = Rig::new();
+    open_dock_menu(&mut rig, 0);
+    assert_eq!(
+        menu_actions(&rig),
+        [
+            MenuAction::Move,
+            MenuAction::RemoveFromHome,
+            MenuAction::AppInfo
+        ]
+    );
+}
+
+#[test]
+fn only_one_menu_item_is_ever_lit() {
+    // The last item of one menu stayed lit in the next one.
+    let mut rig = Rig::new();
+    let lit = |rig: &Rig| {
+        (0..4)
+            .filter(|i| rig.app.focus_progress(ids::MENU_BASE + i) > 0.0)
+            .count()
+    };
+    open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.press_all(&[Key::Down, Key::Down]);
+    rig.advance(300);
+    rig.press(Key::Back);
+    rig.advance(300);
+    rig.press(Key::Menu);
+    rig.advance(300);
+    assert_eq!(lit(&rig), 1);
+    assert_eq!(selected_action(&rig), MenuAction::AddToHome);
+    rig.press(Key::Back);
+    rig.press(Key::Home);
+    rig.advance(300);
+    open_dock_menu(&mut rig, 1);
+    rig.press_all(&[Key::Down, Key::Down]);
+    rig.press(Key::Back);
+    rig.advance(300);
+    rig.press(Key::Menu);
+    rig.advance(300);
+    assert_eq!(lit(&rig), 1);
+}
+
+/// Opens the menu of the favorite at `index` and starts moving it.
+fn start_moving(rig: &mut Rig, index: usize) {
+    open_dock_menu(rig, index);
+    assert_eq!(selected_action(rig), MenuAction::Move);
+    assert!(rig.press(Key::Ok).is_empty(), "nothing is written yet");
+    assert!(rig.app.context_menu().is_none());
+}
+
+#[test]
+fn move_carries_the_favorite_with_the_arrows_and_ok_keeps_the_place() {
+    let mut rig = Rig::new();
+    let before = rig.app.config.favorites.clone();
+    start_moving(&mut rig, 1);
+    assert_eq!(rig.app.moving_favorite(), Some(before[1].as_str()));
+    assert!(rig.press(Key::Right).is_empty());
+    assert!(rig.press(Key::Right).is_empty());
+    assert_eq!(rig.app.config.favorites[3], before[1]);
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE + 3),
+        "the focus goes with it"
+    );
+    rig.press_all(&[Key::Up, Key::Down]);
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE + 3),
+        "up and down do nothing"
+    );
+    assert_eq!(rig.press(Key::Ok), [Effect::SaveConfig]);
+    assert_eq!(rig.app.moving_favorite(), None);
+    let mut expected = before.clone();
+    let moved = expected.remove(1);
+    expected.insert(3, moved);
+    assert_eq!(rig.app.config.favorites, expected);
+}
+
+#[test]
+fn move_stops_at_the_ends_of_the_dock() {
+    let mut rig = Rig::new();
+    let before = rig.app.config.favorites.clone();
+    start_moving(&mut rig, 0);
+    rig.press(Key::Left);
+    assert_eq!(rig.app.config.favorites, before);
+    rig.press_all(&[Key::Right; 8]);
+    assert_eq!(rig.app.config.favorites.last(), Some(&before[0]));
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 4));
+}
+
+#[test]
+fn back_puts_the_moved_favorite_back_where_it_was() {
+    let mut rig = Rig::new();
+    let before = rig.app.config.favorites.clone();
+    start_moving(&mut rig, 2);
+    rig.press_all(&[Key::Left, Key::Left]);
+    assert_ne!(rig.app.config.favorites, before);
+    rig.press(Key::Back);
+    assert_eq!(rig.app.config.favorites, before);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 2));
+    assert_eq!(rig.app.moving_favorite(), None);
+    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    // OK without moving writes nothing.
+    start_moving(&mut rig, 2);
+    assert!(rig.press(Key::Ok).is_empty());
+}
+
+#[test]
+fn home_while_moving_puts_the_favorite_back_and_goes_home() {
+    let mut rig = Rig::new();
+    let before = rig.app.config.favorites.clone();
+    start_moving(&mut rig, 2);
+    rig.press(Key::Right);
+    rig.press(Key::Home);
+    assert_eq!(rig.app.config.favorites, before);
+    assert_eq!(rig.app.moving_favorite(), None);
+}
+
+#[test]
+fn a_single_favorite_has_no_move() {
+    let mut rig = Rig::new();
+    rig.app.config.favorites = vec![NETFLIX.to_string()];
+    rig.advance(0);
+    open_dock_menu(&mut rig, 0);
+    assert!(!menu_actions(&rig).contains(&MenuAction::Move));
+}
+
+#[test]
+fn moved_icons_slide_to_their_new_places() {
+    let mut rig = Rig::new();
+    start_moving(&mut rig, 1);
+    rig.advance(400);
+    let x_of = |rig: &Rig, package: &str| {
+        let icon = rig
+            .app
+            .dock_drawn
+            .iter()
+            .find(|d| d.package.as_deref() == Some(package));
+        icon.unwrap().rect.center().0
+    };
+    let moved = rig.app.config.favorites[1].clone();
+    let start = x_of(&rig, &moved);
+    rig.app.handle_key(Key::Right, rig.now);
+    // The first frame draws it where it was; the slide starts from there.
+    rig.advance(16);
+    assert_eq!(x_of(&rig, &moved), start);
+    rig.advance(60);
+    let early = x_of(&rig, &moved);
+    rig.advance(400);
+    let end = x_of(&rig, &moved);
+    assert!(
+        early > start && early < end,
+        "on its way: {start} {early} {end}"
+    );
+}
+
+#[test]
+fn a_removed_favorite_fades_where_it_was_and_the_others_slide_in() {
+    let mut rig = Rig::new();
+    rig.advance(400);
+    let third = rig.app.config.favorites[2].clone();
+    let x_before = rig.app.dock_drawn[2].rect.center().0;
+    open_dock_menu(&mut rig, 1);
+    rig.press_all(&[Key::Down]);
+    assert_eq!(selected_action(&rig), MenuAction::RemoveFromHome);
+    rig.app.handle_key(Key::Ok, rig.now);
+    rig.advance(16);
+    rig.advance(60);
+    assert!(
+        rig.app.dock_ghost.is_some(),
+        "the removed icon is still fading"
+    );
+    let x_early = rig.app.dock_drawn[1].rect.center().0;
+    assert_eq!(
+        rig.app.dock_drawn[1].package.as_deref(),
+        Some(third.as_str())
+    );
+    rig.advance(400);
+    let x_end = rig.app.dock_drawn[1].rect.center().0;
+    assert!(
+        x_early < x_before && x_early > x_end,
+        "{x_before} {x_early} {x_end}"
+    );
+    rig.advance(0);
+    assert!(rig.app.dock_ghost.is_none());
+}
+
+#[test]
+fn removing_the_only_favorite_leaves_add_favorites_with_the_focus() {
+    let mut rig = Rig::new();
+    rig.app.config.favorites = vec![NETFLIX.to_string()];
+    rig.advance(0);
+    open_dock_menu(&mut rig, 0);
+    assert_eq!(
+        menu_actions(&rig),
+        [MenuAction::RemoveFromHome, MenuAction::AppInfo]
+    );
+    rig.press(Key::Ok);
+    assert!(rig.app.config.favorites.is_empty());
+    assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
+}
+
+#[test]
+fn the_editor_shows_what_the_menu_changed() {
+    let mut rig = Rig::new();
+    open_grid_menu(&mut rig, "com.demo.chrome");
+    rig.press(Key::Ok);
+    rig.press(Key::Down);
+    focus_on(&mut rig, ids::GRID_SETTINGS);
+    rig.press_all(&[Key::Ok, Key::Ok]);
+    assert_eq!(rig.app.screen(), &Screen::Editor);
+    assert!(!rig
+        .app
+        .addable_apps()
+        .iter()
+        .any(|(p, _)| p == "com.demo.chrome"));
+    rig.press(Key::Menu);
+    assert!(rig.app.context_menu().is_none(), "no menu in the editor");
+}
+
+#[test]
+fn removing_a_favorite_from_the_dock_moves_the_focus_to_its_place() {
+    let mut rig = Rig::new();
+    let before = rig.app.config.favorites.clone();
+    open_dock_menu(&mut rig, 1);
+    rig.press(Key::Down);
+    assert_eq!(selected_action(&rig), MenuAction::RemoveFromHome);
+    assert_eq!(rig.press(Key::Ok), [Effect::SaveConfig]);
+    assert_eq!(rig.app.config.favorites.len(), before.len() - 1);
+    assert_eq!(
+        rig.focused(),
+        Some(ids::FAVORITE_BASE + 1),
+        "the next one took its place"
+    );
+    // The last one gives the focus to the one before it.
+    open_dock_menu(&mut rig, 3);
+    rig.press(Key::Down);
+    rig.press(Key::Ok);
+    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 2));
+}
+
+#[test]
+fn twelve_favorites_with_room_for_the_arrows_fit_the_safe_area() {
+    let safe = crate::display::Display::new(1280, 720).safe_area();
+    for focus in 0..12 {
+        let l = dock::layout_with_room(12, focus as f32, 1.0, 640.0, safe.bottom(), 1.0);
+        assert!(
+            l.bar.x >= safe.x && l.bar.right() <= safe.right(),
+            "focus {focus}: {:?}",
+            l.bar
+        );
+    }
 }

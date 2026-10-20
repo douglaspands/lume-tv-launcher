@@ -22,6 +22,7 @@ fn app(package: &str, label: &str, rgb: Option<u32>) -> Discovered {
         label: label.to_string(),
         activity: format!("{package}.Main"),
         leanback: true,
+        system: false,
         icon: rgb.map(icon),
     }
 }
@@ -125,8 +126,9 @@ pub fn parse_keys(text: &str) -> Result<Vec<Key>, String> {
             "ok" | "enter" => Ok(Key::Ok),
             "back" => Ok(Key::Back),
             "home" => Ok(Key::Home),
+            "menu" => Ok(Key::Menu),
             other => Err(format!(
-                "unknown key '{other}' (use up, down, left, right, ok, back, home)"
+                "unknown key '{other}' (use up, down, left, right, ok, back, home, menu)"
             )),
         })
         .collect()

@@ -18,6 +18,7 @@ import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.LocaleList;
@@ -96,6 +97,10 @@ public final class LumeBridge {
                     return inputsAvailable(context);
                 case "open-inputs":
                     return openInputs(context);
+                case "app-info":
+                    return openAppInfo(context, argument);
+                case "uninstall":
+                    return uninstall(context, argument);
                 case "stats":
                     return stats(context);
                 case "locales":
@@ -110,7 +115,10 @@ public final class LumeBridge {
         }
     }
 
-    /** `package TAB label TAB activity TAB 1|0` per launchable activity (1 = TV launcher). */
+    /**
+     * `package TAB label TAB activity TAB 1|0 TAB 1|0` per launchable activity: the first flag is 1
+     * for a TV launcher entry, the second 1 for a system app (which cannot be uninstalled).
+     */
     private static String listApps(Context context, String onlyPackage) {
         PackageManager pm = context.getPackageManager();
         StringBuilder out = new StringBuilder();
@@ -135,7 +143,8 @@ public final class LumeBridge {
             }
             // Plain LAUNCHER entries of system apps are services and setup screens (remote service,
             // OTA, factory menus), not apps for the user. The TV launcher shows none of them.
-            if (!leanback && isSystemApp(info)) {
+            boolean system = isSystemApp(info);
+            if (!leanback && system) {
                 continue;
             }
             out.append(info.activityInfo.packageName)
@@ -145,6 +154,8 @@ public final class LumeBridge {
                 .append(info.activityInfo.name)
                 .append('\t')
                 .append(leanback ? '1' : '0')
+                .append('\t')
+                .append(system ? '1' : '0')
                 .append('\n');
         }
     }
@@ -560,6 +571,28 @@ public final class LumeBridge {
 
     private static String openSettings(Context context) {
         Intent intent = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return startOrMissing(context, intent);
+    }
+
+    /** The app's page in the Android settings. */
+    private static String openAppInfo(Context context, String packageName) {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return startOrMissing(context, intent);
+    }
+
+    /**
+     * The system uninstaller for an app. It asks the user; the result arrives later as a package
+     * change. Since Android 9 it needs REQUEST_DELETE_PACKAGES, or it does nothing.
+     */
+    private static String uninstall(Context context, String packageName) {
+        Intent intent = new Intent(Intent.ACTION_DELETE, Uri.fromParts("package", packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return startOrMissing(context, intent);
+    }
+
+    private static String startOrMissing(Context context, Intent intent) {
         try {
             context.startActivity(intent);
             return "ok";

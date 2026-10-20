@@ -1,5 +1,6 @@
 //! The Apps tab: every installed app in a grid.
 
+use super::context_menu::Origin;
 use super::painter::Painter;
 use super::topbar::{self, BarLayout, TopBar};
 use super::{ids, Effect, LumeApp, Tab};
@@ -23,16 +24,16 @@ const CLIP_TOP: f32 = 76.0;
 const VIEW_TOP: f32 = 88.0;
 
 /// One cell of the grid.
-struct Cell {
-    id: u32,
-    package: Option<String>,
+pub(super) struct Cell {
+    pub id: u32,
+    pub package: Option<String>,
     rect: Rect,
     label: String,
     color: crate::theme::Color,
 }
 
 impl LumeApp {
-    fn grid_cells(&self) -> Vec<Cell> {
+    pub(super) fn grid_cells(&self) -> Vec<Cell> {
         let mut cells: Vec<Cell> = self
             .catalog
             .apps()
@@ -87,11 +88,12 @@ impl LumeApp {
             rows.push(row);
         }
         self.update_focus(rows);
+        let focused = self.focus.current_id();
+        self.grid_position = focused.and_then(|id| cells.iter().position(|c| c.id == id));
 
         let content_bottom = cells
             .last()
             .map_or(GRID_TOP, |c| c.rect.bottom() + BOTTOM_PADDING + 40.0);
-        let focused = self.focus.current_id();
         let in_grid = focused.is_some_and(|id| id >= ids::GRID_BASE);
         let rect = focused.and_then(|id| cells.iter().find(|c| c.id == id).map(|c| c.rect));
         let view_height = (p.display.visible_rect().bottom() - VIEW_TOP).max(1.0);
@@ -107,6 +109,9 @@ impl LumeApp {
             self.scroll_to(0.0);
         }
         let scroll_y = self.current_scroll_y();
+        for cell in &cells {
+            self.anchor_context_menu(Origin::Grid(cell.id), cell.rect.translate(0.0, -scroll_y));
+        }
 
         let visible = p.display.visible_rect();
 
@@ -180,6 +185,12 @@ impl LumeApp {
             focus: &progress,
         }
         .draw(p);
+    }
+
+    /// The id of the tile at `position` of the grid, or of the last one when there are fewer.
+    pub(super) fn grid_id_at(&self, position: usize) -> Option<u32> {
+        let cells = self.grid_cells();
+        cells.get(position).or(cells.last()).map(|c| c.id)
     }
 
     pub(super) fn activate_apps(&mut self, id: u32) -> Vec<Effect> {

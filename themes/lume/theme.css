@@ -54,6 +54,11 @@
   --focus-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   --focus-time: 150ms ease-out;
 
+  /* Context menu: a light card, the one surface that stands out over the dark screens */
+  --menu-surface: #F2F5F7;
+  --menu-text: #1B2630;
+  --menu-text-muted: #5E6A75;
+
   /* Tabs */
   --tab-underline: 2px;
 
@@ -276,6 +281,41 @@
   color: var(--on-primary);
   outline: 3px solid var(--primary);
   outline-offset: 4px;
+}
+
+/* Context menu (the Menu button): a light card next to the item it belongs to, like the system
+   launcher's, so it does not blend into the dark screens. Its items are dark text until they have
+   the focus, then they are filled with the primary color, without a ring: on the light card the
+   fill alone marks the focus. A disabled item says why in a .menu-note. */
+.menu {
+  border-radius: 20px;
+  background: var(--menu-surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.menu-item {
+  height: 56px;
+  padding: 0 24px;
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0);
+  color: var(--menu-text);
+  font-size: var(--font-body);
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.menu-item:focus {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.menu-item:disabled {
+  color: var(--menu-text-muted);
+  opacity: 0.6;
+}
+
+.menu-note {
+  color: var(--menu-text-muted);
+  font-size: var(--font-caption);
+  font-weight: 500;
 }
 
 .breadcrumb {
