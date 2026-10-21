@@ -17,6 +17,7 @@
     <!-- Ajustes de Lume -->
     <string name="settings_title">Ajustes</string>
     <string name="settings_home_screen">Pantalla de inicio</string>
+    <string name="settings_tv_info">Información del televisor</string>
     <string name="settings_about">Acerca de Lume</string>
 
     <!-- Panel de estado de la TV -->
@@ -24,6 +25,44 @@
     <string name="stats_memory">Memoria</string>
     <string name="stats_disk">Almacenamiento</string>
     <string name="stats_cpu">CPU</string>
+
+    <!-- TV information -->
+    <string name="tv_info_title">Información del televisor</string>
+    <string name="tv_section_device">DISPOSITIVO</string>
+    <string name="tv_section_processing">PROCESAMIENTO Y GRÁFICOS</string>
+    <string name="tv_section_memory">MEMORIA Y ALMACENAMIENTO</string>
+    <string name="tv_section_system">SISTEMA Y FIRMWARE</string>
+    <string name="tv_section_display">PANTALLA</string>
+    <string name="tv_section_network">RED</string>
+    <string name="tv_brand">Marca</string>
+    <string name="tv_model">Modelo</string>
+    <string name="tv_manufacturer">Fabricante</string>
+    <string name="tv_board">Placa</string>
+    <string name="tv_soc">Procesador (SoC)</string>
+    <string name="tv_cpu">CPU</string>
+    <string name="tv_cores">Núcleos</string>
+    <string name="tv_abi">Arquitectura (ABI)</string>
+    <string name="tv_gpu">GPU</string>
+    <string name="tv_opengl">OpenGL ES</string>
+    <string name="tv_ram">Memoria (RAM)</string>
+    <string name="tv_memory_profile">Perfil de memoria</string>
+    <string name="tv_storage_total">Almacenamiento interno</string>
+    <string name="tv_storage_free">Almacenamiento libre</string>
+    <string name="tv_android">Versión de Android</string>
+    <string name="tv_api">Nivel de API</string>
+    <string name="tv_firmware">Firmware del televisor</string>
+    <string name="tv_patch">Parche de seguridad</string>
+    <string name="tv_kernel">Kernel de Linux</string>
+    <string name="tv_resolution">Resolución de la interfaz</string>
+    <string name="tv_refresh">Frecuencia de actualización</string>
+    <string name="tv_density">Densidad de pantalla</string>
+    <string name="tv_connection">Conexión</string>
+    <string name="tv_ip">Dirección IP local</string>
+    <string name="tv_profile_standard">Estándar</string>
+    <string name="tv_profile_low">Poca RAM</string>
+    <string name="tv_link_wifi">Wi-Fi</string>
+    <string name="tv_link_ethernet">Cable Ethernet</string>
+    <string name="tv_link_other">Otra</string>
 
     <!-- Acerca de -->
     <string name="about_title">Acerca de Lume</string>

@@ -22,6 +22,7 @@
     <!-- Lume settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_home_screen">Home screen</string>
+    <string name="settings_tv_info">TV information</string>
     <string name="settings_about">About Lume</string>
 
     <!-- TV status panel -->
@@ -29,6 +30,44 @@
     <string name="stats_memory">Memory</string>
     <string name="stats_disk">Storage</string>
     <string name="stats_cpu">CPU</string>
+
+    <!-- TV information -->
+    <string name="tv_info_title">TV information</string>
+    <string name="tv_section_device">DEVICE</string>
+    <string name="tv_section_processing">PROCESSING &amp; GRAPHICS</string>
+    <string name="tv_section_memory">MEMORY &amp; STORAGE</string>
+    <string name="tv_section_system">SYSTEM &amp; FIRMWARE</string>
+    <string name="tv_section_display">DISPLAY</string>
+    <string name="tv_section_network">NETWORK</string>
+    <string name="tv_brand">Brand</string>
+    <string name="tv_model">Model</string>
+    <string name="tv_manufacturer">Manufacturer</string>
+    <string name="tv_board">Board</string>
+    <string name="tv_soc">Processor (SoC)</string>
+    <string name="tv_cpu">CPU</string>
+    <string name="tv_cores">Cores</string>
+    <string name="tv_abi">Architecture (ABI)</string>
+    <string name="tv_gpu">GPU</string>
+    <string name="tv_opengl">OpenGL ES</string>
+    <string name="tv_ram">Memory (RAM)</string>
+    <string name="tv_memory_profile">Memory profile</string>
+    <string name="tv_storage_total">Internal storage</string>
+    <string name="tv_storage_free">Free storage</string>
+    <string name="tv_android">Android version</string>
+    <string name="tv_api">API level</string>
+    <string name="tv_firmware">TV firmware</string>
+    <string name="tv_patch">Security patch</string>
+    <string name="tv_kernel">Linux kernel</string>
+    <string name="tv_resolution">Interface resolution</string>
+    <string name="tv_refresh">Refresh rate</string>
+    <string name="tv_density">Screen density</string>
+    <string name="tv_connection">Connection</string>
+    <string name="tv_ip">Local IP address</string>
+    <string name="tv_profile_standard">Standard</string>
+    <string name="tv_profile_low">Low RAM</string>
+    <string name="tv_link_wifi">Wi-Fi</string>
+    <string name="tv_link_ethernet">Ethernet cable</string>
+    <string name="tv_link_other">Other</string>
 
     <!-- About -->
     <string name="about_title">About Lume</string>

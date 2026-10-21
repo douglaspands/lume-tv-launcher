@@ -94,9 +94,47 @@ pub fn app_with(setup: &Setup) -> LumeApp {
     app
 }
 
-/// Feeds the settings panel the numbers of a made-up TV, as the platform would every 2 seconds.
+/// A made-up TV's information sheet, with a few lines left out as a real system sometimes does.
+fn demo_device_info() -> lume_core::device_info::DeviceInfo {
+    use lume_core::device_info::{DeviceInfo, Field, Link, Value};
+    let mut info = DeviceInfo::default();
+    for (field, text) in [
+        (Field::Brand, "TCL"),
+        (Field::Model, "55C715"),
+        (Field::Manufacturer, "TCL"),
+        (Field::Board, "t962x3"),
+        (Field::Soc, "Amlogic T962X3"),
+        (Field::Cpu, "Cortex-A55"),
+        (Field::Abi, "arm64-v8a"),
+        (Field::Gpu, "Mali-G31"),
+        (Field::OpenGl, "OpenGL ES 3.2"),
+        (Field::Android, "11"),
+        (Field::Api, "30"),
+        (Field::Firmware, "RTVA.211202.0204 release-keys"),
+        (Field::Kernel, "4.9.269"),
+        (Field::Resolution, "1920 × 1080"),
+        (Field::Ip, "192.168.0.24"),
+    ] {
+        info.set_text(field, text);
+    }
+    info.set(Field::Cores, Value::Count(4));
+    info.set(Field::Ram, Value::Bytes(2_000_000_000));
+    info.set(Field::MemoryProfile, Value::LowRam(false));
+    info.set(Field::StorageTotal, Value::Bytes(12_000_000_000));
+    info.set(Field::StorageFree, Value::Bytes(7_300_000_000));
+    info.set(Field::RefreshRate, Value::Hertz(60.0));
+    info.set(Field::Density, Value::Dpi(213));
+    info.set(Field::Connection, Value::Link(Link::WiFi));
+    info
+}
+
+/// Feeds the settings panel the numbers of a made-up TV, as the platform would every 2 seconds,
+/// and the TV information screen its sheet when it opens.
 pub fn feed_stats(app: &mut LumeApp, now_ms: u64) {
     use lume_core::stats::{CpuReading, Stats};
+    if app.wants_device_info() {
+        app.apply_device_info(demo_device_info());
+    }
     if app.stats_deadline(now_ms).is_some_and(|at| at <= now_ms) {
         app.apply_stats(
             Stats {

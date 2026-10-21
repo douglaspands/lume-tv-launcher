@@ -446,12 +446,70 @@ fn focus_on(rig: &mut Rig, id: FocusId) {
 }
 
 #[test]
-fn the_lume_settings_start_on_the_first_item_and_list_two() {
+fn the_lume_settings_start_on_the_first_item_and_list_three() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
     rig.press(Key::Down);
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 2));
-    assert!(!rig.app.focus.move_focus(Direction::Down), "two items only");
+    assert!(
+        !rig.app.focus.move_focus(Direction::Down),
+        "three items only"
+    );
+}
+
+fn open_tv_info(rig: &mut Rig) {
+    open_settings(rig);
+    rig.press_all(&[Key::Down, Key::Ok]);
+    assert_eq!(rig.app.screen(), &Screen::TvInfo);
+}
+
+#[test]
+fn the_tv_information_waits_for_the_platform_and_is_read_each_time_it_opens() {
+    let mut rig = Rig::new();
+    open_tv_info(&mut rig);
+    assert!(rig.app.wants_device_info(), "asked on opening");
+    rig.app
+        .apply_device_info(crate::device_info::DeviceInfo::default());
+    assert!(!rig.app.wants_device_info(), "read once while it stays");
+    rig.press(Key::Back);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    assert!(!rig.app.wants_device_info());
+    rig.press(Key::Ok);
+    assert!(rig.app.wants_device_info(), "read again on the next visit");
+    rig.app.went_to_background();
+    assert!(!rig.app.wants_device_info(), "not in the background");
+}
+
+#[test]
+fn the_tv_information_scrolls_within_the_sheet_and_back_returns_to_its_item() {
+    let mut rig = Rig::new();
+    open_tv_info(&mut rig);
+    rig.app
+        .apply_device_info(crate::device_info::DeviceInfo::default());
+    rig.advance(0);
+    assert!(
+        rig.app.tv_max_scroll > 0.0,
+        "the sheet is taller than the screen"
+    );
+    rig.press(Key::Up);
+    assert_eq!(rig.app.scroll_y, 0.0, "no scrolling above the top");
+    rig.press(Key::Down);
+    assert!(rig.app.scroll_y > 0.0);
+    for _ in 0..50 {
+        rig.press(Key::Down);
+    }
+    assert_eq!(
+        rig.app.scroll_y, rig.app.tv_max_scroll,
+        "no scrolling past the end"
+    );
+    rig.advance(1000);
+    rig.press(Key::Back);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
+    assert_eq!(rig.app.scroll_y, 0.0);
 }
 
 #[test]
@@ -499,7 +557,7 @@ fn without_an_inputs_panel_the_button_is_not_there() {
 fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
-    rig.press_all(&[Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.about_scroll, 0.0);
     rig.press(Key::Down);
@@ -788,7 +846,12 @@ fn editor_fits_six_cards_per_line_with_no_horizontal_overflow() {
     let mut rig = Rig::new();
     let catalog = many_apps(12);
     rig.app.catalog = catalog.clone();
-    rig.app.config.favorites = catalog.apps().iter().take(12).map(|a| a.package.clone()).collect();
+    rig.app.config.favorites = catalog
+        .apps()
+        .iter()
+        .take(12)
+        .map(|a| a.package.clone())
+        .collect();
     open_editor(&mut rig);
     let rows = rig.app.focus.rows();
     // Row 0 is ROUND_FAVORITES (1 item)
@@ -1078,7 +1141,8 @@ fn down_from_the_favorites_goes_to_done_and_restore_is_to_its_left() {
     // Down goes to the cards.
     rig.press(Key::Down);
     assert!(
-        rig.focused().is_some_and(|id| (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id)),
+        rig.focused()
+            .is_some_and(|id| (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id)),
         "the cards come after round favorites"
     );
     // Down from the cards goes to the "Add app" chips.
@@ -1151,6 +1215,11 @@ fn every_screen_starts_with_the_wallpaper_and_has_no_flat_background() {
     rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     lists.push(("about", rig.frame()));
+    let mut rig = Rig::new();
+    open_tv_info(&mut rig);
+    rig.app
+        .apply_device_info(crate::device_info::DeviceInfo::default());
+    lists.push(("tv information", rig.frame()));
     let mut rig = Rig::new();
     open_editor(&mut rig);
     lists.push(("editor", rig.frame()));
@@ -1990,7 +2059,7 @@ fn the_statistics_are_read_only_while_the_settings_are_on_screen() {
     );
 
     // Leaving for the About screen, the editor or the background stops the readings.
-    rig.press_all(&[Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.stats_deadline(rig.now), None);
     rig.press(Key::Back);

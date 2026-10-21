@@ -6,6 +6,7 @@
 //! released when the window goes away.
 
 mod bridge;
+mod device_info;
 mod egl;
 
 use android_activity::input::{InputEvent, KeyAction};
@@ -200,6 +201,11 @@ impl Runtime {
                     // Try again in a while instead of on every turn of the loop.
                     self.shell.stats_failed(now);
                 }
+            }
+            if self.shell.device_info_due(now) {
+                let gpu = self.graphics.as_mut().map(|g| g.backend().gpu_strings());
+                let info = device_info::read(gpu, self.bridge.display());
+                self.shell.set_device_info(info);
             }
             // Loading an icon takes tens of milliseconds: it waits for the animation to end, or the
             // frames would be late and the movement would stutter.

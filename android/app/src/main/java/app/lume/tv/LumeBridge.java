@@ -30,6 +30,7 @@ import android.provider.Settings;
 import android.text.format.DateFormat;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.WindowManager;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -109,6 +110,8 @@ public final class LumeBridge {
                     return LocaleList.getDefault().toLanguageTags();
                 case "clock":
                     return clock(context);
+                case "display":
+                    return display(context);
                 default:
                     return "";
             }
@@ -707,5 +710,13 @@ public final class LumeBridge {
         String is24 = DateFormat.is24HourFormat(context) ? "1" : "0";
         int offsetSeconds = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000;
         return is24 + "\t" + offsetSeconds;
+    }
+
+    /** The interface width and height in pixels, the refresh rate in Hz and the density in dpi, tab-separated. */
+    private static String display(Context context) {
+        DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+        WindowManager windows = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        float hertz = windows.getDefaultDisplay().getRefreshRate();
+        return metrics.widthPixels + "\t" + metrics.heightPixels + "\t" + hertz + "\t" + metrics.densityDpi;
     }
 }

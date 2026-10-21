@@ -4,6 +4,7 @@ pub mod app;
 pub mod app_icons;
 pub mod catalog;
 pub mod clock;
+pub mod device_info;
 pub mod display;
 pub mod fonts;
 pub mod home;

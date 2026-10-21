@@ -412,6 +412,18 @@ impl Shell {
         self.dirty = true;
     }
 
+    /// Whether the TV information screen waits for the platform's reading and the interface is at
+    /// rest (the reading takes a few milliseconds, so it never lands in the middle of a move).
+    pub fn device_info_due(&self, now_ms: u64) -> bool {
+        self.is_active() && !self.is_busy(now_ms) && self.app.wants_device_info()
+    }
+
+    /// The platform's reading of the TV for the information screen.
+    pub fn set_device_info(&mut self, info: crate::device_info::DeviceInfo) {
+        self.app.apply_device_info(info);
+        self.dirty = true;
+    }
+
     /// Whether the screen is changing right now (a key was just handled, or something moves; the
     /// fades of the splash logo and of arriving icons do not count). Slow work that can wait, like
     /// loading icons, should wait for this to end.
