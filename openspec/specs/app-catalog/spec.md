@@ -100,7 +100,7 @@ O lume SHALL registrar, apenas no armazenamento interno do dispositivo, o horár
 - **THEN** o histórico de uso deixa de existir
 
 ### Requirement: Ícone do app no dock
-Cada favorito do dock SHALL exibir o ícone do app no formato configurado (quadrado de cantos arredondados por padrão, ou circular com "Favoritos redondos" ligado), e não o banner de TV. Quando o ícone tem transparência, ele SHALL aparecer sobre a cor do app. Os ícones SHALL ser carregados aos poucos, sem atrasar o primeiro quadro nem a resposta às teclas, e a troca entre quadrado arredondado e circular SHALL acontecer na hora, sem exigir releitura dos ícones já em cache. Enquanto o ícone não estiver disponível, o dock SHALL mostrar a cor do app com a inicial do nome. As imagens do dock SHALL ficar na mesma textura gráfica das imagens da grade de Apps, criada só com o lume em primeiro plano e liberada ao ir para segundo plano.
+Cada favorito do dock SHALL exibir o ícone do app no formato configurado (quadrado de cantos arredondados por padrão, ou circular com "Favoritos redondos" ligado), e não o banner de TV. Quando o ícone tem transparência, ele SHALL aparecer sobre a cor do app no formato configurado do dock, acompanhando o formato dos demais favoritos. Os ícones SHALL ser carregados preferencialmente na resolução mais alta disponível no aplicativo (com limite de tentativas e fallback limpo para a densidade padrão do sistema) e rasterizados com filtragem bilinear e anti-aliasing. Os ícones SHALL ser carregados aos poucos, sem atrasar o primeiro quadro nem a resposta às teclas, e a troca entre quadrado arredondado e circular SHALL acontecer na hora, sem exigir releitura dos ícones já em cache. Enquanto o ícone não estiver disponível, o dock SHALL mostrar a cor do app com a inicial do nome. As imagens do dock SHALL ficar na mesma textura gráfica das imagens da grade de Apps, criada só com o lume em primeiro plano e liberada ao ir para segundo plano.
 
 #### Scenario: App com banner de TV nos favoritos
 - **WHEN** o Netflix, que declara banner de TV, é um favorito
@@ -117,3 +117,11 @@ Cada favorito do dock SHALL exibir o ícone do app no formato configurado (quadr
 #### Scenario: Troca de formato sem recarregar ícones
 - **WHEN** os ícones do dock já estão carregados e o usuário alterna "Favoritos redondos"
 - **THEN** os ícones passam a ser exibidos no novo formato imediatamente, sem voltar às iniciais
+
+#### Scenario: Carregamento em alta resolução
+- **WHEN** um app possui ícones em alta densidade (como `xxhdpi` ou superior)
+- **THEN** o dock carrega o asset em alta resolução, rasterizando com filtragem suave e preservando a definição e nitidez
+
+#### Scenario: Ícone com transparência acompanha os demais
+- **WHEN** um app possui ícone com transparência ou formato não adaptativo (como o Globoplay)
+- **THEN** ele é exibido sobre a base geométrica correspondente ao formato global do dock, acompanhando os demais aplicativos
