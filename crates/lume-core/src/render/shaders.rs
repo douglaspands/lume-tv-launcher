@@ -82,18 +82,24 @@ void main() {
 pub const TEX_VERTEX: &str = r#"#version 100
 attribute vec4 a_pos_uv; // xy: canvas position, zw: texture coordinates
 attribute vec4 a_color;
+attribute vec4 a_local;  // xy: position relative to center, zw: half size
+attribute vec4 a_params; // x: radius
 
 uniform vec4 u_view;
 uniform vec2 u_surface;
 
 varying vec2 v_uv;
 varying vec4 v_color;
+varying vec4 v_shape;    // xy: half size, z: radius, w: 1.0 / u_view.x
+varying vec2 v_local;
 
 void main() {
     vec2 device = a_pos_uv.xy * u_view.x + u_view.yz;
     gl_Position = vec4(device.x / u_surface.x * 2.0 - 1.0, 1.0 - device.y / u_surface.y * 2.0, 0.0, 1.0);
     v_uv = a_pos_uv.zw;
     v_color = a_color;
+    v_shape = vec4(a_local.zw, a_params.x, 1.0 / u_view.x);
+    v_local = a_local.xy;
 }
 "#;
 
@@ -111,7 +117,7 @@ void main() {
 }
 "#;
 
-/// Premultiplied RGBA image multiplied by the vertex color.
+/// Premultiplied RGBA image multiplied by the vertex color, with optional rounded corner clipping.
 pub const IMAGE_FRAGMENT: &str = r#"#version 100
 precision mediump float;
 
@@ -119,8 +125,21 @@ uniform sampler2D u_texture;
 
 varying vec2 v_uv;
 varying vec4 v_color;
+varying vec4 v_shape;
+varying vec2 v_local;
+
+float round_rect_distance(vec2 p, vec2 half_size, float radius) {
+    vec2 q = abs(p) - half_size + radius;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - radius;
+}
 
 void main() {
-    gl_FragColor = texture2D(u_texture, v_uv) * v_color;
+    vec4 tex = texture2D(u_texture, v_uv) * v_color;
+    if (v_shape.z > 0.0) {
+        float d = round_rect_distance(v_local, v_shape.xy, v_shape.z);
+        float alpha = clamp(0.5 - d / v_shape.w, 0.0, 1.0);
+        tex *= alpha;
+    }
+    gl_FragColor = tex;
 }
 "#;

@@ -13,7 +13,7 @@ A tela Início SHALL exibir, sobre o papel de parede, a barra superior e, na par
 - **THEN** a tela Início mostra o papel de parede, a barra superior e, embaixo, o dock com os favoritos padrão
 
 ### Requirement: Dock de favoritos
-Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma barra translúcida de cantos arredondados, flutuante, centralizada horizontalmente e acima da borda inferior da área segura. Cada favorito SHALL aparecer como o ícone do app em formato quadrado de cantos arredondados, sobre a cor do app quando o ícone tem transparência. O dock SHALL mostrar todos os favoritos (até 12) lado a lado, sem rolagem horizontal, e SHALL ficar dentro da área segura. OK sobre um favorito SHALL abrir o app.
+Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma barra translúcida de cantos arredondados, flutuante, centralizada horizontalmente e acima da borda inferior da área segura. Cada favorito SHALL aparecer como o ícone do app em formato quadrado de cantos arredondados (padrão) ou circular (quando "Favoritos redondos" está ligado), sobre a cor do app quando o ícone tem transparência. O dock SHALL mostrar todos os favoritos (até 12) lado a lado, sem rolagem horizontal, e SHALL ficar dentro da área segura. OK sobre um favorito SHALL abrir o app.
 
 #### Scenario: Favoritos padrão no primeiro uso
 - **WHEN** o lume é aberto pela primeira vez com Netflix, YouTube e Spotify instalados
@@ -26,6 +26,10 @@ Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma 
 #### Scenario: Abrir pelo dock
 - **WHEN** o foco está num ícone do dock e o usuário pressiona OK
 - **THEN** o app daquele ícone é aberto
+
+#### Scenario: Favoritos em formato circular
+- **WHEN** a opção "Favoritos redondos" está ligada
+- **THEN** cada item do dock é desenhado como um círculo
 
 ### Requirement: Magnification do dock
 O item do dock em foco SHALL ser ampliado, com a base alinhada à base do dock, e os itens vizinhos SHALL ser ampliados em proporção menor, decrescente com a distância ao item focado, até voltar ao tamanho normal. A ampliação SHALL ser animada ao mover o foco. Itens ampliados MAY se sobrepor aos vizinhos sem deslocá-los. O dock SHALL NOT desenhar contorno ao redor do item focado.

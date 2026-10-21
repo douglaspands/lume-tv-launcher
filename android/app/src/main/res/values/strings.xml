@@ -38,6 +38,7 @@
     <string name="about_third_party">Third-party licenses</string>
 
     <!-- Home screen editor -->
+    <string name="editor_round_favorites">Round favorites</string>
     <string name="editor_breadcrumb_edit">Edit</string>
     <string name="editor_title">Edit home screen</string>
     <string name="editor_instruction">Select an app and use the buttons to move it left or right, or to remove it. Add more apps below.</string>

@@ -29,6 +29,7 @@ pub struct TexturedCmd {
     pub dest: Rect,
     pub uv: Rect,
     pub color: Color,
+    pub radius: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -97,16 +98,34 @@ impl DisplayList {
     }
 
     pub fn glyph(&mut self, dest: Rect, uv: Rect, color: Color) {
-        self.cmds.push(Cmd::Glyph(TexturedCmd { dest, uv, color }));
+        self.cmds.push(Cmd::Glyph(TexturedCmd {
+            dest,
+            uv,
+            color,
+            radius: 0.0,
+        }));
     }
 
     pub fn image(&mut self, dest: Rect, uv: Rect, color: Color) {
-        self.cmds.push(Cmd::Image(TexturedCmd { dest, uv, color }));
+        self.image_rounded(dest, uv, color, 0.0);
+    }
+
+    pub fn image_rounded(&mut self, dest: Rect, uv: Rect, color: Color, radius: f32) {
+        self.cmds.push(Cmd::Image(TexturedCmd {
+            dest,
+            uv,
+            color,
+            radius,
+        }));
     }
 
     pub fn wallpaper(&mut self, dest: Rect, uv: Rect, color: Color) {
-        self.cmds
-            .push(Cmd::Wallpaper(TexturedCmd { dest, uv, color }));
+        self.cmds.push(Cmd::Wallpaper(TexturedCmd {
+            dest,
+            uv,
+            color,
+            radius: 0.0,
+        }));
     }
 
     /// Makes everything drawn since command `start` (an index from [`len`](Self::len)) `factor`

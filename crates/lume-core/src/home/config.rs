@@ -16,6 +16,8 @@ pub const FIRST_USE_FAVORITES: usize = 5;
 pub struct HomeConfig {
     /// Favorite apps, left to right.
     pub favorites: Vec<String>,
+    /// Whether favorite dock icons are rendered as circles instead of rounded squares.
+    pub round_favorites: bool,
 }
 
 impl HomeConfig {
@@ -33,6 +35,7 @@ impl HomeConfig {
             .collect();
         HomeConfig {
             favorites: installed.into_iter().take(FIRST_USE_FAVORITES).collect(),
+            round_favorites: false,
         }
     }
 
@@ -90,6 +93,10 @@ impl HomeConfig {
     fn to_kv(&self) -> Kv {
         let mut kv = Kv::new();
         kv.set_list("favorites", self.favorites.iter().map(String::as_str));
+        kv.set(
+            "round_favorites",
+            if self.round_favorites { "1" } else { "0" },
+        );
         kv
     }
 
@@ -103,7 +110,11 @@ impl HomeConfig {
             }
         }
         favorites.truncate(MAX_FAVORITES);
-        Some(HomeConfig { favorites })
+        let round_favorites = kv.get("round_favorites") == Some("1");
+        Some(HomeConfig {
+            favorites,
+            round_favorites,
+        })
     }
 
     /// Writes the configuration file (`config.v1`).
@@ -159,6 +170,7 @@ mod tests {
     fn sample() -> HomeConfig {
         HomeConfig {
             favorites: vec![NETFLIX.into(), YOUTUBE.into(), SPOTIFY.into()],
+            round_favorites: false,
         }
     }
 
@@ -209,6 +221,7 @@ mod tests {
     fn reordering_favorites() {
         let mut config = HomeConfig {
             favorites: ["a", "b", "c", "spotify", "e"].map(String::from).to_vec(),
+            round_favorites: false,
         };
         // Spotify, in position 4 (index 3), moves left.
         assert!(config.move_favorite_left(3));
@@ -224,6 +237,7 @@ mod tests {
     fn adding_and_removing_favorites() {
         let mut config = HomeConfig {
             favorites: vec!["a".into()],
+            round_favorites: false,
         };
         assert!(config.add_favorite("chrome"));
         assert_eq!(config.favorites, ["a", "chrome"]);
@@ -237,6 +251,7 @@ mod tests {
     fn the_favorites_limit_is_twelve() {
         let mut config = HomeConfig {
             favorites: (0..11).map(|i| format!("app{i}")).collect(),
+            round_favorites: false,
         };
         assert!(!config.favorites_full());
         assert!(config.add_favorite("twelfth"));
@@ -274,15 +289,32 @@ mod tests {
         sample().save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("favorites="));
+        assert!(text.contains("round_favorites=0"));
         assert!(!text.contains("sections") && !text.contains("carousel"));
     }
 
     #[test]
     fn an_empty_list_survives_the_round_trip() {
-        let config = HomeConfig { favorites: vec![] };
+        let config = HomeConfig {
+            favorites: vec![],
+            round_favorites: false,
+        };
         let path = temp("empty");
         config.save(&path).unwrap();
         assert_eq!(HomeConfig::load(&path), Some(config));
+    }
+
+    #[test]
+    fn round_favorites_round_trips() {
+        let config = HomeConfig {
+            favorites: vec![NETFLIX.into()],
+            round_favorites: true,
+        };
+        let path = temp("round-favs-true");
+        config.save(&path).unwrap();
+        assert_eq!(HomeConfig::load(&path), Some(config));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("round_favorites=1"));
     }
 
     #[test]
@@ -309,6 +341,7 @@ mod tests {
         storage::save(&path, 1, &kv).unwrap();
         let config = HomeConfig::load(&path).unwrap();
         assert_eq!(config.favorites, ["c", "b", "a"]);
+        assert!(!config.round_favorites);
     }
 
     #[test]

@@ -387,7 +387,7 @@
 
 /* Home editor */
 .editor-row {
-  height: 72px;
+  height: 64px;
   padding: 0 24px;
   gap: 16px;
   border-radius: var(--radius);
