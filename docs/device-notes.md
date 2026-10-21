@@ -395,3 +395,17 @@ o resto da espera é o splash: o logo entra em 120 ms enquanto os ícones carreg
 - A grade de nenhuma das TVs rola (12 e 10 apps): o retorno para a grade rolada só está coberto pelos testes.
 - **Build no contêiner:** o `cargo` às vezes reaproveitava código Rust antigo dentro do contêiner (dois builds com Rust
   diferente saíram com a mesma `liblume.so`); o `docker/Dockerfile` passou a tocar os `.rs` do projeto antes de compilar.
+
+## Papéis de parede em Full HD (change `seletor-wallpapers`, 2026-10-21)
+
+10 papéis em 1920x1080, embutidos na biblioteca (APK de 35 MB, com as duas arquiteturas; cada uma carrega os papéis). Textura do papel ativo: 6,2 MB.
+
+| Medida (estável, 35 a 40 s depois de abrir) | TCL 55C715 (192.168.0.8) | AIWA (192.168.0.3) |
+|---|---|---|
+| TOTAL PSS | 21 MB | 50 MB (GL 18 MB); uma medida logo após instalar deu 62,7 MB |
+| Primeiro quadro (após a janela) | 96 ms | 105 ms |
+| Interface pronta (após a janela, abertura a frio) | 1300 ms | 1308 ms |
+| Quadros de 33 ms ou mais na revelação | 0 de 38 | 0 de 39 |
+
+Splash: logo à vista por no mínimo 600 ms a frio e 300 ms a quente, revelação de 600 ms a frio e 360 ms a quente. Os limites de `resource-efficiency` subiram (APK 40 MB, PSS 64 MB em primeiro plano).
+

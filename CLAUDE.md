@@ -19,7 +19,7 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 ## Estado
 
 v0.2.0, v0.2.1, a versão do build e a `escala-tipografica` (escala de texto de 6 níveis, barra superior, régua de layout para todas as
-telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. A tag `v0.3.0` sai depois do merge. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
+telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. `seletor-wallpapers` (10 papéis em Full HD, seletor e descrição na tela Início, splash com tempo mínimo do logo, limites de APK 40 MB e PSS 64 MB) arquivada em `openspec/changes/archive/2026-10-21-seletor-wallpapers`, na branch `feat/seletor-wallpapers`. A tag `v0.3.0` sai depois do merge. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
 Pendências conhecidas, que dependem do autor: assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
@@ -56,7 +56,7 @@ cargo test --workspace && cargo clippy --workspace --all-targets   # deve ficar 
 cargo run -p lume-desktop -- --size 1920x1080 --locale en --keys right --screenshot home h.png   # telas: home apps settings tvinfo about editor
 uv run scripts/measure-ink.py h.png columns --y 28 60   # vãos e alturas na tinta (captura em 1280x720); régua no design system
 scripts/container-build.sh release       # APK em dist/ (runtime: wslc, docker, podman, nesta ordem; LUME_CONTAINER força outro)
-uv run scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 6 MB
+uv run scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 40 MB
 ```
 
 ## TV de referência (testes por adb)
@@ -100,6 +100,6 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Orçamentos (spec `resource-efficiency`)
 
-PSS até 45 MB em primeiro plano e 20 MB em segundo; APK até 6 MB; no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
+PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
 até 300 ms; o laço não pede quadros parado além do relógio. Última medida (v0.2.0): 17 a 20 MB e 12,2 MB de PSS, APK de 3,15 MB, 0 a 1% de
 quadros perdidos, abertura a frio de 373 ms.

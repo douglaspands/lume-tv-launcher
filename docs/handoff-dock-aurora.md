@@ -73,7 +73,7 @@ A change antiga `lume-launcher-v0-1-0` foi encerrada com as tarefas abertas marc
 cargo test --workspace && cargo clippy --workspace --all-targets   # deve ficar limpo
 cargo run -p lume-desktop -- --size 1920x1080 --favorites 12 --keys right,right --screenshot home h.png
 scripts/container-build.sh release            # dist/lume-<versão>-release-debugsigned.apk (assinado com chave de debug)
-python3 scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 6 MB
+python3 scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 40 MB
 ```
 
 TV de referência (TCL 55C715, 2 GB RAM, 4 núcleos): `adb -s <ip-da-tv>:5555` (o IP muda e não fica no repositório; o usuário autorizou o acesso por adb).
