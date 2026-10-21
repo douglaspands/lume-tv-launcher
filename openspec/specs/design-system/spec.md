@@ -43,7 +43,7 @@ O texto SHALL usar a família Plus Jakarta Sans embutida, nos pesos 500, 700 e 8
 - **THEN** o build do tema avisa, e a tela usa o nível mais próximo
 
 ### Requirement: Canvas, margens e grade
-O layout SHALL ser desenhado no canvas lógico de 1280x720 (ver `display-adaptation`), com margem lateral de 64 e área segura de 32 na horizontal e 18 na vertical. A barra superior segue o requisito "Barra superior". Telas secundárias começam em x=64 com largura de 1152; nelas o caminho de navegação fica na linha-base 52 (a tela raiz, Configurações, mostra só "Configurações"), o título (40, peso 800) na 116 (64 abaixo do caminho), o subtítulo (18) na 152 e o conteúdo começa em y=212 (`page::CONTENT_TOP`). A versão instalada, quando mostrada, fica no canto inferior direito da área segura, em texto mudo de 18. A grade de Apps tem 6 colunas, espaço de 24 e tiles 16:9. A tela de Configurações divide a largura de 1152 em duas colunas iguais de 552, com 48 de vão: os itens (72 de altura, passo 88) na esquerda e o painel de estatísticas, alinhado ao primeiro item, na direita (x=664). No editor, o painel de favoritos tem enchimento de 32, 48 entre o cabeçalho e os cartões, cartões de 168 com 24 de espaço, 32 entre os cartões e "Adicionar app", chips de 40 de altura (raio 20) com 16 de espaço entre linhas e 40 entre o painel e "Restaurar padrão". O dock tem ícones de 64, espaço de 16, enchimento de 16 e pico de ampliação de 1,6. Valores que mudam SHALL ser alterados na constante do módulo, e esta spec SHALL ser atualizada junto.
+O layout SHALL ser desenhado no canvas lógico de 1280x720 (ver `display-adaptation`), com margem lateral de 64 e área segura de 32 na horizontal e 18 na vertical. A barra superior segue o requisito "Barra superior". Telas secundárias começam em x=64 com largura de 1152; nelas o caminho de navegação fica na linha-base 52 (a tela raiz, Configurações, mostra só "Configurações"), o título (40, peso 800) na 116 (64 abaixo do caminho), o subtítulo (18) na 152 e o conteúdo começa em y=212 (`page::CONTENT_TOP`), ou em y=184 no editor (32 abaixo do subtítulo). A versão instalada, quando mostrada, fica no canto inferior direito da área segura, em texto mudo de 18. A grade de Apps tem 6 colunas, espaço de 24 e tiles 16:9. A tela de Configurações divide a largura de 1152 em duas colunas iguais de 552, com 48 de vão: os itens (72 de altura, passo 88) na esquerda e o painel de estatísticas, alinhado ao primeiro item, na direita (x=664). No editor, a linha "Favoritos redondos" (`.editor-row`, 64 de altura, chave Liga/Desliga de 48x28 à direita com bolinha de 20) começa em y=184 e fica 16 acima do painel de favoritos; o painel tem enchimento lateral de 32 e vertical de 24, 32 entre o cabeçalho e os cartões, cartões de 168 com 16 de espaço (6 por linha, preenchendo os 1088 úteis), 20 entre os cartões e "Adicionar app", chips de 40 de altura (raio 20) com 16 de espaço entre linhas e 24 entre o painel e "Restaurar padrão". O dock tem ícones de 64, espaço de 16, enchimento de 16 e pico de ampliação de 1,6. Valores que mudam SHALL ser alterados na constante do módulo, e esta spec SHALL ser atualizada junto.
 
 #### Scenario: Botão novo na barra
 - **WHEN** um botão é adicionado à barra superior
@@ -52,6 +52,10 @@ O layout SHALL ser desenhado no canvas lógico de 1280x720 (ver `display-adaptat
 #### Scenario: Painel ao lado dos itens
 - **WHEN** a tela de Configurações é exibida em 1280x720
 - **THEN** a lista ocupa x de 64 a 616 e o painel de 664 a 1216, em colunas iguais
+
+#### Scenario: Seis cartões por linha no editor
+- **WHEN** a tela Editar tela Início é exibida em 1280x720 com 6 favoritos
+- **THEN** os 6 cartões de 168 com vão de 16 cabem na mesma linha, preenchendo os 1088 de largura útil do painel sem sobra à direita
 
 ### Requirement: Barra superior
 A barra superior SHALL seguir estas métricas (canvas lógico; "tinta" é o desenho visível, medido na captura, e "caixa" é o retângulo de layout):
