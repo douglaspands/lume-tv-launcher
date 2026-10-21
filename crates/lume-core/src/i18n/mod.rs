@@ -367,6 +367,9 @@ mod tests {
         assert_eq!(StringId::HomeFavoritesTitle.key(), "home_favorites_title");
         assert_eq!(PluralId::EditorLimitReached.key(), "editor_limit_reached");
         assert_eq!(StringId::ALL.len(), StringId::COUNT);
-        assert_eq!(available_languages().collect::<Vec<_>>(), ["en", "pt-BR"]);
+        assert_eq!(
+            available_languages().collect::<Vec<_>>(),
+            ["en", "es", "id", "pt-BR", "ru"]
+        );
     }
 }

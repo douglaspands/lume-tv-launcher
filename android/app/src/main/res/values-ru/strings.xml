@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lume</string>
+    <string name="tagline">ваш дом на ТВ</string>
+
+    <!-- Верхняя панель -->
+    <string name="tab_home">Главная</string>
+    <string name="tab_apps">Приложения</string>
+
+    <!-- Главный экран -->
+    <string name="home_favorites_title">Ваши избранные приложения</string>
+    <string name="home_add_favorites">Добавить избранное</string>
+
+    <!-- Экран приложений -->
+    <string name="apps_title">Все приложения</string>
+
+    <!-- Настройки Lume -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_home_screen">Главный экран</string>
+    <string name="settings_about">О Lume</string>
+
+    <!-- Панель состояния ТВ -->
+    <string name="stats_title">СОСТОЯНИЕ ТВ</string>
+    <string name="stats_memory">Память</string>
+    <string name="stats_disk">Хранилище</string>
+    <string name="stats_cpu">ЦП</string>
+
+    <!-- О программе -->
+    <string name="about_title">О Lume</string>
+    <string name="about_version">Версия %1$s</string>
+    <string name="about_license">Лицензия GPL-3.0-or-later</string>
+    <string name="about_source">Исходный код: %1$s</string>
+    <string name="about_third_party">Лицензии третьих сторон</string>
+
+    <!-- Редактор главного экрана -->
+    <string name="editor_round_favorites">Круглые значки</string>
+    <string name="editor_breadcrumb_edit">Изменить</string>
+    <string name="editor_title">Изменить главный экран</string>
+    <string name="editor_instruction">Выберите приложение и кнопками переместите его влево или вправо либо удалите. Другие приложения можно добавить ниже.</string>
+    <string name="editor_done">Готово</string>
+    <string name="editor_favorites_order">ИЗБРАННЫЕ ПРИЛОЖЕНИЯ · ПОРЯДОК</string>
+    <string name="editor_use_arrows">Перемещайте стрелками</string>
+    <string name="editor_add_app">Добавить:</string>
+    <plurals name="editor_limit_reached">
+        <item quantity="one">Предел: %1$d избранное</item>
+        <item quantity="few">Предел: %1$d избранных</item>
+        <item quantity="many">Предел: %1$d избранных</item>
+        <item quantity="other">Предел: %1$d избранного</item>
+    </plurals>
+    <string name="editor_restore_defaults">Сбросить</string>
+    <string name="editor_restore_title">Восстановить главный экран по умолчанию?</string>
+    <string name="editor_restore_body">Избранное вернётся к начальной настройке. История использования сохранится.</string>
+    <string name="editor_restore_confirm">Восстановить</string>
+    <string name="editor_cancel">Отмена</string>
+
+    <!-- Контекстное меню (кнопка «Меню») -->
+    <string name="menu_add_home">Добавить на главный</string>
+    <string name="menu_remove_home">Убрать с главного</string>
+    <string name="menu_move">Переместить</string>
+    <string name="menu_app_info">О приложении</string>
+    <string name="menu_uninstall">Удалить</string>
+
+    <!-- Сообщения -->
+    <string name="toast_app_not_found">Приложение не найдено</string>
+</resources>
