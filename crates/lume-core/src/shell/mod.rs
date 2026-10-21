@@ -17,7 +17,7 @@ use crate::display::{self, Display};
 use crate::home::config::HomeConfig;
 use crate::i18n::Translator;
 use crate::render::{DisplayList, Frame, Viewport};
-use crate::text::TextEngine;
+use crate::text::{SystemFonts, TextEngine};
 use crate::usage::UsageHistory;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -111,7 +111,11 @@ impl Shell {
         match &mut self.text {
             Some(text) => text.set_scale(display.scale),
             None => {
-                self.text = Some(TextEngine::new(display.scale));
+                // Without Android's fonts.xml (desktop) there is no system fallback.
+                self.text = Some(match SystemFonts::android() {
+                    Ok(fonts) => TextEngine::with_fallback(display.scale, Box::new(fonts)),
+                    Err(_) => TextEngine::new(display.scale),
+                });
                 self.app.came_to_foreground();
             }
         }
