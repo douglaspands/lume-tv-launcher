@@ -41,7 +41,8 @@ commit (`-dirty` se há mudança rastreada não commitada; `dev` sem git) e `ver
   (`https://github.com/douglaspands/lume-tv-launcher`, uma fonte só) ou versão. Sem novidade, registre "Sobre revisado, sem mudança".
 - Fluxo OpenSpec: `/opsx:propose`, `/opsx:apply`, `/opsx:archive`. Validar com `openspec validate <change> --strict`.
 - Idioma: respostas, specs e commits do projeto em português do Brasil; código, comentários e mensagens de commit em inglês.
-- Neste ambiente use `/usr/bin/python3` (o `python3` do asdf pode falhar).
+- Sempre que precisar usar o Python, use o `uv` (`uv run ...`), sendo permitido instalar dependências quando necessário.
+- **Shell de execução**: Usar sempre o `zsh` como prioridade absoluta caso esteja instalado (via `zsh -c "..."`) ao invés do `bash` para qualquer execução de comandos no workspace.
 - **Economize contexto e tokens**: prefira comandos que tragam só o necessário. Use `grep -n`/`rg` com padrão
   específico, `sed -n 'A,Bp'` ou leitura por faixa de linhas em vez de arquivos inteiros, `head`/`tail`/`wc -l`
   para saídas longas, `--json` com filtro (`python3 -c`, `jq`) nos comandos do `openspec`, `--quiet`/`-q` em
@@ -52,10 +53,10 @@ commit (`-dirty` se há mudança rastreada não commitada; `dev` sem git) e `ver
 
 ```
 cargo test --workspace && cargo clippy --workspace --all-targets   # deve ficar limpo; cargo fmt --all
-cargo run -p lume-desktop -- --size 1920x1080 --locale en --keys right --screenshot home h.png   # telas: home apps settings about editor
-/usr/bin/python3 scripts/measure-ink.py h.png columns --y 28 60   # vãos e alturas na tinta (captura em 1280x720); régua no design system
+cargo run -p lume-desktop -- --size 1920x1080 --locale en --keys right --screenshot home h.png   # telas: home apps settings tvinfo about editor
+uv run scripts/measure-ink.py h.png columns --y 28 60   # vãos e alturas na tinta (captura em 1280x720); régua no design system
 scripts/container-build.sh release       # APK em dist/ (runtime: wslc, docker, podman, nesta ordem; LUME_CONTAINER força outro)
-/usr/bin/python3 scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 6 MB
+uv run scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 6 MB
 ```
 
 ## TV de referência (testes por adb)
