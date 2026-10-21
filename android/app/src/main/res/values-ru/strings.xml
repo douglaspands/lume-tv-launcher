@@ -17,6 +17,7 @@
     <!-- Настройки Lume -->
     <string name="settings_title">Настройки</string>
     <string name="settings_home_screen">Главный экран</string>
+    <string name="settings_tv_info">Информация о ТВ</string>
     <string name="settings_about">О Lume</string>
 
     <!-- Панель состояния ТВ -->
@@ -24,6 +25,44 @@
     <string name="stats_memory">Память</string>
     <string name="stats_disk">Хранилище</string>
     <string name="stats_cpu">ЦП</string>
+
+    <!-- TV information -->
+    <string name="tv_info_title">Информация о ТВ</string>
+    <string name="tv_section_device">УСТРОЙСТВО</string>
+    <string name="tv_section_processing">ПРОЦЕССОР И ГРАФИКА</string>
+    <string name="tv_section_memory">ПАМЯТЬ И НАКОПИТЕЛЬ</string>
+    <string name="tv_section_system">СИСТЕМА И ПРОШИВКА</string>
+    <string name="tv_section_display">ЭКРАН</string>
+    <string name="tv_section_network">СЕТЬ</string>
+    <string name="tv_brand">Бренд</string>
+    <string name="tv_model">Модель</string>
+    <string name="tv_manufacturer">Производитель</string>
+    <string name="tv_board">Плата</string>
+    <string name="tv_soc">Процессор (SoC)</string>
+    <string name="tv_cpu">ЦП</string>
+    <string name="tv_cores">Ядра</string>
+    <string name="tv_abi">Архитектура (ABI)</string>
+    <string name="tv_gpu">GPU</string>
+    <string name="tv_opengl">OpenGL ES</string>
+    <string name="tv_ram">Память (ОЗУ)</string>
+    <string name="tv_memory_profile">Профиль памяти</string>
+    <string name="tv_storage_total">Встроенный накопитель</string>
+    <string name="tv_storage_free">Свободно на накопителе</string>
+    <string name="tv_android">Версия Android</string>
+    <string name="tv_api">Уровень API</string>
+    <string name="tv_firmware">Прошивка ТВ</string>
+    <string name="tv_patch">Патч безопасности</string>
+    <string name="tv_kernel">Ядро Linux</string>
+    <string name="tv_resolution">Разрешение интерфейса</string>
+    <string name="tv_refresh">Частота обновления</string>
+    <string name="tv_density">Плотность экрана</string>
+    <string name="tv_connection">Подключение</string>
+    <string name="tv_ip">Локальный IP-адрес</string>
+    <string name="tv_profile_standard">Стандартный</string>
+    <string name="tv_profile_low">Мало ОЗУ</string>
+    <string name="tv_link_wifi">Wi-Fi</string>
+    <string name="tv_link_ethernet">Кабель Ethernet</string>
+    <string name="tv_link_other">Другое</string>
 
     <!-- О программе -->
     <string name="about_title">О Lume</string>

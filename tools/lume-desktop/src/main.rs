@@ -49,7 +49,7 @@ fn main() {
         "empty" => screenshot::save(path, width, height, screenshot::draw_empty),
         "logo" => screenshot::save(path, width, height, screenshot::draw_logo),
         "banner" => screenshot::save(path, width, height, screenshot::draw_banner),
-        "home" | "apps" | "settings" | "about" | "editor" => {
+        "home" | "apps" | "settings" | "tvinfo" | "about" | "editor" => {
             let setup = Setup {
                 locale: options.locale.clone(),
                 pseudo_locale: options.pseudo_locale,
@@ -62,7 +62,8 @@ fn main() {
             let route = match screen.as_str() {
                 "apps" => "up,right,ok",
                 "settings" => to_settings,
-                "about" => "up,right,down,down,right,ok,down,ok",
+                "tvinfo" => "up,right,down,down,right,ok,down,ok",
+                "about" => "up,right,down,down,right,ok,down,down,ok",
                 "editor" => "up,right,down,down,right,ok,ok",
                 _ => "",
             };
@@ -74,7 +75,7 @@ fn main() {
                 .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
         }
         other => fail(&format!(
-            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, about, editor)"
+            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor)"
         )),
     };
     match result {

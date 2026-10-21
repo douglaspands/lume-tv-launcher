@@ -3,6 +3,7 @@
 use super::page::{self, LEFT, WIDTH};
 use super::painter::Painter;
 use super::{ids, Effect, LumeApp, PendingFocus, Screen, Tab};
+use crate::device_info::SECTIONS;
 use crate::i18n::{Arg, StringId};
 use crate::icons;
 use crate::licenses;
@@ -24,11 +25,20 @@ const ITEM_PITCH: f32 = 88.0;
 const ABOUT_TEXT_TOP: f32 = 192.0;
 const ABOUT_VIEW_TOP: f32 = 152.0;
 const ABOUT_STEP: f32 = 96.0;
+/// The TV information sheet: labels in a column at the left, values in a second one.
+const TV_VIEW_TOP: f32 = 152.0;
+const TV_TEXT_TOP: f32 = 192.0;
+const TV_STEP: f32 = 96.0;
+const TV_HEADING_HEIGHT: f32 = 32.0;
+const TV_ROW_HEIGHT: f32 = 40.0;
+const TV_SECTION_GAP: f32 = 32.0;
+const TV_VALUE_X: f32 = LEFT + 384.0;
 const PANEL_X: f32 = LEFT + COLUMN_WIDTH + 48.0;
 const PANEL_WIDTH: f32 = COLUMN_WIDTH;
 const PANEL_HEIGHT: f32 = 312.0;
 
 pub(super) const ITEM_HOME_SCREEN: u32 = ids::SETTINGS_BASE;
+pub(super) const ITEM_TV_INFO: u32 = ids::SETTINGS_BASE + 1;
 pub(super) const ITEM_ABOUT: u32 = ids::SETTINGS_BASE + 2;
 
 /// The line height of running text on the ruler (see the `design-system` spec): 32 for captions,
@@ -62,6 +72,7 @@ impl LumeApp {
                 ITEM_HOME_SCREEN,
                 t.get(StringId::SettingsHomeScreen).into_owned(),
             ),
+            (ITEM_TV_INFO, t.get(StringId::SettingsTvInfo).into_owned()),
             (ITEM_ABOUT, t.get(StringId::SettingsAbout).into_owned()),
         ];
         let rects: Vec<Rect> = (0..labels.len())
@@ -175,6 +186,10 @@ impl LumeApp {
                 self.open_editor(false);
                 vec![]
             }
+            ITEM_TV_INFO => {
+                self.open_tv_info();
+                vec![]
+            }
             ITEM_ABOUT => {
                 self.screen = Screen::About;
                 self.about_scroll = 0.0;
@@ -189,6 +204,88 @@ impl LumeApp {
         self.screen = Screen::Main(Tab::Apps);
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::Id(ids::GRID_SETTINGS));
+    }
+
+    fn open_tv_info(&mut self) {
+        self.screen = Screen::TvInfo;
+        // The sheet is read again each time it opens (the address and the free space change).
+        self.device_info = None;
+        self.tv_max_scroll = 0.0;
+        self.scroll_to_top();
+        self.focus.set_rows(vec![]);
+    }
+
+    pub(super) fn back_from_tv_info(&mut self) {
+        self.screen = Screen::Settings;
+        self.scroll_to_top();
+        self.pending_focus = Some(PendingFocus::Id(ITEM_TV_INFO));
+    }
+
+    /// Scrolls the TV information with the up and down keys, smoothly and within the sheet.
+    pub(super) fn scroll_tv_info(&mut self, delta: f32) {
+        let target = (self.scroll_y + delta * TV_STEP).clamp(0.0, self.tv_max_scroll);
+        self.scroll_to(target);
+    }
+
+    pub(super) fn draw_tv_info(&mut self, p: &mut Painter) {
+        let t = self.translator;
+        self.update_focus(vec![]);
+        let visible = p.display.visible_rect();
+        let view = (visible.bottom() - TV_VIEW_TOP).max(1.0);
+
+        // The sheet's height decides how far it scrolls.
+        let total: f32 = SECTIONS
+            .iter()
+            .map(|s| TV_HEADING_HEIGHT + s.lines.len() as f32 * TV_ROW_HEIGHT + TV_SECTION_GAP)
+            .sum();
+        self.tv_max_scroll = (TV_TEXT_TOP - TV_VIEW_TOP + total - view).max(0.0);
+        if self.scroll_y > self.tv_max_scroll {
+            self.scroll_to(self.tv_max_scroll);
+        }
+        let scroll = self.current_scroll_y();
+
+        // Nothing is drawn until the platform has read the sheet (a turn of the loop).
+        if let Some(info) = self.device_info.as_ref() {
+            let heading = p.style(&THEME.card_heading, StateFlags::NONE);
+            let label = p.style(&THEME.breadcrumb, StateFlags::NONE);
+            let mut value_style = label;
+            value_style.color = vars::TEXT;
+            value_style.font_weight = 700;
+            p.list.push_clip(Rect::new(
+                visible.x,
+                TV_VIEW_TOP,
+                visible.w,
+                visible.bottom() - TV_VIEW_TOP,
+            ));
+            let mut y = TV_TEXT_TOP - scroll;
+            for section in &SECTIONS {
+                let rect = Rect::new(LEFT, y, WIDTH, TV_HEADING_HEIGHT);
+                p.text(&t.get(section.title), rect, Align::Start, &heading);
+                y += TV_HEADING_HEIGHT;
+                for (field, name) in section.lines {
+                    let name_rect = Rect::new(LEFT, y, TV_VALUE_X - LEFT - 32.0, TV_ROW_HEIGHT);
+                    p.text(&t.get(*name), name_rect, Align::Start, &label);
+                    let value_rect =
+                        Rect::new(TV_VALUE_X, y, LEFT + WIDTH - TV_VALUE_X, TV_ROW_HEIGHT);
+                    let value = info.display(*field, &t);
+                    p.text(&value, value_rect, Align::Start, &value_style);
+                    y += TV_ROW_HEIGHT;
+                }
+                y += TV_SECTION_GAP;
+            }
+            p.list.pop_clip();
+        }
+
+        page::draw_header(
+            p,
+            &[
+                &t.get(StringId::SettingsTitle),
+                &t.get(StringId::SettingsTvInfo),
+            ],
+            &t.get(StringId::TvInfoTitle),
+            None,
+            0.0,
+        );
     }
 
     /// Scrolls the About text with the up and down keys.
@@ -273,6 +370,13 @@ mod tests {
             ("ABOUT_TEXT_TOP", ABOUT_TEXT_TOP),
             ("ABOUT_VIEW_TOP", ABOUT_VIEW_TOP),
             ("ABOUT_STEP", ABOUT_STEP),
+            ("TV_VIEW_TOP", TV_VIEW_TOP),
+            ("TV_TEXT_TOP", TV_TEXT_TOP),
+            ("TV_STEP", TV_STEP),
+            ("TV_HEADING_HEIGHT", TV_HEADING_HEIGHT),
+            ("TV_ROW_HEIGHT", TV_ROW_HEIGHT),
+            ("TV_SECTION_GAP", TV_SECTION_GAP),
+            ("TV_VALUE_X", TV_VALUE_X),
             ("PANEL_X", PANEL_X),
             ("PANEL_HEIGHT", PANEL_HEIGHT),
         ]);

@@ -288,6 +288,18 @@ impl Gles2Backend {
     }
 
     /// Whether the wallpaper texture exists.
+    /// The GPU's name and the OpenGL ES version the driver reports. The context must be current.
+    pub fn gpu_strings(&self) -> (String, String) {
+        use glow::HasContext;
+        // SAFETY: plain queries of the current context.
+        unsafe {
+            (
+                self.gl.get_parameter_string(glow::RENDERER),
+                self.gl.get_parameter_string(glow::VERSION),
+            )
+        }
+    }
+
     pub fn has_wallpaper(&self) -> bool {
         self.wallpaper.is_some()
     }

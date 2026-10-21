@@ -17,6 +17,7 @@
     <!-- Pengaturan Lume -->
     <string name="settings_title">Pengaturan</string>
     <string name="settings_home_screen">Layar beranda</string>
+    <string name="settings_tv_info">Informasi TV</string>
     <string name="settings_about">Tentang Lume</string>
 
     <!-- Panel status TV -->
@@ -24,6 +25,44 @@
     <string name="stats_memory">Memori</string>
     <string name="stats_disk">Penyimpanan</string>
     <string name="stats_cpu">CPU</string>
+
+    <!-- TV information -->
+    <string name="tv_info_title">Informasi TV</string>
+    <string name="tv_section_device">PERANGKAT</string>
+    <string name="tv_section_processing">PEMROSESAN &amp; GRAFIS</string>
+    <string name="tv_section_memory">MEMORI &amp; PENYIMPANAN</string>
+    <string name="tv_section_system">SISTEM &amp; FIRMWARE</string>
+    <string name="tv_section_display">LAYAR</string>
+    <string name="tv_section_network">JARINGAN</string>
+    <string name="tv_brand">Merek</string>
+    <string name="tv_model">Model</string>
+    <string name="tv_manufacturer">Pabrikan</string>
+    <string name="tv_board">Papan</string>
+    <string name="tv_soc">Prosesor (SoC)</string>
+    <string name="tv_cpu">CPU</string>
+    <string name="tv_cores">Inti</string>
+    <string name="tv_abi">Arsitektur (ABI)</string>
+    <string name="tv_gpu">GPU</string>
+    <string name="tv_opengl">OpenGL ES</string>
+    <string name="tv_ram">Memori (RAM)</string>
+    <string name="tv_memory_profile">Profil memori</string>
+    <string name="tv_storage_total">Penyimpanan internal</string>
+    <string name="tv_storage_free">Penyimpanan kosong</string>
+    <string name="tv_android">Versi Android</string>
+    <string name="tv_api">Level API</string>
+    <string name="tv_firmware">Firmware TV</string>
+    <string name="tv_patch">Patch keamanan</string>
+    <string name="tv_kernel">Kernel Linux</string>
+    <string name="tv_resolution">Resolusi antarmuka</string>
+    <string name="tv_refresh">Kecepatan refresh</string>
+    <string name="tv_density">Kepadatan layar</string>
+    <string name="tv_connection">Koneksi</string>
+    <string name="tv_ip">Alamat IP lokal</string>
+    <string name="tv_profile_standard">Standar</string>
+    <string name="tv_profile_low">RAM rendah</string>
+    <string name="tv_link_wifi">Wi-Fi</string>
+    <string name="tv_link_ethernet">Kabel Ethernet</string>
+    <string name="tv_link_other">Lainnya</string>
 
     <!-- Tentang -->
     <string name="about_title">Tentang Lume</string>

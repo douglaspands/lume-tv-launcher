@@ -113,6 +113,8 @@ pub enum Screen {
     /// The lume settings (opened with the gear).
     Settings,
     About,
+    /// The TV's technical sheet (opened from the settings).
+    TvInfo,
     /// Editing the home screen.
     Editor,
 }
@@ -197,6 +199,9 @@ pub struct LumeApp {
     /// A favorite that left the dock, fading where it was.
     dock_ghost: Option<dock::DrawnIcon>,
     about_scroll: f32,
+    /// What the platform read for the TV information screen, and how far that screen can scroll.
+    device_info: Option<crate::device_info::DeviceInfo>,
+    tv_max_scroll: f32,
     /// The last TV statistics read while the settings were on screen, and the CPU use from them.
     stats: Option<crate::stats::Stats>,
     cpu_use: Option<f32>,
@@ -269,6 +274,8 @@ impl LumeApp {
             dock_from: None,
             dock_ghost: None,
             about_scroll: 0.0,
+            device_info: None,
+            tv_max_scroll: 0.0,
             stats: None,
             cpu_use: None,
             stats_at: None,
@@ -384,6 +391,10 @@ impl LumeApp {
                 self.scroll_about(if key == Key::Up { -1.0 } else { 1.0 });
                 vec![]
             }
+            Key::Up | Key::Down if self.screen == Screen::TvInfo => {
+                self.scroll_tv_info(if key == Key::Up { -1.0 } else { 1.0 });
+                vec![]
+            }
             Key::Up => {
                 self.move_focus(Direction::Up);
                 vec![]
@@ -432,7 +443,7 @@ impl LumeApp {
         match self.screen {
             Screen::Main(_) => {}
             Screen::Settings => return self.activate_settings(id),
-            Screen::About => return vec![],
+            Screen::About | Screen::TvInfo => return vec![],
             Screen::Editor => return self.activate_editor(id),
         }
         match id {
@@ -474,6 +485,10 @@ impl LumeApp {
             Screen::About => {
                 self.screen = Screen::Settings;
                 self.pending_focus = Some(PendingFocus::Id(settings::ITEM_ABOUT));
+                vec![]
+            }
+            Screen::TvInfo => {
+                self.back_from_tv_info();
                 vec![]
             }
             Screen::Editor => self.back_from_editor(),
@@ -650,6 +665,16 @@ impl LumeApp {
         self.stats_at = Some(now_ms + STATS_INTERVAL_MS);
     }
 
+    /// Whether the TV information screen is open and still waits for the platform's reading.
+    pub fn wants_device_info(&self) -> bool {
+        self.foreground && self.screen == Screen::TvInfo && self.device_info.is_none()
+    }
+
+    /// Takes the platform's reading of the TV. The screen is redrawn by the caller.
+    pub fn apply_device_info(&mut self, info: crate::device_info::DeviceInfo) {
+        self.device_info = Some(info);
+    }
+
     /// Whether an animation is running at `now_ms` (a frame is due every few milliseconds).
     pub fn is_animating(&self, now_ms: u64) -> bool {
         self.anim.is_animating(self.now_ms.max(now_ms))
@@ -730,6 +755,7 @@ impl LumeApp {
             Screen::Main(Tab::Apps) => self.draw_apps(p),
             Screen::Settings => self.draw_settings(p),
             Screen::About => self.draw_about(p),
+            Screen::TvInfo => self.draw_tv_info(p),
             Screen::Editor => self.draw_editor(p),
         }
         self.draw_context_menu(p);

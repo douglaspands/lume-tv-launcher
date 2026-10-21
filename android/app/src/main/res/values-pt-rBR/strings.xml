@@ -17,6 +17,7 @@
     <!-- Configurações do Lume -->
     <string name="settings_title">Configurações</string>
     <string name="settings_home_screen">Tela Início</string>
+    <string name="settings_tv_info">Informações da TV</string>
     <string name="settings_about">Sobre o Lume</string>
 
     <!-- Painel de status da TV -->
@@ -24,6 +25,44 @@
     <string name="stats_memory">Memória</string>
     <string name="stats_disk">Armazenamento</string>
     <string name="stats_cpu">CPU</string>
+
+    <!-- TV information -->
+    <string name="tv_info_title">Informações da TV</string>
+    <string name="tv_section_device">APARELHO</string>
+    <string name="tv_section_processing">PROCESSAMENTO E GRÁFICOS</string>
+    <string name="tv_section_memory">MEMÓRIA E ARMAZENAMENTO</string>
+    <string name="tv_section_system">SISTEMA E FIRMWARE</string>
+    <string name="tv_section_display">TELA</string>
+    <string name="tv_section_network">REDE</string>
+    <string name="tv_brand">Marca</string>
+    <string name="tv_model">Modelo</string>
+    <string name="tv_manufacturer">Fabricante</string>
+    <string name="tv_board">Placa</string>
+    <string name="tv_soc">Processador (SoC)</string>
+    <string name="tv_cpu">CPU</string>
+    <string name="tv_cores">Núcleos</string>
+    <string name="tv_abi">Arquitetura (ABI)</string>
+    <string name="tv_gpu">GPU</string>
+    <string name="tv_opengl">OpenGL ES</string>
+    <string name="tv_ram">Memória (RAM)</string>
+    <string name="tv_memory_profile">Perfil de memória</string>
+    <string name="tv_storage_total">Armazenamento interno</string>
+    <string name="tv_storage_free">Armazenamento livre</string>
+    <string name="tv_android">Versão do Android</string>
+    <string name="tv_api">Nível de API</string>
+    <string name="tv_firmware">Firmware da TV</string>
+    <string name="tv_patch">Patch de segurança</string>
+    <string name="tv_kernel">Kernel Linux</string>
+    <string name="tv_resolution">Resolução da interface</string>
+    <string name="tv_refresh">Taxa de atualização</string>
+    <string name="tv_density">Densidade de tela</string>
+    <string name="tv_connection">Conexão</string>
+    <string name="tv_ip">Endereço IP local</string>
+    <string name="tv_profile_standard">Padrão</string>
+    <string name="tv_profile_low">Pouca RAM</string>
+    <string name="tv_link_wifi">Wi-Fi</string>
+    <string name="tv_link_ethernet">Cabo Ethernet</string>
+    <string name="tv_link_other">Outra</string>
 
     <!-- Sobre -->
     <string name="about_title">Sobre o Lume</string>
