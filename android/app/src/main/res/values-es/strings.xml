@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lume</string>
+    <string name="tagline">tu inicio en la TV</string>
+
+    <!-- Barra superior -->
+    <string name="tab_home">Inicio</string>
+    <string name="tab_apps">Apps</string>
+
+    <!-- Pantalla de inicio -->
+    <string name="home_favorites_title">Tus apps favoritas</string>
+    <string name="home_add_favorites">Añadir favoritas</string>
+
+    <!-- Pantalla de apps -->
+    <string name="apps_title">Todas las apps</string>
+
+    <!-- Ajustes de Lume -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_home_screen">Pantalla de inicio</string>
+    <string name="settings_about">Acerca de Lume</string>
+
+    <!-- Panel de estado de la TV -->
+    <string name="stats_title">ESTADO DE LA TV</string>
+    <string name="stats_memory">Memoria</string>
+    <string name="stats_disk">Almacenamiento</string>
+    <string name="stats_cpu">CPU</string>
+
+    <!-- Acerca de -->
+    <string name="about_title">Acerca de Lume</string>
+    <string name="about_version">Versión %1$s</string>
+    <string name="about_license">Licencia GPL-3.0-or-later</string>
+    <string name="about_source">Código fuente: %1$s</string>
+    <string name="about_third_party">Licencias de terceros</string>
+
+    <!-- Editor de la pantalla de inicio -->
+    <string name="editor_round_favorites">Favoritas redondas</string>
+    <string name="editor_breadcrumb_edit">Editar</string>
+    <string name="editor_title">Editar pantalla de inicio</string>
+    <string name="editor_instruction">Selecciona una app y usa los botones para moverla a la izquierda o a la derecha, o para quitarla. Añade más apps abajo.</string>
+    <string name="editor_done">Listo</string>
+    <string name="editor_favorites_order">APPS FAVORITAS · ORDEN DE VISUALIZACIÓN</string>
+    <string name="editor_use_arrows">Usa las flechas para mover</string>
+    <string name="editor_add_app">Añadir app:</string>
+    <plurals name="editor_limit_reached">
+        <item quantity="one">Límite de %1$d favorita</item>
+        <item quantity="other">Límite de %1$d favoritas</item>
+    </plurals>
+    <string name="editor_restore_defaults">Restablecer</string>
+    <string name="editor_restore_title">¿Restablecer la pantalla de inicio predeterminada?</string>
+    <string name="editor_restore_body">Tus favoritas vuelven a la configuración inicial. Se conserva tu historial de uso.</string>
+    <string name="editor_restore_confirm">Restablecer</string>
+    <string name="editor_cancel">Cancelar</string>
+
+    <!-- Menú contextual (botón Menú) -->
+    <string name="menu_add_home">Añadir a Inicio</string>
+    <string name="menu_remove_home">Quitar de Inicio</string>
+    <string name="menu_move">Mover</string>
+    <string name="menu_app_info">Información de la app</string>
+    <string name="menu_uninstall">Desinstalar</string>
+
+    <!-- Mensajes -->
+    <string name="toast_app_not_found">App no encontrada</string>
+</resources>

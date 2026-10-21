@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lume</string>
+    <string name="tagline">beranda Anda di TV</string>
+
+    <!-- Bilah atas -->
+    <string name="tab_home">Beranda</string>
+    <string name="tab_apps">Aplikasi</string>
+
+    <!-- Layar beranda -->
+    <string name="home_favorites_title">Aplikasi favorit Anda</string>
+    <string name="home_add_favorites">Tambah favorit</string>
+
+    <!-- Layar aplikasi -->
+    <string name="apps_title">Semua aplikasi</string>
+
+    <!-- Pengaturan Lume -->
+    <string name="settings_title">Pengaturan</string>
+    <string name="settings_home_screen">Layar beranda</string>
+    <string name="settings_about">Tentang Lume</string>
+
+    <!-- Panel status TV -->
+    <string name="stats_title">STATUS TV</string>
+    <string name="stats_memory">Memori</string>
+    <string name="stats_disk">Penyimpanan</string>
+    <string name="stats_cpu">CPU</string>
+
+    <!-- Tentang -->
+    <string name="about_title">Tentang Lume</string>
+    <string name="about_version">Versi %1$s</string>
+    <string name="about_license">Berlisensi GPL-3.0-or-later</string>
+    <string name="about_source">Kode sumber: %1$s</string>
+    <string name="about_third_party">Lisensi pihak ketiga</string>
+
+    <!-- Editor layar beranda -->
+    <string name="editor_round_favorites">Favorit bulat</string>
+    <string name="editor_breadcrumb_edit">Ubah</string>
+    <string name="editor_title">Ubah layar beranda</string>
+    <string name="editor_instruction">Pilih aplikasi lalu gunakan tombol untuk memindahkannya ke kiri atau kanan, atau menghapusnya. Tambahkan aplikasi lain di bawah.</string>
+    <string name="editor_done">Selesai</string>
+    <string name="editor_favorites_order">APLIKASI FAVORIT · URUTAN TAMPILAN</string>
+    <string name="editor_use_arrows">Gunakan panah untuk memindahkan</string>
+    <string name="editor_add_app">Tambah aplikasi:</string>
+    <plurals name="editor_limit_reached">
+        <item quantity="other">Batas %1$d favorit</item>
+    </plurals>
+    <string name="editor_restore_defaults">Pulihkan bawaan</string>
+    <string name="editor_restore_title">Pulihkan layar beranda bawaan?</string>
+    <string name="editor_restore_body">Favorit Anda kembali ke pengaturan awal. Riwayat penggunaan tetap disimpan.</string>
+    <string name="editor_restore_confirm">Pulihkan</string>
+    <string name="editor_cancel">Batal</string>
+
+    <!-- Menu konteks (tombol Menu) -->
+    <string name="menu_add_home">Tambah ke Beranda</string>
+    <string name="menu_remove_home">Hapus dari Beranda</string>
+    <string name="menu_move">Pindahkan</string>
+    <string name="menu_app_info">Info aplikasi</string>
+    <string name="menu_uninstall">Copot pemasangan</string>
+
+    <!-- Pesan -->
+    <string name="toast_app_not_found">Aplikasi tidak ditemukan</string>
+</resources>

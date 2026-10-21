@@ -117,5 +117,5 @@ fn the_real_project_strings_compile_without_warnings() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../android/app/src/main/res");
     let compiled = compile_directory(&dir).unwrap();
     assert!(compiled.warnings.is_empty(), "{:#?}", compiled.warnings);
-    assert_eq!(compiled.languages, ["en", "pt-BR"]);
+    assert_eq!(compiled.languages, ["en", "es", "id", "pt-BR", "ru"]);
 }
