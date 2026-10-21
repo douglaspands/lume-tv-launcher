@@ -37,8 +37,6 @@ const SLIDE: crate::theme::Transition = crate::theme::Transition {
     duration_ms: 240.0,
     curve: crate::theme::Curve::EaseInOut,
 };
-/// Corner radius of an icon over its side.
-const RADIUS_RATIO: f32 = 0.22;
 /// Space between the top of the focused icon and the name bubble.
 pub(super) const LABEL_GAP: f32 = 12.0;
 pub(super) const LABEL_HEIGHT: f32 = 40.0;
@@ -252,6 +250,14 @@ impl LumeApp {
         }
     }
 
+    pub(super) fn dock_radius_ratio(&self) -> f32 {
+        if self.config.round_favorites {
+            0.5
+        } else {
+            0.22
+        }
+    }
+
     /// The animated position and amplitude of the Magnification now.
     pub(super) fn dock_motion(&self) -> (f32, f32) {
         let position = self.anim.get(Anim::DockPosition, 0.0, self.now_ms);
@@ -264,7 +270,8 @@ impl LumeApp {
         let bar = p.style(&THEME.dock, StateFlags::NONE);
         p.draw_box(layout.bar, &bar);
 
-        let radius = |rect: &Rect| rect.w * RADIUS_RATIO;
+        let radius_ratio = self.dock_radius_ratio();
+        let radius = |rect: &Rect| rect.w * radius_ratio;
         for (item, rect) in items.iter().zip(&layout.items) {
             p.list.fill(*rect, radius(rect), Paint::Solid(item.color));
         }
@@ -275,8 +282,12 @@ impl LumeApp {
                     .package
                     .as_deref()
                     .map_or(1.0, |p| self.icon_visibility(p, true));
-                p.list
-                    .image(*rect, uv, super::painter::fade(Color::WHITE, visible));
+                p.list.image_rounded(
+                    *rect,
+                    uv,
+                    super::painter::fade(Color::WHITE, visible),
+                    radius(rect),
+                );
             }
         }
         // While the icon has not arrived, the app's color carries its first letter (or a plus); while
@@ -394,14 +405,17 @@ impl LumeApp {
             self.dock_ghost = None;
             return;
         }
+        let radius_ratio = self.dock_radius_ratio();
         let rect = ghost.rect.scaled_about_center(left);
+        let radius = rect.w * radius_ratio;
         p.list.fill(
             rect,
-            rect.w * RADIUS_RATIO,
+            radius,
             Paint::Solid(fade(ghost.color, left)),
         );
         if let Some(uv) = ghost.package.as_deref().and_then(|p| self.icons.dock_uv(p)) {
-            p.list.image(rect, uv, fade(Color::WHITE, left));
+            p.list
+                .image_rounded(rect, uv, fade(Color::WHITE, left), radius);
         }
     }
 
@@ -664,5 +678,27 @@ mod tests {
         assert_eq!(initial("  +Disney"), "D");
         assert_eq!(initial("ábaco"), "Á");
         assert_eq!(initial("++"), "");
+    }
+
+    #[test]
+    fn dock_radius_ratio_reflects_round_favorites() {
+        let catalog = crate::catalog::Catalog::new("app.lume.tv");
+        let mut app = LumeApp::new(
+            catalog,
+            crate::usage::UsageHistory::new(),
+            crate::home::config::HomeConfig {
+                favorites: vec!["app1".into()],
+                round_favorites: false,
+            },
+            crate::i18n::Translator::new(&["en"]),
+            crate::clock::WallClock {
+                unix_secs: 0,
+                utc_offset_secs: 0,
+                is_24h: true,
+            },
+        );
+        assert_eq!(app.dock_radius_ratio(), 0.22);
+        app.config.round_favorites = true;
+        assert_eq!(app.dock_radius_ratio(), 0.5);
     }
 }

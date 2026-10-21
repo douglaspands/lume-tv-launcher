@@ -14,6 +14,7 @@ use std::collections::HashMap;
 
 pub const DONE: FocusId = 4000;
 pub const RESTORE: FocusId = 4001;
+pub const ROUND_FAVORITES: FocusId = 4002;
 pub(super) const FAVORITE_BUTTON_BASE: FocusId = 4400;
 pub(super) const ADD_APP_BASE: FocusId = 4600;
 pub const CONFIRM_RESTORE: FocusId = 4900;
@@ -22,20 +23,25 @@ pub const CONFIRM_CANCEL: FocusId = 4901;
 const CHIP_HEIGHT: f32 = 40.0;
 const CHIP_GAP: f32 = 16.0;
 /// Space inside the favorites panel, around its content.
-const PANEL_PADDING: f32 = 32.0;
+const PANEL_PADDING_X: f32 = 32.0;
+const PANEL_PADDING_Y: f32 = 24.0;
 const CARD_WIDTH: f32 = 168.0;
 const CARD_NAME_HEIGHT: f32 = 56.0;
 const CARD_CONTROLS_HEIGHT: f32 = 60.0;
-const CARD_GAP: f32 = 24.0;
-/// Where the panel starts: 64 below the title (see `page::CONTENT_TOP`).
-const TOP: f32 = page::CONTENT_TOP;
+const CARD_GAP: f32 = 16.0;
+/// Where the content starts: 32 below the subtitle at 152.
+const TOP: f32 = 184.0;
+const ROW_HEIGHT: f32 = 64.0;
+const ROW_GAP: f32 = 16.0;
+const HEADING_GAP: f32 = 32.0;
+const CARDS_TO_CHIPS_GAP: f32 = 20.0;
 const BOTTOM_PADDING: f32 = 120.0;
 const BUTTON_HEIGHT: f32 = 48.0;
 /// How far below the top of the panel the first line of cards reaches.
 const FIRST_CARDS_DEPTH: f32 = 200.0;
 const BUTTON_MIN_WIDTH: f32 = 160.0;
 /// Space between the favorites panel and the buttons under it.
-const BUTTONS_GAP: f32 = 40.0;
+const BUTTONS_GAP: f32 = 24.0;
 
 /// The three buttons of the design system (see the `design-system` spec).
 #[derive(Clone, Copy)]
@@ -75,16 +81,7 @@ impl LumeApp {
             ..EditorState::default()
         };
         self.scroll_to_top();
-        // The first thing to change: the first favorite (its "move right"), or the first app to
-        // add when there is no favorite.
-        let first = if !self.config.favorites.is_empty() {
-            FAVORITE_BUTTON_BASE + 1
-        } else if !self.addable_apps().is_empty() {
-            ADD_APP_BASE
-        } else {
-            DONE
-        };
-        self.pending_focus = Some(PendingFocus::Id(first));
+        self.pending_focus = Some(PendingFocus::Id(ROUND_FAVORITES));
         self.focus.set_rows(vec![]);
     }
 
@@ -132,7 +129,17 @@ impl LumeApp {
             );
         }
 
-        let y = self.favorites_panel(p, &mut layout, TOP, scroll_y, draw);
+        let row_rect = Rect::new(LEFT, TOP, WIDTH, ROW_HEIGHT);
+        layout.rects.insert(ROUND_FAVORITES, row_rect);
+        layout
+            .rows
+            .push(Row::new(vec![Focusable::new(ROUND_FAVORITES, row_rect)]));
+        if draw && !self.editor.confirm {
+            self.draw_round_favorites_row(p, row_rect.translate(0.0, -scroll_y));
+        }
+
+        let panel_top = TOP + ROW_HEIGHT + ROW_GAP;
+        let y = self.favorites_panel(p, &mut layout, panel_top, scroll_y, draw);
 
         // "Restore defaults" at the left and "Done" at the right, on the line under the panel: at
         // opposite sides, so one is never reached by accident on the way to the other. Down from
@@ -159,7 +166,7 @@ impl LumeApp {
         );
         if draw && !self.editor.confirm {
             p.list.fill(
-                Rect::new(LEFT, y - 20.0 - scroll_y, WIDTH, 2.0),
+                Rect::new(LEFT, y - 12.0 - scroll_y, WIDTH, 2.0),
                 1.0,
                 Paint::Solid(vars::SURFACE),
             );
@@ -199,21 +206,21 @@ impl LumeApp {
         draw: bool,
     ) -> f32 {
         let t = self.translator;
-        let inner_left = LEFT + 32.0;
-        let inner_width = WIDTH - 64.0;
+        let inner_left = LEFT + PANEL_PADDING_X;
+        let inner_width = WIDTH - 2.0 * PANEL_PADDING_X;
         let per_line =
             (((inner_width + CARD_GAP) / (CARD_WIDTH + CARD_GAP)).floor() as usize).max(1);
         let card_height = CARD_NAME_HEIGHT + CARD_CONTROLS_HEIGHT;
         let favorites = self.config.favorites.clone();
         let card_lines = favorites.len().div_ceil(per_line);
 
-        let heading_y = top + PANEL_PADDING;
-        let cards_top = heading_y + 48.0;
+        let heading_y = top + PANEL_PADDING_Y;
+        let cards_top = heading_y + HEADING_GAP;
         let mut y = cards_top;
         if card_lines > 0 {
             y += card_lines as f32 * card_height + (card_lines as f32 - 1.0) * CARD_GAP;
+            y += CARDS_TO_CHIPS_GAP;
         }
-        y += PANEL_PADDING;
 
         let addable = self.addable_apps();
         let full = self.config.favorites_full();
@@ -229,7 +236,7 @@ impl LumeApp {
         let positions = flow(
             &widths,
             chips_x,
-            LEFT + WIDTH - 32.0,
+            LEFT + WIDTH - PANEL_PADDING_X,
             CHIP_GAP,
             inner_left,
             CHIP_HEIGHT + CHIP_GAP,
@@ -243,7 +250,7 @@ impl LumeApp {
         let panel_bottom = y
             + chip_lines as f32 * CHIP_HEIGHT
             + (chip_lines as f32 - 1.0) * CHIP_GAP
-            + PANEL_PADDING;
+            + PANEL_PADDING_Y;
         let panel = Rect::new(LEFT, top, WIDTH, panel_bottom - top);
 
         if draw {
@@ -265,7 +272,7 @@ impl LumeApp {
             p.text.draw(
                 p.list,
                 &hint,
-                LEFT + WIDTH - 32.0 - width,
+                LEFT + WIDTH - PANEL_PADDING_X - width,
                 heading_y + 17.0 - scroll_y,
                 &hint_style,
                 vars::TEXT_MUTED,
@@ -372,6 +379,40 @@ impl LumeApp {
     }
 
     // ---- drawing of the pieces --------------------------------------------------------------
+
+    fn draw_round_favorites_row(&mut self, p: &mut Painter, rect: Rect) {
+        let t = self.translator;
+        let progress = self.focus_progress(ROUND_FAVORITES);
+        let style = p.focus_style(&THEME.editor_row, progress);
+        p.draw_box(rect, &style);
+        let label = t.get(StringId::EditorRoundFavorites);
+        let text_rect = Rect::new(rect.x + 24.0, rect.y, rect.w - 24.0 - 48.0 - 24.0, rect.h);
+        p.text(&label, text_rect, Align::Start, &style);
+
+        let switch_x = rect.x + rect.w - 24.0 - 48.0;
+        let switch_y = rect.y + (rect.h - 28.0) / 2.0;
+        let switch_rect = Rect::new(switch_x, switch_y, 48.0, 28.0);
+        let track_paint = if self.config.round_favorites {
+            Paint::Solid(vars::PRIMARY)
+        } else {
+            Paint::Solid(vars::CONTROL)
+        };
+        p.list.fill(switch_rect, 14.0, track_paint);
+
+        let knob_x = if self.config.round_favorites {
+            switch_x + 24.0
+        } else {
+            switch_x + 4.0
+        };
+        let knob_y = switch_y + 4.0;
+        let knob_rect = Rect::new(knob_x, knob_y, 20.0, 20.0);
+        let knob_color = if self.config.round_favorites {
+            vars::ON_PRIMARY
+        } else {
+            vars::TEXT_MUTED
+        };
+        p.list.fill(knob_rect, 10.0, Paint::Solid(knob_color));
+    }
 
     /// A button of the design system: `kind` picks the component of the theme.
     fn draw_button(
@@ -630,6 +671,10 @@ impl LumeApp {
     pub(super) fn activate_editor(&mut self, id: FocusId) -> Vec<Effect> {
         let save = vec![Effect::SaveConfig];
         match id {
+            ROUND_FAVORITES => {
+                self.config.round_favorites = !self.config.round_favorites;
+                return save;
+            }
             DONE => return self.finish_editing(),
             RESTORE => {
                 self.editor.confirm = true;
@@ -789,7 +834,8 @@ mod tests {
         super::super::assert_on_ruler(&[
             ("CHIP_HEIGHT", CHIP_HEIGHT),
             ("CHIP_GAP", CHIP_GAP),
-            ("PANEL_PADDING", PANEL_PADDING),
+            ("PANEL_PADDING_X", PANEL_PADDING_X),
+            ("PANEL_PADDING_Y", PANEL_PADDING_Y),
             ("CARD_WIDTH", CARD_WIDTH),
             ("CARD_NAME_HEIGHT", CARD_NAME_HEIGHT),
             ("CARD_CONTROLS_HEIGHT", CARD_CONTROLS_HEIGHT),
@@ -799,6 +845,11 @@ mod tests {
             ("FIRST_CARDS_DEPTH", FIRST_CARDS_DEPTH),
             ("BUTTON_MIN_WIDTH", BUTTON_MIN_WIDTH),
             ("BUTTONS_GAP", BUTTONS_GAP),
+            ("ROW_HEIGHT", ROW_HEIGHT),
+            ("ROW_GAP", ROW_GAP),
+            ("HEADING_GAP", HEADING_GAP),
+            ("CARDS_TO_CHIPS_GAP", CARDS_TO_CHIPS_GAP),
+            ("TOP", TOP),
         ]);
     }
 }

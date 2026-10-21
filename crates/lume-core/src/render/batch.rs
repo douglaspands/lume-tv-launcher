@@ -81,14 +81,24 @@ pub struct RectVertex {
     pub colors: [[f32; 4]; 3],
 }
 
-/// Vertex of the text and image programs.
+/// Vertex of the text and image programs. Four vec4 attributes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct TexVertex {
+    /// Attribute 0, xy: position on the canvas (logical units).
     pub position: [f32; 2],
+    /// Attribute 0, zw: texture coordinates.
     pub uv: [f32; 2],
-    /// Premultiplied RGBA tint.
+    /// Attribute 1: premultiplied RGBA tint.
     pub color: [f32; 4],
+    /// Attribute 2, xy: position relative to the quad center.
+    pub local: [f32; 2],
+    /// Attribute 2, zw: half of the quad size.
+    pub half_size: [f32; 2],
+    /// Attribute 3, x: corner radius.
+    pub radius: f32,
+    /// Attribute 3, yzw: unused padding to complete vec4.
+    pub _padding: [f32; 3],
 }
 
 /// Everything a backend needs to draw one frame.
@@ -219,6 +229,8 @@ impl Builder {
         self.start_quad(program, texture, clip);
         let color = premultiplied(cmd.color, 1.0);
         let (d, uv) = (cmd.dest, cmd.uv);
+        let half_size = [d.w / 2.0, d.h / 2.0];
+        let radius = cmd.radius.min(half_size[0]).min(half_size[1]).max(0.0);
         let corners = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)];
         let target = match program {
             Program::Image => &mut self.frame.image_vertices,
@@ -229,6 +241,10 @@ impl Builder {
                 position: [d.x + cx * d.w, d.y + cy * d.h],
                 uv: [uv.x + cx * uv.w, uv.y + cy * uv.h],
                 color,
+                local: [(cx - 0.5) * d.w, (cy - 0.5) * d.h],
+                half_size,
+                radius,
+                _padding: [0.0; 3],
             });
         }
     }
@@ -331,7 +347,26 @@ mod tests {
     #[test]
     fn vertex_structs_have_no_padding() {
         assert_eq!(std::mem::size_of::<RectVertex>(), 28 * 4);
-        assert_eq!(std::mem::size_of::<TexVertex>(), 8 * 4);
+        assert_eq!(std::mem::size_of::<TexVertex>(), 16 * 4);
+    }
+
+    #[test]
+    fn image_rounded_records_radius_and_half_size_in_vertices() {
+        let mut list = DisplayList::new();
+        list.image_rounded(
+            Rect::new(10.0, 20.0, 64.0, 64.0),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            Color::WHITE,
+            32.0,
+        );
+        let frame = Frame::build(&list);
+        assert_eq!(frame.image_vertices.len(), 4);
+        for v in &frame.image_vertices {
+            assert_eq!(v.half_size, [32.0, 32.0]);
+            assert_eq!(v.radius, 32.0);
+        }
+        assert_eq!(frame.image_vertices[0].local, [-32.0, -32.0]);
+        assert_eq!(frame.image_vertices[3].local, [32.0, 32.0]);
     }
 
     #[test]

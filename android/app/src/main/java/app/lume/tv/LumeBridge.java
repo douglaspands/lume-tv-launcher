@@ -52,12 +52,10 @@ public final class LumeBridge {
     /** Side of the icon in a tile, over the tile height. */
     private static final float ICON_RATIO = 0.5f;
     /** The dock icon's corner radius over its side: a rounded square. */
-    private static final float DOCK_RADIUS_RATIO = 0.22f;
     /** An adaptive icon layer is 108 dp wide and its visible area, the part a mask keeps, 72 dp. */
     private static final float ADAPTIVE_LAYER_RATIO = 108f / 72f;
     /** Reused by every call of {@link #dockIcon}, like the tile bitmaps below. */
     private static Bitmap dockBitmap;
-    private static Bitmap dockSourceBitmap;
     /** Reused by every call of {@link #iconPixels}: the final cell and the banner as it is drawn. */
     private static Bitmap cellBitmap;
     private static Bitmap sourceBitmap;
@@ -66,7 +64,7 @@ public final class LumeBridge {
     /** Changes when the drawing of a tile changes, so old files are not reused. */
     private static final String TILE_CACHE_VERSION = "v1";
     /** Same for the dock icons, which are drawn by other code. */
-    private static final String DOCK_CACHE_VERSION = "d1";
+    private static final String DOCK_CACHE_VERSION = "d2";
     private static boolean cachePruned;
 
     /** Sequence number of the last package change report; -1 before the first one. */
@@ -188,8 +186,8 @@ public final class LumeBridge {
 
     /**
      * The icon of an app for the dock, as `size` x `size` premultiplied RGBA bytes: the whole icon
-     * (an adaptive icon with both its layers, not cut by the system's mask) clipped to a rounded
-     * square. `null` when the app has no icon.
+     * (an adaptive icon with both its layers, not cut by the system's mask). `null` when the app
+     * has no icon.
      */
     static synchronized byte[] dockIcon(Context context, String packageName, String activityName, int size) {
         File cached = cacheFile(context, packageName, activityName, size, size, DOCK_CACHE_VERSION);
@@ -212,16 +210,9 @@ public final class LumeBridge {
         }
         if (dockBitmap == null || dockBitmap.getWidth() != size) {
             dockBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-            dockSourceBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         }
-        dockSourceBitmap.eraseColor(Color.TRANSPARENT);
-        drawWholeIcon(new Canvas(dockSourceBitmap), drawable, size);
-        // Clip to the rounded square, with antialiased edges, through a shader.
         dockBitmap.eraseColor(Color.TRANSPARENT);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        paint.setShader(new BitmapShader(dockSourceBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
-        float radius = size * DOCK_RADIUS_RATIO;
-        new Canvas(dockBitmap).drawRoundRect(new RectF(0, 0, size, size), radius, radius, paint);
+        drawWholeIcon(new Canvas(dockBitmap), drawable, size);
         ByteBuffer buffer = ByteBuffer.allocate(size * size * 4);
         dockBitmap.copyPixelsToBuffer(buffer);
         return buffer.array();

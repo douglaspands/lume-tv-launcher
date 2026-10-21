@@ -412,6 +412,7 @@ fn removing_an_installed_app_updates_the_screens() {
 
 use super::editor::{
     ADD_APP_BASE, CONFIRM_CANCEL, CONFIRM_RESTORE, DONE, FAVORITE_BUTTON_BASE, RESTORE,
+    ROUND_FAVORITES,
 };
 
 fn open_settings(rig: &mut Rig) {
@@ -516,8 +517,8 @@ fn the_editor_opens_from_the_settings_and_done_returns_to_the_home_screen() {
     open_editor(&mut rig);
     assert_eq!(
         rig.focused(),
-        Some(FAVORITE_BUTTON_BASE + 1),
-        "the first favorite has the focus"
+        Some(ROUND_FAVORITES),
+        "the round favorites switch has the focus"
     );
     focus_on(&mut rig, DONE);
     let effects = rig.press(Key::Ok);
@@ -754,6 +755,49 @@ fn texts_in_the_editor_follow_the_language() {
         rig.app.translator.get(crate::i18n::StringId::EditorDone),
         "Done"
     );
+}
+
+#[test]
+fn round_favorites_toggles_with_ok_and_emits_save_config() {
+    let mut rig = Rig::new();
+    open_editor(&mut rig);
+    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
+    assert!(!rig.app.config.round_favorites);
+
+    let effects = rig.press(Key::Ok);
+    assert_eq!(effects, [Effect::SaveConfig]);
+    assert!(rig.app.config.round_favorites);
+
+    let effects = rig.press(Key::Ok);
+    assert_eq!(effects, [Effect::SaveConfig]);
+    assert!(!rig.app.config.round_favorites);
+}
+
+#[test]
+fn restore_defaults_resets_round_favorites_to_false() {
+    let mut rig = Rig::new();
+    rig.app.config.round_favorites = true;
+    open_editor(&mut rig);
+    press_on(&mut rig, RESTORE);
+    press_on(&mut rig, CONFIRM_RESTORE);
+    assert!(!rig.app.config.round_favorites);
+}
+
+#[test]
+fn editor_fits_six_cards_per_line_with_no_horizontal_overflow() {
+    let mut rig = Rig::new();
+    let catalog = many_apps(12);
+    rig.app.catalog = catalog.clone();
+    rig.app.config.favorites = catalog.apps().iter().take(12).map(|a| a.package.clone()).collect();
+    open_editor(&mut rig);
+    let rows = rig.app.focus.rows();
+    // Row 0 is ROUND_FAVORITES (1 item)
+    assert_eq!(rows[0].items.len(), 1);
+    assert_eq!(rows[0].items[0].id, ROUND_FAVORITES);
+    // Row 1 is the first line of 6 cards * 3 buttons = 18 buttons
+    assert_eq!(rows[1].items.len(), 18);
+    // Row 2 is the second line of 6 cards * 3 buttons = 18 buttons
+    assert_eq!(rows[2].items.len(), 18);
 }
 
 fn images(list: &DisplayList) -> usize {
@@ -1030,11 +1074,18 @@ impl Rig {
 fn down_from_the_favorites_goes_to_done_and_restore_is_to_its_left() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
-    // Down from the cards (and then from the "Add app" chips) lands on "Done", at the right.
+    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
+    // Down goes to the cards.
+    rig.press(Key::Down);
+    assert!(
+        rig.focused().is_some_and(|id| (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id)),
+        "the cards come after round favorites"
+    );
+    // Down from the cards goes to the "Add app" chips.
     rig.press(Key::Down);
     assert!(
         rig.focused().is_some_and(|id| id >= ADD_APP_BASE),
-        "the chips come first"
+        "the chips come after cards"
     );
     rig.press_all(&[Key::Down, Key::Down]);
     assert_eq!(rig.focused(), Some(DONE));
@@ -1062,7 +1113,10 @@ fn from_an_empty_home_the_add_favorites_item_opens_the_editor_at_the_favorites()
     assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
     rig.press(Key::Ok);
     assert_eq!(rig.app.screen(), &Screen::Editor);
-    // Nothing to reorder yet: the focus starts on the first "Add app" chip.
+    // The focus starts on "Round favorites".
+    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
+    // Down goes to the first "Add app" chip.
+    rig.press(Key::Down);
     assert!(rig.focused().is_some_and(|id| id >= ADD_APP_BASE));
     // Down through the chip lines: the last one lands on "Done".
     rig.press_all(&[Key::Down, Key::Down, Key::Down]);

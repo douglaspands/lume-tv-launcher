@@ -33,6 +33,7 @@
     <string name="about_third_party">Licenças de terceiros</string>
 
     <!-- Editor da tela Início -->
+    <string name="editor_round_favorites">Favoritos redondos</string>
     <string name="editor_breadcrumb_edit">Editar</string>
     <string name="editor_title">Editar tela Início</string>
     <string name="editor_instruction">Selecione um app e use os botões para movê-lo para a esquerda ou a direita, ou para removê-lo. Adicione mais apps abaixo.</string>

@@ -394,7 +394,7 @@ impl Gles2Backend {
         let stride = size_of::<TexVertex>() as i32;
         let base = first_quad as i32 * 4 * stride;
         self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.tex_vbo));
-        for index in 0..2u32 {
+        for index in 0..4u32 {
             self.gl.enable_vertex_attrib_array(index);
             self.gl.vertex_attrib_pointer_f32(
                 index,
@@ -404,6 +404,9 @@ impl Gles2Backend {
                 stride,
                 base + index as i32 * 16,
             );
+        }
+        for index in 4..7u32 {
+            self.gl.disable_vertex_attrib_array(index);
         }
     }
 }
