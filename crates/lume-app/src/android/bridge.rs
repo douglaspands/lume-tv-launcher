@@ -177,6 +177,11 @@ impl Bridge {
         lume_core::stats::Stats::parse(&self.call("stats", "")?)
     }
 
+    /// The interface size, refresh rate and density, for the TV information screen.
+    pub fn display(&self) -> Option<[lume_core::device_info::Value; 3]> {
+        lume_core::device_info::parse_display(&self.call("display", "")?)
+    }
+
     /// Whether the system has a TV inputs panel to open.
     pub fn inputs_available(&self) -> bool {
         self.call("inputs", "").as_deref() == Some("1")
