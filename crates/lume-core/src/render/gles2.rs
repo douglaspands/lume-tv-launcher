@@ -13,6 +13,7 @@ use super::shaders::{IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, TEXT_FRAGMENT, 
 use super::{Backend, Viewport};
 use crate::text::{TextEngine, Update};
 use crate::theme::Color;
+use crate::wallpaper::WallpaperId;
 use glow::HasContext;
 use std::mem::size_of;
 
@@ -23,6 +24,7 @@ struct ShaderProgram {
     u_texture: Option<glow::UniformLocation>,
 }
 
+#[derive(Clone, Copy)]
 struct Texture {
     texture: glow::Texture,
     width: u32,
@@ -42,6 +44,8 @@ pub struct Gles2Backend {
     image: Option<Texture>,
     /// The wallpaper, created the first time a frame draws it and freed with everything else.
     wallpaper: Option<Texture>,
+    wallpaper_id: Option<WallpaperId>,
+    wallpaper_thumbs: Option<Texture>,
 }
 
 impl Gles2Backend {
@@ -64,7 +68,12 @@ impl Gles2Backend {
                 ],
             )?;
             let text_program = link(&gl, TEX_VERTEX, TEXT_FRAGMENT, &["a_pos_uv", "a_color"])?;
-            let image_program = link(&gl, TEX_VERTEX, IMAGE_FRAGMENT, &["a_pos_uv", "a_color"])?;
+            let image_program = link(
+                &gl,
+                TEX_VERTEX,
+                IMAGE_FRAGMENT,
+                &["a_pos_uv", "a_color", "a_local", "a_params"],
+            )?;
             let rect_vbo = gl.create_buffer()?;
             let tex_vbo = gl.create_buffer()?;
             let index_buffer = gl.create_buffer()?;
@@ -80,6 +89,8 @@ impl Gles2Backend {
                 atlas: None,
                 image: None,
                 wallpaper: None,
+                wallpaper_id: None,
+                wallpaper_thumbs: None,
             })
         }
     }
@@ -247,24 +258,25 @@ impl Gles2Backend {
         }
     }
 
-    /// Creates the wallpaper texture (opaque RGB, linear filter, clamped to the edge) from
-    /// [`crate::wallpaper::current`], if it does not exist yet. Until then a frame has only the
-    /// clear color behind its content.
-    pub fn ensure_wallpaper(&mut self) {
-        if self.wallpaper.is_some() {
+    /// Creates or updates the wallpaper texture (opaque RGB, linear filter, clamped to the edge) from
+    /// [`WallpaperId`], if not already loaded. If a different wallpaper was previously loaded, its
+    /// texture data is updated. Until then a frame has only the clear color behind its content.
+    pub fn ensure_wallpaper(&mut self, id: WallpaperId) {
+        if self.wallpaper.is_some() && self.wallpaper_id == Some(id) {
             return;
         }
-        let wallpaper = crate::wallpaper::current();
-        assert_eq!(
-            wallpaper.rgb.len(),
-            (wallpaper.width * wallpaper.height * 3) as usize
-        );
+        let wallpaper = id.wallpaper();
+        let rgb = wallpaper.decompress_rgb();
+        assert_eq!(rgb.len(), (wallpaper.width * wallpaper.height * 3) as usize);
         // SAFETY: see `new`.
         unsafe {
-            let texture = self
-                .gl
-                .create_texture()
-                .expect("cannot create the wallpaper texture");
+            let texture = match self.wallpaper {
+                Some(existing) => existing.texture,
+                None => self
+                    .gl
+                    .create_texture()
+                    .expect("cannot create the wallpaper texture"),
+            };
             self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
             self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
             self.gl.tex_image_2d(
@@ -276,13 +288,57 @@ impl Gles2Backend {
                 0,
                 glow::RGB,
                 glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(wallpaper.rgb)),
+                glow::PixelUnpackData::Slice(Some(&rgb)),
             );
             set_filtering(&self.gl);
             self.wallpaper = Some(Texture {
                 texture,
                 width: wallpaper.width,
                 height: wallpaper.height,
+            });
+            self.wallpaper_id = Some(id);
+        }
+    }
+
+    /// The ID of the currently loaded wallpaper, if any.
+    pub fn current_wallpaper(&self) -> Option<WallpaperId> {
+        self.wallpaper_id
+    }
+
+    /// Uploads the 640x144 RGBA wallpaper thumbnails atlas texture if not already present.
+    pub fn ensure_wallpaper_thumbs(&mut self) {
+        if self.wallpaper_thumbs.is_some() {
+            return;
+        }
+        let rgba = crate::wallpaper::decompress_thumbnails();
+        assert_eq!(
+            rgba.len(),
+            (crate::wallpaper::THUMBNAILS_WIDTH * crate::wallpaper::THUMBNAILS_HEIGHT * 4) as usize
+        );
+        // SAFETY: see `new`.
+        unsafe {
+            let texture = self
+                .gl
+                .create_texture()
+                .expect("cannot create the wallpaper thumbnails texture");
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::RGBA as i32,
+                crate::wallpaper::THUMBNAILS_WIDTH as i32,
+                crate::wallpaper::THUMBNAILS_HEIGHT as i32,
+                0,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(&rgba)),
+            );
+            set_filtering(&self.gl);
+            self.wallpaper_thumbs = Some(Texture {
+                texture,
+                width: crate::wallpaper::THUMBNAILS_WIDTH,
+                height: crate::wallpaper::THUMBNAILS_HEIGHT,
             });
         }
     }
@@ -355,9 +411,14 @@ impl Gles2Backend {
             for buffer in [self.rect_vbo, self.tex_vbo, self.index_buffer] {
                 self.gl.delete_buffer(buffer);
             }
-            for texture in [self.atlas, self.image, self.wallpaper]
-                .into_iter()
-                .flatten()
+            for texture in [
+                self.atlas,
+                self.image,
+                self.wallpaper,
+                self.wallpaper_thumbs,
+            ]
+            .into_iter()
+            .flatten()
             {
                 self.gl.delete_texture(texture.texture);
             }
@@ -445,7 +506,14 @@ impl Backend for Gles2Backend {
                 return;
             }
             if frame.uses_wallpaper() {
-                self.ensure_wallpaper();
+                self.ensure_wallpaper(frame.wallpaper_id.unwrap_or_default());
+            }
+            if frame
+                .batches
+                .iter()
+                .any(|b| b.texture == ImageTexture::WallpaperThumbs)
+            {
+                self.ensure_wallpaper_thumbs();
             }
             let gl = &self.gl;
             gl.enable(glow::BLEND);
@@ -517,6 +585,7 @@ impl Backend for Gles2Backend {
                         let texture = match batch.texture {
                             ImageTexture::Icons => self.image.as_ref(),
                             ImageTexture::Wallpaper => self.wallpaper.as_ref(),
+                            ImageTexture::WallpaperThumbs => self.wallpaper_thumbs.as_ref(),
                         };
                         self.bind_texture(texture, program);
                         self.bind_tex_attributes(image_quad_base + batch.first_quad);

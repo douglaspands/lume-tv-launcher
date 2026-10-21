@@ -411,8 +411,8 @@ fn removing_an_installed_app_updates_the_screens() {
 // ---- settings and the home screen editor ---------------------------------------------------
 
 use super::editor::{
-    ADD_APP_BASE, CONFIRM_CANCEL, CONFIRM_RESTORE, DONE, FAVORITE_BUTTON_BASE, RESTORE,
-    ROUND_FAVORITES,
+    ADD_APP_BASE, CONFIRM_CANCEL, CONFIRM_RESTORE, FAVORITE_BUTTON_BASE, RESTORE, ROUND_FAVORITES,
+    WALLPAPER_BASE,
 };
 
 fn open_settings(rig: &mut Rig) {
@@ -570,19 +570,16 @@ fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
 }
 
 #[test]
-fn the_editor_opens_from_the_settings_and_done_returns_to_the_home_screen() {
+fn the_editor_opens_from_the_settings_and_has_no_done_button() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
     assert_eq!(
         rig.focused(),
-        Some(ROUND_FAVORITES),
-        "the round favorites switch has the focus"
+        Some(WALLPAPER_BASE),
+        "the active wallpaper card has the focus"
     );
-    focus_on(&mut rig, DONE);
-    let effects = rig.press(Key::Ok);
-    assert_eq!(effects, [Effect::SaveConfig]);
-    assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
-    assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+    // There is no DONE button in the layout (4000).
+    assert!(!rig.app.focus.focus(4000));
 }
 
 #[test]
@@ -782,7 +779,7 @@ fn the_editor_scrolls_to_keep_the_focus_visible() {
         .collect();
     open_editor(&mut rig);
     assert_eq!(rig.app.scroll_y, 0.0);
-    focus_on(&mut rig, DONE);
+    focus_on(&mut rig, RESTORE);
     rig.advance(1000);
     assert!(
         rig.app.scroll_y > 100.0,
@@ -810,8 +807,10 @@ fn texts_in_the_editor_follow_the_language() {
     rig.app.translator = Translator::new(&["en"]);
     assert!(rig.frame().len() > 50);
     assert_eq!(
-        rig.app.translator.get(crate::i18n::StringId::EditorDone),
-        "Done"
+        rig.app
+            .translator
+            .get(crate::i18n::StringId::EditorWallpaper),
+        "Wallpaper"
     );
 }
 
@@ -819,6 +818,7 @@ fn texts_in_the_editor_follow_the_language() {
 fn round_favorites_toggles_with_ok_and_emits_save_config() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
+    rig.press(Key::Down);
     assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
     assert!(!rig.app.config.round_favorites);
 
@@ -854,13 +854,15 @@ fn editor_fits_six_cards_per_line_with_no_horizontal_overflow() {
         .collect();
     open_editor(&mut rig);
     let rows = rig.app.focus.rows();
-    // Row 0 is ROUND_FAVORITES (1 item)
-    assert_eq!(rows[0].items.len(), 1);
-    assert_eq!(rows[0].items[0].id, ROUND_FAVORITES);
-    // Row 1 is the first line of 6 cards * 3 buttons = 18 buttons
-    assert_eq!(rows[1].items.len(), 18);
-    // Row 2 is the second line of 6 cards * 3 buttons = 18 buttons
+    // Row 0 is the wallpaper cards row (10 items)
+    assert_eq!(rows[0].items.len(), 10);
+    // Row 1 is ROUND_FAVORITES (1 item)
+    assert_eq!(rows[1].items.len(), 1);
+    assert_eq!(rows[1].items[0].id, ROUND_FAVORITES);
+    // Row 2 is the first line of 6 cards * 3 buttons = 18 buttons
     assert_eq!(rows[2].items.len(), 18);
+    // Row 3 is the second line of 6 cards * 3 buttons = 18 buttons
+    assert_eq!(rows[3].items.len(), 18);
 }
 
 fn images(list: &DisplayList) -> usize {
@@ -1137,8 +1139,11 @@ impl Rig {
 fn down_from_the_favorites_goes_to_done_and_restore_is_to_its_left() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
+    assert_eq!(rig.focused(), Some(WALLPAPER_BASE));
+    // Down goes to the round favorites switch.
+    rig.press(Key::Down);
     assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
-    // Down goes to the cards.
+    // Down goes to the favorite cards.
     rig.press(Key::Down);
     assert!(
         rig.focused()
@@ -1152,17 +1157,10 @@ fn down_from_the_favorites_goes_to_done_and_restore_is_to_its_left() {
         "the chips come after cards"
     );
     rig.press_all(&[Key::Down, Key::Down]);
-    assert_eq!(rig.focused(), Some(DONE));
-    // "Restore defaults" is at the opposite side: Left from "Done", and back with Right.
-    rig.press(Key::Left);
     assert_eq!(rig.focused(), Some(RESTORE));
     let restore_x = rig.app.focus.current().unwrap().rect.x;
-    rig.press(Key::Right);
-    assert_eq!(rig.focused(), Some(DONE));
-    let done = rig.app.focus.current().unwrap().rect;
     assert!(restore_x < 100.0, "at the left margin");
-    assert!(done.right() > 1100.0, "at the right margin");
-    // Up from "Done" returns to the "Add app" chips.
+    // Up from "Restore" returns to the "Add app" chips.
     rig.press(Key::Up);
     assert!(rig.focused().is_some_and(|id| id >= ADD_APP_BASE));
     // The first card cannot move left: that button takes no focus.
@@ -1177,14 +1175,32 @@ fn from_an_empty_home_the_add_favorites_item_opens_the_editor_at_the_favorites()
     assert_eq!(rig.focused(), Some(ids::FAVORITES_ADD));
     rig.press(Key::Ok);
     assert_eq!(rig.app.screen(), &Screen::Editor);
-    // The focus starts on "Round favorites".
-    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
-    // Down goes to the first "Add app" chip.
+    // The focus starts on active wallpaper card.
+    assert_eq!(rig.focused(), Some(WALLPAPER_BASE));
+    // Down goes to the round favorites switch.
     rig.press(Key::Down);
-    assert!(rig.focused().is_some_and(|id| id >= ADD_APP_BASE));
-    // Down through the chip lines: the last one lands on "Done".
-    rig.press_all(&[Key::Down, Key::Down, Key::Down]);
-    assert_eq!(rig.focused(), Some(DONE));
+    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
+    // Down through chips: lands on "Restore defaults".
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down]);
+    assert_eq!(rig.focused(), Some(RESTORE));
+}
+
+#[test]
+fn selecting_wallpaper_in_editor_changes_wallpaper_and_saves() {
+    let mut rig = Rig::new();
+    open_editor(&mut rig);
+    assert_eq!(
+        rig.app.config.wallpaper,
+        crate::wallpaper::WallpaperId::Aurora
+    );
+    // Focus the second wallpaper card (Misty Forest)
+    focus_on(&mut rig, WALLPAPER_BASE + 1);
+    let effects = rig.press(Key::Ok);
+    assert_eq!(effects, [Effect::SaveConfig]);
+    assert_eq!(
+        rig.app.config.wallpaper,
+        crate::wallpaper::WallpaperId::MistyForest
+    );
 }
 
 // ---- wallpaper --------------------------------------------------------------------------------
@@ -1303,12 +1319,16 @@ fn contrast(text: crate::theme::Color, background_luminance: f32) -> f32 {
 
 /// The brightest texel of the wallpaper inside `area` (logical units of the 1280x720 canvas),
 /// after the layer `dim` (if any) is drawn over it.
-fn brightest_behind(area: Rect, dim: Option<crate::theme::Color>) -> f32 {
-    let wallpaper = crate::wallpaper::current();
+fn brightest_behind(
+    wallpaper: &crate::wallpaper::Wallpaper,
+    area: Rect,
+    dim: Option<crate::theme::Color>,
+) -> f32 {
     let (sx, sy) = (
         wallpaper.width as f32 / 1280.0,
         wallpaper.height as f32 / 720.0,
     );
+    let rgb = wallpaper.decompress_rgb();
     let mut brightest = 0.0f32;
     for y in (area.y * sy) as usize
         ..((area.bottom() * sy).ceil() as usize).min(wallpaper.height as usize)
@@ -1317,7 +1337,7 @@ fn brightest_behind(area: Rect, dim: Option<crate::theme::Color>) -> f32 {
             ..((area.right() * sx).ceil() as usize).min(wallpaper.width as usize)
         {
             let i = (y * wallpaper.width as usize + x) * 3;
-            let mut pixel = [0, 1, 2].map(|c| f32::from(wallpaper.rgb[i + c]));
+            let mut pixel = [0, 1, 2].map(|c| f32::from(rgb[i + c]));
             if let Some(dim) = dim {
                 let a = f32::from(dim.a) / 255.0;
                 let shade = [dim.r, dim.g, dim.b].map(f32::from);
@@ -1334,14 +1354,22 @@ fn brightest_behind(area: Rect, dim: Option<crate::theme::Color>) -> f32 {
 #[test]
 fn text_on_the_dimmed_screens_has_4_5_to_1_over_the_brightest_part_of_the_wallpaper() {
     let everywhere = Rect::new(0.0, 0.0, 1280.0, 720.0);
-    let behind = brightest_behind(everywhere, Some(painter::TEXT_SCREEN_DIM));
-    // The dimmest text color used on those screens (tile names, breadcrumbs, hints).
-    let ratio = contrast(crate::theme::vars::TEXT_MUTED, behind);
-    assert!(
-        ratio >= 4.5,
-        "muted text: {ratio:.2}:1 over luminance {behind:.4}"
-    );
-    assert!(contrast(crate::theme::vars::TEXT, behind) >= 4.5);
+    for id in crate::wallpaper::WallpaperId::ALL {
+        let w = id.wallpaper();
+        let behind = brightest_behind(w, everywhere, Some(painter::TEXT_SCREEN_DIM));
+        // The dimmest text color used on those screens (tile names, breadcrumbs, hints).
+        let ratio = contrast(crate::theme::vars::TEXT_MUTED, behind);
+        assert!(
+            ratio >= 4.5,
+            "{}: muted text: {ratio:.2}:1 over luminance {behind:.4}",
+            id.as_str()
+        );
+        assert!(
+            contrast(crate::theme::vars::TEXT, behind) >= 4.5,
+            "{}: normal text contrast over luminance {behind:.4}",
+            id.as_str()
+        );
+    }
 }
 
 #[test]
@@ -1359,21 +1387,25 @@ fn the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home() {
     );
     let (home, apps) = (tabs.rect(Tab::Home), tabs.rect(Tab::Apps));
     let tab_area = Rect::new(home.x, home.y, apps.right() - home.x, home.h);
-    let muted = brightest_behind(tab_area, None);
-    let ratio = contrast(crate::theme::vars::TEXT_MUTED, muted);
-    assert!(
-        ratio >= 4.5,
-        "the inactive tab: {ratio:.2}:1 over luminance {muted:.4}"
-    );
-    // The white texts: the wordmark, the active tab, the gear and the clock.
-    for (name, area) in [
-        ("logo", Rect::new(64.0, 20.0, 120.0, 44.0)),
-        ("tabs", tab_area),
-        ("gear", Rect::new(1096.0, 20.0, 48.0, 48.0)),
-        ("clock", Rect::new(1150.0, 28.0, 70.0, 30.0)),
-    ] {
-        let ratio = contrast(crate::theme::vars::TEXT, brightest_behind(area, None));
-        assert!(ratio >= 4.5, "{name}: {ratio:.2}:1");
+    for id in crate::wallpaper::WallpaperId::ALL {
+        let w = id.wallpaper();
+        let muted = brightest_behind(w, tab_area, None);
+        let ratio = contrast(crate::theme::vars::TEXT_MUTED, muted);
+        assert!(
+            ratio >= 4.5,
+            "{}: inactive tab: {ratio:.2}:1 over luminance {muted:.4}",
+            id.as_str()
+        );
+        // The white texts: the wordmark, the active tab, the gear and the clock.
+        for (name, area) in [
+            ("logo", Rect::new(64.0, 20.0, 120.0, 44.0)),
+            ("tabs", tab_area),
+            ("gear", Rect::new(1096.0, 20.0, 48.0, 48.0)),
+            ("clock", Rect::new(1150.0, 28.0, 70.0, 30.0)),
+        ] {
+            let ratio = contrast(crate::theme::vars::TEXT, brightest_behind(w, area, None));
+            assert!(ratio >= 4.5, "{}: {name}: {ratio:.2}:1", id.as_str());
+        }
     }
 }
 
@@ -2636,7 +2668,14 @@ fn come_back(rig: &mut Rig) -> DisplayList {
 /// The splash logo's square in a frame, if it is drawn.
 fn splash_logo(list: &DisplayList) -> Option<RectCmd> {
     list.cmds().iter().find_map(|cmd| match cmd {
-        Cmd::Rect(r) if r.rect.w == vars::SPLASH_LOGO && r.rect.h == vars::SPLASH_LOGO => Some(*r),
+        // The logo grows from a little under its size while it comes in (and shrinks as it leaves).
+        Cmd::Rect(r)
+            if (r.rect.w - r.rect.h).abs() < 0.01
+                && r.rect.w <= vars::SPLASH_LOGO
+                && r.rect.w >= 0.9 * vars::SPLASH_LOGO =>
+        {
+            Some(*r)
+        }
         _ => None,
     })
 }
@@ -2668,6 +2707,11 @@ fn dock_top(list: &DisplayList) -> f32 {
             _ => None,
         })
         .expect("the dock is drawn")
+}
+
+/// How long the logo is held before the reveal may start (the first wake of a rig is a cold start).
+fn hold_ms() -> u64 {
+    vars::SPLASH_HOLD_COLD.duration_ms as u64
 }
 
 fn load_dock_icons(rig: &mut Rig) {
@@ -2724,7 +2768,7 @@ fn the_splash_holds_while_a_dock_icon_is_missing_and_lets_go_when_it_loads() {
     let partial = rig.app.splash_progress();
     assert!(partial > 0.0 && partial < 1.0, "{partial}");
     rig.app.icons.reserve_dock(&favorites[0]).unwrap();
-    rig.advance(10);
+    rig.advance(hold_ms());
     assert!(
         !rig.app.in_splash(),
         "all icons are there: the reveal starts"
@@ -2742,7 +2786,7 @@ fn an_icon_that_failed_counts_as_ready() {
         rig.app.icons.reserve_dock(package).unwrap();
     }
     rig.app.icon_failed(&favorites[0], true);
-    rig.advance(10);
+    rig.advance(hold_ms());
     assert!(!rig.app.in_splash());
 }
 
@@ -2799,7 +2843,7 @@ fn the_splash_waits_for_the_visible_tiles_of_the_grid_it_returns_to() {
         "the dock icons, for a move to Home, are missing"
     );
     load_dock_icons(&mut rig);
-    rig.advance(10);
+    rig.advance(hold_ms());
     assert!(!rig.app.in_splash());
 }
 
@@ -2816,7 +2860,7 @@ fn the_home_splash_also_waits_for_the_first_screen_of_the_grid() {
         rig.app.catalog.apps().len()
     );
     load_grid_tiles(&mut rig);
-    rig.advance(10);
+    rig.advance(hold_ms());
     assert!(!rig.app.in_splash());
 }
 
@@ -2861,6 +2905,13 @@ fn the_reveal_brings_up_the_wallpaper_and_the_content_and_fades_the_logo() {
         rig.advance(vars::SPLASH_LOGO_IN.duration_ms as u64);
         load_dock_icons(&mut rig);
         load_grid_tiles(&mut rig);
+        // The logo is held before the reveal starts (the entry already took part of it).
+        let hold = if cold {
+            vars::SPLASH_HOLD_COLD
+        } else {
+            vars::SPLASH_HOLD_WARM
+        };
+        rig.now += hold.duration_ms as u64 - vars::SPLASH_LOGO_IN.duration_ms as u64;
         let start = rig.frame();
         assert!(!rig.app.in_splash(), "cold: {cold}");
         assert_eq!(logo_alpha(&start), Some(255));
@@ -2872,11 +2923,18 @@ fn the_reveal_brings_up_the_wallpaper_and_the_content_and_fades_the_logo() {
 
         rig.now += (duration / 2.0) as u64;
         let middle = rig.frame();
-        let t = crate::ui::animation::ease(crate::theme::Curve::EaseOut, 0.5);
+        // Linear progress 0.5 through the overlapping stages: the logo is almost gone, the
+        // interface is partly there (see `splash.rs`).
+        let stage = |from: f32, to: f32| {
+            crate::ui::animation::ease(crate::theme::Curve::EaseInOut, (0.5 - from) / (to - from))
+        };
         let alpha = |v: f32| (255.0 * v).round() as i32;
-        assert!((i32::from(wallpaper_alpha(&middle).unwrap()) - alpha(t)).abs() <= 1);
-        assert!((i32::from(logo_alpha(&middle).unwrap()) - alpha(1.0 - t)).abs() <= 1);
-        assert!((dock_top(&middle) - rest - 24.0 * (1.0 - t)).abs() < 0.01);
+        assert!((i32::from(wallpaper_alpha(&middle).unwrap()) - alpha(stage(0.0, 0.8))).abs() <= 1);
+        assert!(
+            (i32::from(logo_alpha(&middle).unwrap()) - alpha(1.0 - stage(0.0, 0.6))).abs() <= 1,
+            "the logo leaves in the first 60%"
+        );
+        assert!((dock_top(&middle) - rest - 16.0 * (1.0 - stage(0.3, 1.0))).abs() < 0.01);
         assert!(!rig.app.take_interface_ready());
 
         rig.now += duration as u64;
@@ -2947,7 +3005,7 @@ fn icons_that_arrive_during_the_splash_do_not_fade_in() {
         rig.app.icon_arrived(&package, true, rig.now);
     }
     load_grid_tiles(&mut rig);
-    rig.frame();
+    rig.advance(hold_ms());
     // The reveal brings them in with the rest; once it is over they are all there.
     rig.now += 1000;
     let list = rig.frame();

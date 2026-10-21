@@ -10,8 +10,8 @@ change it.
 `tools/wallpaper/aurora06.py` (plain Python 3, no packages) draws two layers of aurora curtains and writes,
 into `crates/lume-core/assets/wallpaper/`:
 
-- `aurora-640x360.rgb`: the smooth base, raw RGB, top row first. The edge of the curtains is softened to
-  about 3 of its own texels, so 640x360 enlarged to 1080p looks like a render made at 1080p
+- `aurora-1920x1080.rgb`: the smooth base, raw RGB, top row first. The edge of the curtains is softened to
+  about 3 of its own texels, so 1920x1080 enlarged to 1080p looks like a render made at 1080p
   (average error under 1/255). The top and the lower half are already dark, for the top bar and the dock.
 - `aurora-stars.txt`: 420 stars (`x y brightness`, in 1920x1080 pixels, from a fixed random seed), all in
   the upper 70% of the picture.
@@ -52,3 +52,17 @@ Running it without changes gives the same files byte for byte.
 image, replace the two asset files (or change the script) and run `cargo test --workspace`.
 
 To look at the result: `cargo run -p lume-desktop -- --screenshot home home.png`.
+
+
+## Quality on HD and 4K screens (catalog of 10 wallpapers)
+
+Every wallpaper is stored at 1920x1080 (`aurora06.WIDTH`/`HEIGHT`), the TV's own resolution: the Aurora is
+generated at that size and the 9 masters (1280x720 JPEG) are enlarged with Lanczos when generated, which is
+sharper than letting the GPU enlarge a small image. A 4K screen enlarges it 2x (lume's buffer is 1080p). Generate them with
+`uv run --with pillow tools/wallpaper/generate_wallpapers.py`. The generator:
+
+- adds triangular dither (+-1 level, deterministic) to the Aurora and wherever the calibration darkens
+  pixels, so dark gradients do not band on a large panel;
+- darkens the top rows by the brightest pixel behind the top bar, not by the average, so the muted
+  text keeps 4.5:1 (checked by the tests of `lume-core`);
+- the masters carry no more detail than 1280x720; for real extra detail, replace them with Full HD ones.

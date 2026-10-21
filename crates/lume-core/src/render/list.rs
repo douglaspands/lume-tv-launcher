@@ -2,6 +2,7 @@
 
 use super::geometry::Rect;
 use crate::theme::{Color, ComputedStyle, Paint, Shadow};
+use crate::wallpaper::WallpaperId;
 
 /// How a rounded rectangle is painted.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,6 +42,8 @@ pub enum Cmd {
     Image(TexturedCmd),
     /// A piece of the wallpaper texture (opaque RGB), multiplied by `color`.
     Wallpaper(TexturedCmd),
+    /// A thumbnail from the wallpaper thumbnails atlas, with optional rounded corners.
+    WallpaperThumb(TexturedCmd),
     PushClip(Rect),
     PopClip,
 }
@@ -48,6 +51,7 @@ pub enum Cmd {
 #[derive(Clone, Debug, Default)]
 pub struct DisplayList {
     cmds: Vec<Cmd>,
+    wallpaper: Option<WallpaperId>,
 }
 
 impl DisplayList {
@@ -59,8 +63,13 @@ impl DisplayList {
         &self.cmds
     }
 
+    pub fn wallpaper_id(&self) -> Option<WallpaperId> {
+        self.wallpaper
+    }
+
     pub fn clear(&mut self) {
         self.cmds.clear();
+        self.wallpaper = None;
     }
 
     pub fn len(&self) -> usize {
@@ -120,11 +129,25 @@ impl DisplayList {
     }
 
     pub fn wallpaper(&mut self, dest: Rect, uv: Rect, color: Color) {
+        self.wallpaper_with_id(dest, uv, color, WallpaperId::Aurora);
+    }
+
+    pub fn wallpaper_with_id(&mut self, dest: Rect, uv: Rect, color: Color, id: WallpaperId) {
+        self.wallpaper = Some(id);
         self.cmds.push(Cmd::Wallpaper(TexturedCmd {
             dest,
             uv,
             color,
             radius: 0.0,
+        }));
+    }
+
+    pub fn wallpaper_thumb(&mut self, dest: Rect, uv: Rect, radius: f32) {
+        self.cmds.push(Cmd::WallpaperThumb(TexturedCmd {
+            dest,
+            uv,
+            color: Color::WHITE,
+            radius,
         }));
     }
 
@@ -135,7 +158,7 @@ impl DisplayList {
         for cmd in self.cmds.iter_mut().skip(start) {
             match cmd {
                 Cmd::Rect(r) => r.opacity *= factor,
-                Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) => {
+                Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) | Cmd::WallpaperThumb(t) => {
                     t.color.a = (f32::from(t.color.a) * factor).round() as u8;
                 }
                 Cmd::PushClip(_) | Cmd::PopClip => {}
@@ -149,7 +172,7 @@ impl DisplayList {
         for cmd in &mut self.cmds[start.min(end)..end] {
             match cmd {
                 Cmd::Rect(r) => r.rect = r.rect.translate(0.0, dy),
-                Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) => {
+                Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) | Cmd::WallpaperThumb(t) => {
                     t.dest = t.dest.translate(0.0, dy);
                 }
                 Cmd::PushClip(rect) => *rect = rect.translate(0.0, dy),

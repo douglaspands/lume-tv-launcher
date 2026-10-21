@@ -1,8 +1,8 @@
-"""The lume wallpaper (aurora 06): a smooth 640x360 base plus the positions of crisp stars.
+"""The lume wallpaper (aurora 06): a smooth 1920x1080 base plus the positions of crisp stars.
 
 Usage: python3 tools/wallpaper/aurora06.py [ASSETS_DIR]
 
-Writes aurora-640x360.rgb (raw RGB, top row first) and aurora-stars.txt into ASSETS_DIR (default
+Writes aurora-1920x1080.rgb (raw RGB, top row first) and aurora-stars.txt into ASSETS_DIR (default
 crates/lume-core/assets/wallpaper). Only the standard library is needed. The renderer draws the
 stars as 1 or 2 pixel points over the enlarged base (see Painter::wallpaper)."""
 import math, random, struct, sys, zlib
@@ -13,6 +13,7 @@ ACCENT = (77, 179, 255)
 CYAN = (70, 215, 255)
 INDIGO = (70, 90, 230)
 SEED = 21
+WIDTH, HEIGHT = 1920, 1080
 
 
 def smooth(a, b, x):
@@ -80,8 +81,13 @@ def base(w, h, edge_px):
     return rows
 
 
-def quantize(rows):
-    return [[(min(255, int(r)), min(255, int(g)), min(255, int(b))) for r, g, b in row] for row in rows]
+def quantize(rows, seed=SEED):
+    """Rounds to 8 bits with triangular dither (+-1 level), so the dark gradients do not band on a
+    large panel. The noise is deterministic: the same seed gives the same file."""
+    rng = random.Random(seed)
+    def q(v):
+        return min(255, max(0, int(v + rng.random() - rng.random() + 0.5)))
+    return [[(q(r), q(g), q(b)) for r, g, b in row] for row in rows]
 
 
 def upscale(rows, w, h):
@@ -125,9 +131,10 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "../../crates/lume-core/assets/wallpaper")
     os.makedirs(out, exist_ok=True)
-    # The base's edge is as soft as 3 of its own texels, so 640x360 reproduces a 1080p render.
-    rows = quantize(base(640, 360, 3.0))
-    with open(os.path.join(out, "aurora-640x360.rgb"), "wb") as f:
+    # The edge of the curtains is as soft as 9 texels of the 1920x1080 base (3 of a 640x360 one, the
+    # same look). The base is native Full HD; a 4K screen enlarges it 2x.
+    rows = quantize(base(WIDTH, HEIGHT, 9.0))
+    with open(os.path.join(out, f"aurora-{WIDTH}x{HEIGHT}.rgb"), "wb") as f:
         f.write(bytes(c for row in rows for px in row for c in px))
     with open(os.path.join(out, "aurora-stars.txt"), "w") as f:
         f.write("# x y brightness(0-255), in 1920x1080 pixels; from tools/wallpaper/aurora06.py (seed 21)\n")

@@ -3,21 +3,46 @@
 //! drawn by lume: the system's window has only the background color.
 //!
 //! ```text
-//! came_to_foreground --> Splash --(images ready | 600 ms)--> Revealing --(end)--> Normal
+//! came_to_foreground --> Splash --(images ready and logo held | 600 ms)--> Revealing --(end)--> Normal
 //!                              \--(a key other than Home)-----------------------> Normal
 //! ```
 //!
 //! While the splash waits nothing is animated, so the platform keeps loading icons (it only does
-//! when the screen is at rest) and no frames are asked for besides the 600 ms deadline.
+//! when the screen is at rest) and no frames are asked for besides the end of the hold and the
+//! 600 ms deadline. The hold keeps the logo on screen long enough to be seen.
 
 use super::painter::{fade, Painter};
 use super::{apps, Anim, LumeApp, Screen, Tab};
 use crate::render::Rect;
-use crate::theme::{vars, Transition};
+use crate::theme::{vars, Curve, Transition};
+use crate::ui::animation::ease;
 use std::collections::HashSet;
 
 /// The longest the splash waits for the images, from its first frame.
 pub(super) const SPLASH_LIMIT_MS: u64 = 600;
+
+/// The reveal is one linear progress split into overlapping stages, so the logo and the interface
+/// are both partly visible in the middle (no empty moment between them).
+const LOGO_OUT: (f32, f32) = (0.0, 0.6);
+const UI_IN: (f32, f32) = (0.3, 1.0);
+const WALLPAPER_IN: (f32, f32) = (0.0, 0.8);
+/// The logo grows from this fraction of its size while it comes in (the mirror of its exit).
+const LOGO_ENTER_SCALE: f32 = 0.96;
+/// The logo shrinks to this fraction of its size while it leaves.
+const LOGO_EXIT_SCALE: f32 = 0.92;
+
+/// Eased progress of the stage `(from, to)` of the reveal at `t`.
+fn stage((from, to): (f32, f32), t: f32) -> f32 {
+    let x = (t - from) / (to - from);
+    // The ends are exact: the curve's solver is not, and a faint leftover would draw the wallpaper.
+    if x <= 0.0 {
+        0.0
+    } else if x >= 1.0 {
+        1.0
+    } else {
+        ease(Curve::EaseInOut, x)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Phase {
@@ -46,6 +71,16 @@ pub(super) struct Waiting {
 }
 
 impl Waiting {
+    /// How long the logo is held, from the first frame, before the reveal may start.
+    fn hold_ms(&self) -> u64 {
+        let hold = if self.cold {
+            vars::SPLASH_HOLD_COLD
+        } else {
+            vars::SPLASH_HOLD_WARM
+        };
+        hold.duration_ms as u64
+    }
+
     pub(super) fn new(cold: bool) -> Waiting {
         Waiting {
             cold,
@@ -135,7 +170,15 @@ impl LumeApp {
     /// When the splash stops waiting if the images are not all there.
     pub fn splash_deadline(&self) -> Option<u64> {
         match &self.phase {
-            Phase::Splash(waiting) => waiting.since.map(|since| since + SPLASH_LIMIT_MS),
+            Phase::Splash(waiting) => waiting.since.map(|since| {
+                // First the end of the hold (the reveal may start then), later the limit.
+                let held = since + waiting.hold_ms();
+                if self.now_ms < held {
+                    held
+                } else {
+                    since + SPLASH_LIMIT_MS
+                }
+            }),
             _ => None,
         }
     }
@@ -147,6 +190,11 @@ impl LumeApp {
             Phase::Splash(_) => 0.0,
             Phase::Revealing => self.anim.get(Anim::Reveal, 1.0, self.now_ms),
         }
+    }
+
+    /// How much of the wallpaper's intensity is up during the reveal.
+    pub(super) fn wallpaper_reveal(&self) -> f32 {
+        stage(WALLPAPER_IN, self.reveal())
     }
 
     /// Called at the start of a frame: the splash notes its first frame (where the logo starts to
@@ -191,17 +239,21 @@ impl LumeApp {
                 self.check_splash_images(p);
             }
             Phase::Revealing => {
-                let t = self.reveal();
+                let shown = stage(UI_IN, self.reveal());
                 p.list.translate_range(
                     self.content_start,
                     content_end,
-                    vars::SPLASH_RISE * (1.0 - t),
+                    vars::SPLASH_RISE * (1.0 - shown),
                 );
-                p.list.fade_from(self.content_start, t);
+                p.list.fade_from(self.content_start, shown);
             }
         }
         let logo_in = self.anim.get(Anim::SplashLogo, 1.0, self.now_ms);
-        self.draw_splash(p, logo_in * (1.0 - self.reveal()));
+        // The logo leaves first: it fades and shrinks a little while the interface comes in.
+        let out = stage(LOGO_OUT, self.reveal());
+        let scale = (LOGO_ENTER_SCALE + (1.0 - LOGO_ENTER_SCALE) * logo_in)
+            * (1.0 - (1.0 - LOGO_EXIT_SCALE) * out);
+        self.draw_splash(p, logo_in * (1.0 - out), scale);
     }
 
     /// Counts the images of the screen behind that are ready and starts the reveal when they all are,
@@ -232,7 +284,10 @@ impl LumeApp {
         let timed_out = waiting
             .since
             .is_some_and(|since| self.now_ms >= since + SPLASH_LIMIT_MS);
-        if waiting.ready == waiting.expected || timed_out {
+        let held = waiting
+            .since
+            .is_some_and(|since| self.now_ms >= since + waiting.hold_ms());
+        if (waiting.ready == waiting.expected && held) || timed_out {
             let transition: Transition = if waiting.cold {
                 vars::SPLASH_REVEAL_COLD
             } else {
@@ -278,11 +333,18 @@ impl LumeApp {
     }
 
     /// The splash at `opacity`: the logo, and under it the band kept for a loading indicator.
-    fn draw_splash(&self, p: &mut Painter, opacity: f32) {
+    fn draw_splash(&self, p: &mut Painter, opacity: f32, scale: f32) {
         if opacity <= 0.0 {
             return;
         }
-        let logo = Self::splash_logo_rect(p);
+        let full = Self::splash_logo_rect(p);
+        let size = full.w * scale;
+        let logo = Rect::new(
+            full.x + (full.w - size) / 2.0,
+            full.y + (full.h - size) / 2.0,
+            size,
+            size,
+        );
         crate::logo::draw_mark(
             p.list,
             logo,

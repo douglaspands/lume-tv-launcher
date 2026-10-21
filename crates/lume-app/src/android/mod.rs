@@ -421,7 +421,9 @@ impl Runtime {
     fn prepare_wallpaper(&mut self) {
         if let Some(graphics) = self.graphics.as_mut() {
             if self.shell.app().in_splash() && !graphics.backend().has_wallpaper() {
-                graphics.backend().ensure_wallpaper();
+                graphics
+                    .backend()
+                    .ensure_wallpaper(self.shell.app().config.wallpaper);
             }
         }
     }

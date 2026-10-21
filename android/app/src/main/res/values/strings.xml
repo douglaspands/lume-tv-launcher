@@ -77,12 +77,24 @@
     <string name="about_third_party">Third-party licenses</string>
 
     <!-- Home screen editor -->
+    <string name="editor_wallpaper">Wallpaper</string>
+    <string name="editor_appearance">Appearance</string>
+    <string name="wallpaper_aurora">Aurora</string>
+    <string name="wallpaper_misty_forest">Misty Forest</string>
+    <string name="wallpaper_midnight_ocean">Midnight Ocean</string>
+    <string name="wallpaper_obsidian_canyon">Obsidian Canyon</string>
+    <string name="wallpaper_silk_wave">Silk Wave</string>
+    <string name="wallpaper_prismatic_topo">Dark Topography</string>
+    <string name="wallpaper_mirror_lake">Mirror Lake</string>
+    <string name="wallpaper_black_dunes">Black Dunes</string>
+    <string name="wallpaper_glacial_mist">Glacial Mist</string>
+    <string name="wallpaper_stardust_ether">Stardust Ether</string>
     <string name="editor_round_favorites">Round favorites</string>
     <string name="editor_breadcrumb_edit">Edit</string>
     <string name="editor_title">Edit home screen</string>
-    <string name="editor_instruction">Select an app and use the buttons to move it left or right, or to remove it. Add more apps below.</string>
     <string name="editor_done">Done</string>
-    <string name="editor_favorites_order">FAVORITE APPS · DISPLAY ORDER</string>
+    <string name="editor_favorites_order">Favorites</string>
+    <string name="editor_favorites_description">Choose the order of the apps on the dock. Select one and use the buttons to move it or remove it.</string>
     <string name="editor_use_arrows">Use the arrows to move</string>
     <string name="editor_add_app">Add app:</string>
     <plurals name="editor_limit_reached">

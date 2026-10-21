@@ -72,12 +72,25 @@
     <string name="about_third_party">Licencias de terceros</string>
 
     <!-- Editor de la pantalla de inicio -->
+    <!-- Home screen editor -->
+    <string name="editor_wallpaper">Fondo de pantalla</string>
+    <string name="editor_appearance">Apariencia</string>
+    <string name="wallpaper_aurora">Aurora</string>
+    <string name="wallpaper_misty_forest">Bosque Nocturno</string>
+    <string name="wallpaper_midnight_ocean">Olas de Medianoche</string>
+    <string name="wallpaper_obsidian_canyon">Cañón Estrellado</string>
+    <string name="wallpaper_silk_wave">Hilos Cósmicos</string>
+    <string name="wallpaper_prismatic_topo">Topografía Oscura</string>
+    <string name="wallpaper_mirror_lake">Lago Espejo</string>
+    <string name="wallpaper_black_dunes">Dunas Negras</string>
+    <string name="wallpaper_glacial_mist">Niebla Glacial</string>
+    <string name="wallpaper_stardust_ether">Éter y Polvo Estelar</string>
     <string name="editor_round_favorites">Favoritas redondas</string>
     <string name="editor_breadcrumb_edit">Editar</string>
     <string name="editor_title">Editar pantalla de inicio</string>
-    <string name="editor_instruction">Selecciona una app y usa los botones para moverla a la izquierda o a la derecha, o para quitarla. Añade más apps abajo.</string>
     <string name="editor_done">Listo</string>
-    <string name="editor_favorites_order">APPS FAVORITAS · ORDEN DE VISUALIZACIÓN</string>
+    <string name="editor_favorites_order">Favoritos</string>
+    <string name="editor_favorites_description">Define el orden de las apps en el dock. Selecciona una y usa los botones para moverla o quitarla.</string>
     <string name="editor_use_arrows">Usa las flechas para mover</string>
     <string name="editor_add_app">Añadir app:</string>
     <plurals name="editor_limit_reached">

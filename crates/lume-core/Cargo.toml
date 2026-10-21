@@ -11,6 +11,7 @@ lume-version = { path = "../lume-version" }
 glow = { version = "0.18", default-features = false }
 log = "0.4"
 memmap2 = "0.9"
+miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
 ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout"] }
 bytemuck = { version = "1", features = ["derive"] }
 fontdue = { version = "0.9", default-features = false, features = ["hashbrown"] }
@@ -18,3 +19,4 @@ fontdue = { version = "0.9", default-features = false, features = ["hashbrown"] 
 [build-dependencies]
 lume-css = { path = "../lume-css" }
 lume-strings = { path = "../lume-strings" }
+miniz_oxide = { version = "0.8" }
