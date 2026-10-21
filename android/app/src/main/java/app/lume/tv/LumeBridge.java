@@ -5,15 +5,18 @@ import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ChangedPackages;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PaintFlagsDrawFilter;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.drawable.AdaptiveIconDrawable;
@@ -25,6 +28,7 @@ import android.os.LocaleList;
 import android.os.StatFs;
 import android.provider.Settings;
 import android.text.format.DateFormat;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import java.io.BufferedReader;
 import java.io.File;
@@ -64,7 +68,7 @@ public final class LumeBridge {
     /** Changes when the drawing of a tile changes, so old files are not reused. */
     private static final String TILE_CACHE_VERSION = "v1";
     /** Same for the dock icons, which are drawn by other code. */
-    private static final String DOCK_CACHE_VERSION = "d2";
+    private static final String DOCK_CACHE_VERSION = "d5";
     private static boolean cachePruned;
 
     /** Sequence number of the last package change report; -1 before the first one. */
@@ -224,12 +228,15 @@ public final class LumeBridge {
      * mask (a circle on some devices) and leave transparent corners.
      */
     private static void drawWholeIcon(Canvas canvas, Drawable drawable, int size) {
+        canvas.setDrawFilter(new PaintFlagsDrawFilter(0, Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG));
+        drawable.setFilterBitmap(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && drawable instanceof AdaptiveIconDrawable) {
             AdaptiveIconDrawable adaptive = (AdaptiveIconDrawable) drawable;
             int layer = Math.round(size * ADAPTIVE_LAYER_RATIO);
             int offset = (layer - size) / 2;
             for (Drawable part : new Drawable[] {adaptive.getBackground(), adaptive.getForeground()}) {
                 if (part != null) {
+                    part.setFilterBitmap(true);
                     part.setBounds(-offset, -offset, size + offset, size + offset);
                     part.draw(canvas);
                 }
@@ -390,6 +397,34 @@ public final class LumeBridge {
     }
 
     private static Drawable loadIcon(PackageManager pm, ComponentName component, String packageName) {
+        // Prefer high density (DENSITY_XXHIGH / 480dpi) so dock icons (128x128) get sharp 144px+ assets
+        // even on low-density TVs (like 720p tvdpi/213dpi). Limited to two attempts before system fallback.
+        try {
+            ActivityInfo info = pm.getActivityInfo(component, 0);
+            int iconRes = info.getIconResource();
+            if (iconRes != 0) {
+                Resources res = pm.getResourcesForActivity(component);
+                Drawable d = res.getDrawableForDensity(iconRes, DisplayMetrics.DENSITY_XXHIGH, null);
+                if (d != null) {
+                    return d;
+                }
+            }
+        } catch (Exception ignored) {
+            // Limited attempt: fall through to next attempt
+        }
+        try {
+            ApplicationInfo appInfo = pm.getApplicationInfo(packageName, 0);
+            int iconRes = appInfo.icon;
+            if (iconRes != 0) {
+                Resources res = pm.getResourcesForApplication(packageName);
+                Drawable d = res.getDrawableForDensity(iconRes, DisplayMetrics.DENSITY_XXHIGH, null);
+                if (d != null) {
+                    return d;
+                }
+            }
+        } catch (Exception ignored) {
+            // Limited attempt: fall through to system fallback
+        }
         try {
             return pm.getActivityIcon(component);
         } catch (PackageManager.NameNotFoundException | RuntimeException e) {
