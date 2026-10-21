@@ -72,12 +72,25 @@
     <string name="about_third_party">Лицензии третьих сторон</string>
 
     <!-- Редактор главного экрана -->
+    <!-- Home screen editor -->
+    <string name="editor_wallpaper">Обои</string>
+    <string name="editor_appearance">Оформление</string>
+    <string name="wallpaper_aurora">Аврора</string>
+    <string name="wallpaper_misty_forest">Ночной лес</string>
+    <string name="wallpaper_midnight_ocean">Полуночные волны</string>
+    <string name="wallpaper_obsidian_canyon">Звёздный каньон</string>
+    <string name="wallpaper_silk_wave">Космические нити</string>
+    <string name="wallpaper_prismatic_topo">Тёмный рельеф</string>
+    <string name="wallpaper_mirror_lake">Зеркальное озеро</string>
+    <string name="wallpaper_black_dunes">Чёрные дюны</string>
+    <string name="wallpaper_glacial_mist">Ледяной туман</string>
+    <string name="wallpaper_stardust_ether">Эфир и звёздная пыль</string>
     <string name="editor_round_favorites">Круглые значки</string>
     <string name="editor_breadcrumb_edit">Изменить</string>
     <string name="editor_title">Изменить главный экран</string>
-    <string name="editor_instruction">Выберите приложение и кнопками переместите его влево или вправо либо удалите. Другие приложения можно добавить ниже.</string>
     <string name="editor_done">Готово</string>
-    <string name="editor_favorites_order">ИЗБРАННЫЕ ПРИЛОЖЕНИЯ · ПОРЯДОК</string>
+    <string name="editor_favorites_order">Избранное</string>
+    <string name="editor_favorites_description">Задайте порядок приложений в доке. Выберите одно и кнопками переместите или удалите его.</string>
     <string name="editor_use_arrows">Перемещайте стрелками</string>
     <string name="editor_add_app">Добавить:</string>
     <plurals name="editor_limit_reached">

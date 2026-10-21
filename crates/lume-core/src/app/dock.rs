@@ -408,11 +408,8 @@ impl LumeApp {
         let radius_ratio = self.dock_radius_ratio();
         let rect = ghost.rect.scaled_about_center(left);
         let radius = rect.w * radius_ratio;
-        p.list.fill(
-            rect,
-            radius,
-            Paint::Solid(fade(ghost.color, left)),
-        );
+        p.list
+            .fill(rect, radius, Paint::Solid(fade(ghost.color, left)));
         if let Some(uv) = ghost.package.as_deref().and_then(|p| self.icons.dock_uv(p)) {
             p.list
                 .image_rounded(rect, uv, fade(Color::WHITE, left), radius);
@@ -689,6 +686,7 @@ mod tests {
             crate::home::config::HomeConfig {
                 favorites: vec!["app1".into()],
                 round_favorites: false,
+                wallpaper: crate::wallpaper::WallpaperId::Aurora,
             },
             crate::i18n::Translator::new(&["en"]),
             crate::clock::WallClock {

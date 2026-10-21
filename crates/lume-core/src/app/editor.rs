@@ -2,7 +2,7 @@
 
 use super::page::{self, LEFT, WIDTH};
 use super::painter::{fade, Painter};
-use super::{Effect, LumeApp, PendingFocus, Screen, Tab};
+use super::{Anim, Effect, LumeApp, PendingFocus, Screen, Tab};
 use crate::home::config::{HomeConfig, MAX_FAVORITES};
 use crate::i18n::{Arg, PluralId, StringId};
 use crate::icons;
@@ -10,11 +10,12 @@ use crate::render::Rect;
 use crate::text::{Align, TextStyle};
 use crate::theme::{vars, Color, Paint, StateFlags, THEME};
 use crate::ui::focus::{FocusId, Focusable, Row};
+use crate::wallpaper::WallpaperId;
 use std::collections::HashMap;
 
-pub const DONE: FocusId = 4000;
 pub const RESTORE: FocusId = 4001;
 pub const ROUND_FAVORITES: FocusId = 4002;
+pub const WALLPAPER_BASE: FocusId = 4100;
 pub(super) const FAVORITE_BUTTON_BASE: FocusId = 4400;
 pub(super) const ADD_APP_BASE: FocusId = 4600;
 pub const CONFIRM_RESTORE: FocusId = 4900;
@@ -29,22 +30,28 @@ const CARD_WIDTH: f32 = 168.0;
 const CARD_NAME_HEIGHT: f32 = 56.0;
 const CARD_CONTROLS_HEIGHT: f32 = 60.0;
 const CARD_GAP: f32 = 16.0;
-/// Where the content starts: 32 below the subtitle at 152.
-const TOP: f32 = 184.0;
+/// Where the content starts: 36 below the title's baseline at 116 (no subtitle).
+const TOP: f32 = 152.0;
 const ROW_HEIGHT: f32 = 64.0;
 const ROW_GAP: f32 = 16.0;
+const WALLPAPER_CARD_WIDTH: f32 = 178.0;
+const WALLPAPER_CARD_HEIGHT: f32 = 100.0;
+const WALLPAPER_CARD_GAP: f32 = 16.0;
 const HEADING_GAP: f32 = 32.0;
+/// The line under the favorites heading that says what the panel does.
+const DESCRIPTION_HEIGHT: f32 = 48.0;
 const CARDS_TO_CHIPS_GAP: f32 = 20.0;
 const BOTTOM_PADDING: f32 = 120.0;
 const BUTTON_HEIGHT: f32 = 48.0;
-/// How far below the top of the panel the first line of cards reaches.
-const FIRST_CARDS_DEPTH: f32 = 200.0;
+/// How far below the top of the content the first line of cards reaches.
+const FIRST_CARDS_DEPTH: f32 = 540.0;
 const BUTTON_MIN_WIDTH: f32 = 160.0;
 /// Space between the favorites panel and the buttons under it.
 const BUTTONS_GAP: f32 = 24.0;
 
-/// The three buttons of the design system (see the `design-system` spec).
+/// The buttons of the design system (see the `design-system` spec).
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 enum ButtonKind {
     /// The action of the screen.
     Primary,
@@ -71,17 +78,22 @@ pub(super) struct EditorState {
     /// It was opened from the Home screen ("Add favorites"), not from the settings: Back goes
     /// home again instead of to the settings.
     pub from_home: bool,
+    /// Current rendered horizontal scroll offset for wallpaper mini-cards.
+    pub wallpaper_scroll_x: f32,
+    /// Target horizontal scroll offset for wallpaper mini-cards.
+    pub target_wallpaper_scroll_x: f32,
 }
 
 impl LumeApp {
     pub(super) fn open_editor(&mut self, from_home: bool) {
         self.screen = Screen::Editor;
+        let wp_idx = self.config.wallpaper.index() as FocusId;
         self.editor = EditorState {
             from_home,
             ..EditorState::default()
         };
         self.scroll_to_top();
-        self.pending_focus = Some(PendingFocus::Id(ROUND_FAVORITES));
+        self.pending_focus = Some(PendingFocus::Id(WALLPAPER_BASE + wp_idx));
         self.focus.set_rows(vec![]);
     }
 
@@ -124,46 +136,29 @@ impl LumeApp {
                     &t.get(StringId::SettingsHomeScreen),
                 ],
                 &t.get(StringId::SettingsHomeScreen),
-                Some(&t.get(StringId::EditorInstruction)),
+                None,
                 scroll_y,
             );
         }
 
-        let row_rect = Rect::new(LEFT, TOP, WIDTH, ROW_HEIGHT);
-        layout.rects.insert(ROUND_FAVORITES, row_rect);
-        layout
-            .rows
-            .push(Row::new(vec![Focusable::new(ROUND_FAVORITES, row_rect)]));
-        if draw && !self.editor.confirm {
-            self.draw_round_favorites_row(p, row_rect.translate(0.0, -scroll_y));
-        }
-
-        let panel_top = TOP + ROW_HEIGHT + ROW_GAP;
+        let wp_top = TOP;
+        let panel_top = self.wallpaper_section(p, &mut layout, wp_top, scroll_y, draw);
         let y = self.favorites_panel(p, &mut layout, panel_top, scroll_y, draw);
 
-        // "Restore defaults" at the left and "Done" at the right, on the line under the panel: at
-        // opposite sides, so one is never reached by accident on the way to the other. Down from
-        // the favorites lands on "Done".
+        // "Restore defaults" at the left, on the line under the panel. The "Done" button is
+        // removed: all changes persist immediately and Back is the standard Android TV exit.
         let y = y + BUTTONS_GAP;
-        let done_label = t.get(StringId::EditorDone).into_owned();
         let restore_label = t.get(StringId::EditorRestoreDefaults).into_owned();
         let button_style = p.style(&THEME.button, StateFlags::NONE);
         let width_of = |p: &mut Painter, label: &str| {
             (p.measure(label, &button_style) + 2.0 * 28.0).max(BUTTON_MIN_WIDTH)
         };
-        let done_width = width_of(p, &done_label);
         let restore_width = width_of(p, &restore_label);
-        let done = Rect::new(LEFT + WIDTH - done_width, y, done_width, BUTTON_HEIGHT);
         let restore = Rect::new(LEFT, y, restore_width, BUTTON_HEIGHT);
         layout.rects.insert(RESTORE, restore);
-        layout.rects.insert(DONE, done);
-        layout.rows.push(
-            Row::new(vec![
-                Focusable::new(RESTORE, restore),
-                Focusable::new(DONE, done),
-            ])
-            .with_entry_down(DONE),
-        );
+        layout
+            .rows
+            .push(Row::new(vec![Focusable::new(RESTORE, restore)]).with_entry_down(RESTORE));
         if draw && !self.editor.confirm {
             p.list.fill(
                 Rect::new(LEFT, y - 12.0 - scroll_y, WIDTH, 2.0),
@@ -176,13 +171,6 @@ impl LumeApp {
                 &restore_label,
                 RESTORE,
                 ButtonKind::Secondary,
-            );
-            self.draw_button(
-                p,
-                done.translate(0.0, -scroll_y),
-                &done_label,
-                DONE,
-                ButtonKind::Primary,
             );
         }
         layout.content_height = y + BUTTON_HEIGHT + BOTTOM_PADDING;
@@ -215,7 +203,9 @@ impl LumeApp {
         let card_lines = favorites.len().div_ceil(per_line);
 
         let heading_y = top + PANEL_PADDING_Y;
-        let cards_top = heading_y + HEADING_GAP;
+
+        // The heading, then a line saying what the panel is for, then the cards.
+        let cards_top = heading_y + HEADING_GAP + DESCRIPTION_HEIGHT;
         let mut y = cards_top;
         if card_lines > 0 {
             y += card_lines as f32 * card_height + (card_lines as f32 - 1.0) * CARD_GAP;
@@ -256,7 +246,7 @@ impl LumeApp {
         if draw {
             let style = p.style(&THEME.panel, StateFlags::NONE);
             p.draw_box(panel.translate(0.0, -scroll_y), &style);
-            let heading = t.get(StringId::EditorFavoritesOrder).into_owned();
+            let heading = t.get(StringId::EditorFavoritesOrder).to_uppercase();
             let heading_style = p.style(&THEME.card_heading, StateFlags::NONE);
             p.text.draw(
                 p.list,
@@ -265,6 +255,20 @@ impl LumeApp {
                 heading_y + 17.0 - scroll_y,
                 &Painter::text_style(&heading_style),
                 vars::PRIMARY,
+            );
+            let description = t.get(StringId::EditorFavoritesDescription).into_owned();
+            let description_style = TextStyle::new(16.0, 500);
+            let shown = p
+                .text
+                .ellipsize(&description, &description_style, inner_width)
+                .into_owned();
+            p.text.draw(
+                p.list,
+                &shown,
+                inner_left,
+                heading_y + HEADING_GAP + 20.0 - scroll_y,
+                &description_style,
+                vars::TEXT_MUTED,
             );
             let hint = t.get(StringId::EditorUseArrows).into_owned();
             let hint_style = TextStyle::new(16.0, 500);
@@ -380,16 +384,338 @@ impl LumeApp {
 
     // ---- drawing of the pieces --------------------------------------------------------------
 
+    /// Section displaying the 10 wallpapers as 178x100 mini-cards inside a panel with horizontal scrolling.
+    fn wallpaper_section(
+        &mut self,
+        p: &mut Painter,
+        layout: &mut Layout,
+        top: f32,
+        scroll_y: f32,
+        draw: bool,
+    ) -> f32 {
+        let t = self.translator;
+        let inner_left = LEFT + PANEL_PADDING_X;
+        let inner_width = WIDTH - 2.0 * PANEL_PADDING_X;
+
+        let heading_y = top + PANEL_PADDING_Y;
+        let cards_y = heading_y + HEADING_GAP;
+        // Under the wallpapers, a divider and the shape of the favorites.
+        let div_y = cards_y + WALLPAPER_CARD_HEIGHT + ROW_GAP + 8.0;
+        let round_y = div_y + ROW_GAP;
+        let round_rect = Rect::new(inner_left, round_y, inner_width, ROW_HEIGHT);
+        let panel_bottom = round_y + ROW_HEIGHT + PANEL_PADDING_Y;
+        let panel = Rect::new(LEFT, top, WIDTH, panel_bottom - top);
+
+        let focused_id = self.focus.current_id();
+        let card_step = WALLPAPER_CARD_WIDTH + WALLPAPER_CARD_GAP;
+        let max_scroll =
+            (WallpaperId::ALL.len() as f32 * card_step - WALLPAPER_CARD_GAP - inner_width).max(0.0);
+
+        let focused_wp_index = focused_id.and_then(|fid| {
+            if (WALLPAPER_BASE..WALLPAPER_BASE + WallpaperId::ALL.len() as FocusId).contains(&fid) {
+                Some((fid - WALLPAPER_BASE) as usize)
+            } else {
+                None
+            }
+        });
+
+        if let Some(index) = focused_wp_index {
+            let card_left = inner_left + index as f32 * card_step;
+            let card_right = card_left + WALLPAPER_CARD_WIDTH;
+
+            if card_right - self.editor.target_wallpaper_scroll_x > inner_left + inner_width {
+                self.editor.target_wallpaper_scroll_x = card_right - (inner_left + inner_width);
+            } else if card_left - self.editor.target_wallpaper_scroll_x < inner_left {
+                self.editor.target_wallpaper_scroll_x = card_left - inner_left;
+            }
+        }
+        self.editor.target_wallpaper_scroll_x =
+            self.editor.target_wallpaper_scroll_x.clamp(0.0, max_scroll);
+
+        let current_scroll = self.anim.get(
+            Anim::WallpaperScrollX,
+            self.editor.wallpaper_scroll_x,
+            self.now_ms,
+        );
+        if (current_scroll - self.editor.target_wallpaper_scroll_x).abs() > 0.5 {
+            self.anim.animate_to(
+                Anim::WallpaperScrollX,
+                current_scroll,
+                self.editor.target_wallpaper_scroll_x,
+                self.now_ms,
+                Some(vars::FOCUS_TIME),
+            );
+            self.editor.wallpaper_scroll_x = current_scroll;
+        } else {
+            self.editor.wallpaper_scroll_x = self.editor.target_wallpaper_scroll_x;
+        }
+
+        if draw && !self.editor.confirm {
+            let style = p.style(&THEME.panel, StateFlags::NONE);
+            p.draw_box(panel.translate(0.0, -scroll_y), &style);
+
+            let heading = t.get(StringId::EditorAppearance).to_uppercase();
+            let heading_style = p.style(&THEME.card_heading, StateFlags::NONE);
+            p.text.draw(
+                p.list,
+                &heading,
+                inner_left,
+                heading_y + 17.0 - scroll_y,
+                &Painter::text_style(&heading_style),
+                vars::PRIMARY,
+            );
+
+            let active_idx = focused_wp_index.unwrap_or_else(|| self.config.wallpaper.index());
+            let hint = if self.editor.wallpaper_scroll_x <= 4.0 {
+                format!("{} / 10  ›", active_idx + 1)
+            } else if self.editor.wallpaper_scroll_x >= max_scroll - 4.0 {
+                format!("‹  {} / 10", active_idx + 1)
+            } else {
+                format!("‹  {} / 10  ›", active_idx + 1)
+            };
+            let hint_style = TextStyle::new(16.0, 700);
+            let width = p.text.measure(&hint, &hint_style);
+            p.text.draw(
+                p.list,
+                &hint,
+                LEFT + WIDTH - PANEL_PADDING_X - width,
+                heading_y + 17.0 - scroll_y,
+                &hint_style,
+                vars::TEXT_MUTED,
+            );
+        }
+
+        let mut items = Vec::with_capacity(WallpaperId::ALL.len());
+        for (i, _) in WallpaperId::ALL.iter().enumerate() {
+            let card_id = WALLPAPER_BASE + i as FocusId;
+            let card_x = inner_left + i as f32 * card_step;
+            let card_rect = Rect::new(card_x, cards_y, WALLPAPER_CARD_WIDTH, WALLPAPER_CARD_HEIGHT);
+            layout.rects.insert(card_id, card_rect);
+            items.push(Focusable::new(card_id, card_rect));
+        }
+
+        layout
+            .rows
+            .push(Row::new(items).with_entry_down(ROUND_FAVORITES));
+        layout.rects.insert(ROUND_FAVORITES, round_rect);
+        layout.rows.push(
+            Row::new(vec![Focusable::new(ROUND_FAVORITES, round_rect)])
+                .with_entry_up(WALLPAPER_BASE + self.config.wallpaper.index() as FocusId)
+                .with_entry_down(FAVORITE_BUTTON_BASE),
+        );
+
+        if draw && !self.editor.confirm {
+            self.draw_round_favorites_row(p, round_rect.translate(0.0, -scroll_y));
+            p.list.fill(
+                Rect::new(inner_left, div_y - scroll_y, inner_width, 1.0),
+                0.5,
+                Paint::Solid(vars::SURFACE_ROW),
+            );
+            let visible_clip = Rect::new(
+                inner_left - 6.0,
+                cards_y - 8.0 - scroll_y,
+                inner_width + 12.0,
+                WALLPAPER_CARD_HEIGHT + 16.0,
+            );
+            p.list.push_clip(visible_clip);
+
+            for (i, &id) in WallpaperId::ALL.iter().enumerate() {
+                let card_id = WALLPAPER_BASE + i as FocusId;
+                let card_x = inner_left + i as f32 * card_step - self.editor.wallpaper_scroll_x;
+                let card_rect = Rect::new(
+                    card_x,
+                    cards_y - scroll_y,
+                    WALLPAPER_CARD_WIDTH,
+                    WALLPAPER_CARD_HEIGHT,
+                );
+
+                if card_rect.right() >= inner_left && card_rect.x <= inner_left + inner_width {
+                    self.draw_wallpaper_card(p, card_rect, id, card_id);
+                }
+            }
+
+            p.list.pop_clip();
+
+            if self.editor.wallpaper_scroll_x > 4.0 {
+                let left_edge =
+                    Rect::new(inner_left, cards_y - scroll_y, 48.0, WALLPAPER_CARD_HEIGHT);
+                let edge_scrim = Paint::Gradient(crate::theme::Gradient::new(
+                    270.0,
+                    &[
+                        crate::theme::GradientStop {
+                            color: Color {
+                                r: 18,
+                                g: 28,
+                                b: 37,
+                                a: 220,
+                            },
+                            position: 0.0,
+                        },
+                        crate::theme::GradientStop {
+                            color: Color::TRANSPARENT,
+                            position: 1.0,
+                        },
+                    ],
+                ));
+                p.list.fill(left_edge, 12.0, edge_scrim);
+                let chevron_rect = Rect::new(
+                    inner_left + 6.0,
+                    cards_y - scroll_y + (WALLPAPER_CARD_HEIGHT - 24.0) / 2.0,
+                    24.0,
+                    24.0,
+                );
+                p.icon(icons::CHEVRON_LEFT, chevron_rect, 20.0, vars::TEXT_MUTED);
+            }
+            if self.editor.wallpaper_scroll_x < max_scroll - 4.0 {
+                let right_edge = Rect::new(
+                    inner_left + inner_width - 48.0,
+                    cards_y - scroll_y,
+                    48.0,
+                    WALLPAPER_CARD_HEIGHT,
+                );
+                let edge_scrim = Paint::Gradient(crate::theme::Gradient::new(
+                    90.0,
+                    &[
+                        crate::theme::GradientStop {
+                            color: Color {
+                                r: 18,
+                                g: 28,
+                                b: 37,
+                                a: 220,
+                            },
+                            position: 0.0,
+                        },
+                        crate::theme::GradientStop {
+                            color: Color::TRANSPARENT,
+                            position: 1.0,
+                        },
+                    ],
+                ));
+                p.list.fill(right_edge, 12.0, edge_scrim);
+                let chevron_rect = Rect::new(
+                    inner_left + inner_width - 30.0,
+                    cards_y - scroll_y + (WALLPAPER_CARD_HEIGHT - 24.0) / 2.0,
+                    24.0,
+                    24.0,
+                );
+                p.icon(icons::CHEVRON_RIGHT, chevron_rect, 20.0, vars::TEXT_MUTED);
+            }
+        }
+
+        panel_bottom + BUTTONS_GAP
+    }
+
+    fn draw_wallpaper_card(
+        &mut self,
+        p: &mut Painter,
+        rect: Rect,
+        id: WallpaperId,
+        card_id: FocusId,
+    ) {
+        let is_focused = self.focus.current_id() == Some(card_id);
+        let is_active = self.config.wallpaper == id;
+
+        let target_rect = if is_focused {
+            rect.scaled_about_center(1.05)
+        } else {
+            rect
+        };
+
+        if is_focused {
+            p.list.shadow(
+                target_rect,
+                12.0,
+                Color {
+                    r: 0,
+                    g: 0,
+                    b: 0,
+                    a: 160,
+                },
+                16.0,
+            );
+        }
+
+        // Real thumbnail preview!
+        p.list.wallpaper_thumb(target_rect, id.thumb_uv(), 12.0);
+
+        // Scrim at the bottom for text legibility
+        let scrim_rect = Rect::new(
+            target_rect.x,
+            target_rect.bottom() - 36.0,
+            target_rect.w,
+            36.0,
+        );
+        let scrim_paint = Paint::Gradient(crate::theme::Gradient::new(
+            180.0,
+            &[
+                crate::theme::GradientStop {
+                    color: Color::TRANSPARENT,
+                    position: 0.0,
+                },
+                crate::theme::GradientStop {
+                    color: Color {
+                        r: 6,
+                        g: 10,
+                        b: 16,
+                        a: 220,
+                    },
+                    position: 1.0,
+                },
+            ],
+        ));
+        p.list.fill(scrim_rect, 12.0, scrim_paint);
+
+        // Outline / focus ring
+        if is_focused {
+            p.list.ring(target_rect, 12.0, 3.0, vars::PRIMARY);
+        } else if is_active {
+            p.list.ring(target_rect, 12.0, 2.0, vars::PRIMARY);
+        } else {
+            p.list.ring(target_rect, 12.0, 1.0, vars::CONTROL);
+        }
+
+        // Active indicator badge if currently selected
+        if is_active {
+            let badge_size = 18.0;
+            let badge_rect = Rect::new(
+                target_rect.right() - badge_size - 8.0,
+                target_rect.y + 8.0,
+                badge_size,
+                badge_size,
+            );
+            p.list.fill(badge_rect, 9.0, Paint::Solid(vars::PRIMARY));
+            let dot_rect = Rect::new(badge_rect.x + 5.0, badge_rect.y + 5.0, 8.0, 8.0);
+            p.list.fill(dot_rect, 4.0, Paint::Solid(Color::WHITE));
+        }
+
+        // Name label
+        let name = self.translator.get(id.title_string_id());
+        let label_style = if is_focused {
+            TextStyle::new(16.0, 700)
+        } else {
+            TextStyle::new(16.0, 500)
+        };
+        let label_color = if is_focused {
+            vars::TEXT
+        } else {
+            vars::TEXT_MUTED
+        };
+        let text_y = target_rect.bottom() - 12.0;
+        let text_x = target_rect.x + 12.0;
+        p.text
+            .draw(p.list, &name, text_x, text_y, &label_style, label_color);
+    }
+
     fn draw_round_favorites_row(&mut self, p: &mut Painter, rect: Rect) {
         let t = self.translator;
         let progress = self.focus_progress(ROUND_FAVORITES);
         let style = p.focus_style(&THEME.editor_row, progress);
         p.draw_box(rect, &style);
         let label = t.get(StringId::EditorRoundFavorites);
-        let text_rect = Rect::new(rect.x + 24.0, rect.y, rect.w - 24.0 - 48.0 - 24.0, rect.h);
+        let text_rect = Rect::new(rect.x + 16.0, rect.y, rect.w - 16.0 - 48.0 - 16.0, rect.h);
         p.text(&label, text_rect, Align::Start, &style);
 
-        let switch_x = rect.x + rect.w - 24.0 - 48.0;
+        let switch_x = rect.x + rect.w - 16.0 - 48.0;
         let switch_y = rect.y + (rect.h - 28.0) / 2.0;
         let switch_rect = Rect::new(switch_x, switch_y, 48.0, 28.0);
         let track_paint = if self.config.round_favorites {
@@ -675,7 +1001,6 @@ impl LumeApp {
                 self.config.round_favorites = !self.config.round_favorites;
                 return save;
             }
-            DONE => return self.finish_editing(),
             RESTORE => {
                 self.editor.confirm = true;
                 self.pending_focus = Some(PendingFocus::Id(CONFIRM_CANCEL));
@@ -693,6 +1018,15 @@ impl LumeApp {
                 return vec![];
             }
             _ => {}
+        }
+        if (WALLPAPER_BASE..WALLPAPER_BASE + WallpaperId::ALL.len() as FocusId).contains(&id) {
+            let index = (id - WALLPAPER_BASE) as usize;
+            let chosen = WallpaperId::ALL[index];
+            if self.config.wallpaper != chosen {
+                self.config.wallpaper = chosen;
+                return save;
+            }
+            return vec![];
         }
         if (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id) {
             let offset = id - FAVORITE_BUTTON_BASE;

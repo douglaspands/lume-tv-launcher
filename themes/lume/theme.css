@@ -63,12 +63,16 @@
      the screen behind it gets ready, then the reveal. The status band under it is kept empty for
      a future loading indicator. */
   --splash-logo: 128px;
-  --splash-logo-in: 120ms ease-out;
+  --splash-logo-in: 300ms ease-out;
+  /* How long the logo is held from the first frame before the reveal may start (a duration; the
+     curve is unused). */
+  --splash-hold-cold: 600ms linear;
+  --splash-hold-warm: 300ms linear;
   --splash-status-top: 32px;    /* from the logo's bottom edge */
   --splash-status-height: 24px;
-  --splash-reveal-cold: 300ms ease-out;
-  --splash-reveal-warm: 220ms ease-out;
-  --splash-rise: 24px;          /* the content comes up this much while it is revealed */
+  --splash-reveal-cold: 600ms linear;   /* linear: the stages below shape it */
+  --splash-reveal-warm: 360ms linear;
+  --splash-rise: 16px;          /* the content comes up this much while it is revealed */
   /* An icon that arrives once the interface is on screen fades in over the app's color and initial,
      instead of popping in. */
   --icon-in: 150ms ease-out;

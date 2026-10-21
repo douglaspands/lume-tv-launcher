@@ -780,6 +780,7 @@ dependencies = [
  "lume-strings",
  "lume-version",
  "memmap2",
+ "miniz_oxide 0.8.9",
  "ttf-parser",
 ]
 

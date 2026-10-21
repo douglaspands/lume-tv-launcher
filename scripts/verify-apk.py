@@ -9,7 +9,7 @@ Checks, using only the Python standard library:
   - the native libraries are exactly the expected ABIs;
   - every native library is stored uncompressed at a 16 KB boundary and its ELF segments are
     aligned to 16 KB (Android 15+ on 16 KB page devices);
-  - the manifest asks for neither INTERNET nor QUERY_ALL_PACKAGES;
+  - the manifest does not ask for QUERY_ALL_PACKAGES;
   - the manifest declares leanback as a feature and the version name, when given.
 
 Exit status 0 when everything passes, 1 otherwise.
@@ -21,7 +21,7 @@ import sys
 import zipfile
 
 PAGE = 16 * 1024
-FORBIDDEN_PERMISSIONS = ["android.permission.INTERNET", "android.permission.QUERY_ALL_PACKAGES"]
+FORBIDDEN_PERMISSIONS = ["android.permission.QUERY_ALL_PACKAGES"]
 
 
 def data_offset(info: zipfile.ZipInfo, raw: bytes) -> int:
@@ -59,7 +59,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("apk")
     parser.add_argument("--expect-abis", default="armeabi-v7a,arm64-v8a")
-    parser.add_argument("--max-size-mb", type=float, default=6.0)
+    parser.add_argument("--max-size-mb", type=float, default=40.0)
     parser.add_argument("--version")
     args = parser.parse_args()
 

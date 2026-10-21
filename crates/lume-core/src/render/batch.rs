@@ -36,6 +36,8 @@ pub enum Texture {
     Icons,
     /// The opaque RGB wallpaper.
     Wallpaper,
+    /// The RGBA atlas of wallpaper thumbnails.
+    WallpaperThumbs,
 }
 
 /// One draw call: `quad_count` quads of `program`, starting at `first_quad` in that
@@ -108,6 +110,7 @@ pub struct Frame {
     pub text_vertices: Vec<TexVertex>,
     pub image_vertices: Vec<TexVertex>,
     pub batches: Vec<Batch>,
+    pub wallpaper_id: Option<crate::wallpaper::WallpaperId>,
 }
 
 impl Frame {
@@ -117,7 +120,9 @@ impl Frame {
         for cmd in list.cmds() {
             builder.add(cmd);
         }
-        builder.frame
+        let mut frame = builder.frame;
+        frame.wallpaper_id = list.wallpaper_id();
+        frame
     }
 
     /// Whether any batch samples the wallpaper texture.
@@ -161,6 +166,9 @@ impl Builder {
             Cmd::Glyph(quad) => self.add_textured(Program::Text, Texture::Icons, quad),
             Cmd::Image(quad) => self.add_textured(Program::Image, Texture::Icons, quad),
             Cmd::Wallpaper(quad) => self.add_textured(Program::Image, Texture::Wallpaper, quad),
+            Cmd::WallpaperThumb(quad) => {
+                self.add_textured(Program::Image, Texture::WallpaperThumbs, quad)
+            }
         }
     }
 
@@ -445,6 +453,23 @@ mod tests {
         let mut icons = DisplayList::new();
         image_at(&mut icons, 0.0, false);
         assert!(!Frame::build(&icons).uses_wallpaper());
+    }
+
+    #[test]
+    fn frame_preserves_wallpaper_id() {
+        let mut list = DisplayList::new();
+        list.wallpaper_with_id(
+            Rect::new(0.0, 0.0, 100.0, 100.0),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            WHITE,
+            crate::wallpaper::WallpaperId::ObsidianCanyon,
+        );
+        let frame = Frame::build(&list);
+        assert!(frame.uses_wallpaper());
+        assert_eq!(
+            frame.wallpaper_id,
+            Some(crate::wallpaper::WallpaperId::ObsidianCanyon)
+        );
     }
 
     #[test]

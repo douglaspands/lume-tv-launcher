@@ -33,13 +33,18 @@ impl Painter<'_> {
     /// drawn at the remaining share, and the frame is cleared to `--bg`, so the premultiplied
     /// blend gives `image * (1 - dim) + bg * dim`.
     pub fn wallpaper(&mut self, dimmed: bool) {
-        self.wallpaper_at(dimmed, 1.0);
+        self.wallpaper_at(crate::wallpaper::WallpaperId::default(), dimmed, 1.0);
     }
 
     /// The wallpaper at `intensity` (0.0, only the `--bg` the frame is cleared to, to 1.0, as
     /// [`wallpaper`](Self::wallpaper) draws it): the splash reveals it this way, by the color it is
     /// drawn with and not with a layer over it.
-    pub fn wallpaper_at(&mut self, dimmed: bool, intensity: f32) {
+    pub fn wallpaper_at(
+        &mut self,
+        id: crate::wallpaper::WallpaperId,
+        dimmed: bool,
+        intensity: f32,
+    ) {
         let keep = if dimmed {
             1.0 - f32::from(TEXT_SCREEN_DIM.a) / 255.0
         } else {
@@ -49,12 +54,13 @@ impl Painter<'_> {
             return;
         }
         let visible = self.display.visible_rect();
-        let wallpaper = crate::wallpaper::current();
+        let wallpaper = id.wallpaper();
         let uv = cover_uv(
             wallpaper.width as f32 / wallpaper.height as f32,
             visible.w / visible.h,
         );
-        self.list.wallpaper(visible, uv, fade(Color::WHITE, keep));
+        self.list
+            .wallpaper_with_id(visible, uv, fade(Color::WHITE, keep), id);
         // The stars are drawn as points of 1 or 2 pixels of the render buffer, over the image, so
         // they stay as sharp as the interface on a 4K screen (which renders at 1080p).
         let pixel = 1.0 / self.display.scale;

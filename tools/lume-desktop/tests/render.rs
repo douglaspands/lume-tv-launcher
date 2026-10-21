@@ -405,14 +405,10 @@ fn the_wallpaper_texture_is_created_when_first_drawn_and_freed_with_the_context(
     let pixels = render(&mut rig, &list);
     assert!(rig.backend.has_wallpaper());
     let wallpaper = lume_core::wallpaper::current();
+    let rgb = wallpaper.decompress_rgb();
     let texel = |x: usize, y: usize| {
         let i = (y * wallpaper.width as usize + x) * 3;
-        [
-            wallpaper.rgb[i],
-            wallpaper.rgb[i + 1],
-            wallpaper.rgb[i + 2],
-            255,
-        ]
+        [rgb[i], rgb[i + 1], rgb[i + 2], 255]
     };
     // Sample the middle of a pixel and compare with the same spot of the source image; the linear
     // filter blurs a little, so the tolerance is loose, but it must be the wallpaper and not BG.

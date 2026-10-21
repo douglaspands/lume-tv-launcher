@@ -121,10 +121,11 @@ pub enum Screen {
 
 /// What is animated.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum Anim {
+pub(super) enum Anim {
     /// How focused an element is, 0.0 to 1.0.
     Focus(FocusId),
     ScrollY,
+    WallpaperScrollX,
     /// The place (fractional while it moves) of the dock icon that is magnified.
     DockPosition,
     /// How much the dock magnifies, 0.0 (the focus is elsewhere) to 1.0.
@@ -747,7 +748,11 @@ impl LumeApp {
             }
         }
         self.splash_frame_start(now_ms);
-        p.wallpaper_at(self.screen != Screen::Main(Tab::Home), self.reveal());
+        p.wallpaper_at(
+            self.config.wallpaper,
+            self.screen != Screen::Main(Tab::Home),
+            self.wallpaper_reveal(),
+        );
         self.content_start = p.list.len();
         self.bar_start = None;
         match self.screen {
