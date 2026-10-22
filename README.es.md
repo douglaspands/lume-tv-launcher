@@ -4,7 +4,7 @@
 
 [English](README.md) | [Português (Brasil)](README.pt-BR.md) | Español | [Bahasa Indonesia](README.id.md) | [Русский](README.ru.md)
 
-> **Estado:** Lume está en desarrollo. La versión actual es la **0.3.1**, publicada en la [página de Releases](https://github.com/douglaspands/lume-tv-launcher/releases). Los pasos de abajo muestran cómo instalarla.
+> **Estado:** Lume está en desarrollo. Consulta la [página de **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) para ver la versión más reciente y descargarla. Los pasos de abajo muestran cómo instalarla.
 
 <p align="center">
   <img src="docs/screenshots/home-es.jpg" alt="Pantalla de inicio con el dock" width="49%">
@@ -39,7 +39,7 @@ Enviarás la app desde el ordenador a la TV con una herramienta pequeña llamada
 ### 1. Descarga Lume
 
 1. Abre la [página **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) de este proyecto en GitHub.
-2. En la versión más reciente, descarga el archivo con un nombre parecido a **`lume-0.3.1.apk`**.
+2. En la versión más reciente, descarga el archivo con un nombre parecido a **`lume-<version>.apk`**.
 3. Anota dónde lo guardaste (por ejemplo, la carpeta Descargas).
 
 ### 2. Instala adb en el ordenador
@@ -86,7 +86,7 @@ adb devices
 Debes ver tu TV con la palabra `device` al lado. Ahora instala Lume (usa la ruta real del archivo que descargaste):
 
 ```
-adb install "C:\Users\Usuario\Downloads\lume-0.3.1.apk"
+adb install "C:\Users\Usuario\Downloads\lume-<version>.apk"
 ```
 
 Cuando veas `Success`, Lume está instalado.

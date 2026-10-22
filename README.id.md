@@ -4,7 +4,7 @@
 
 [English](README.md) | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md) | Bahasa Indonesia | [Русский](README.ru.md)
 
-> **Status:** Lume masih dalam pengembangan. Rilis saat ini adalah **versi 0.3.1**, tersedia di [halaman Releases](https://github.com/douglaspands/lume-tv-launcher/releases). Langkah-langkah di bawah menunjukkan cara memasangnya.
+> **Status:** Lume masih dalam pengembangan. Lihat [halaman **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) untuk versi terbaru dan unduhannya. Langkah-langkah di bawah menunjukkan cara memasangnya.
 
 <p align="center">
   <img src="docs/screenshots/home-id.jpg" alt="Layar Beranda dengan dock" width="49%">
@@ -39,7 +39,7 @@ Anda akan mengirim aplikasi dari komputer ke TV dengan alat kecil bernama **adb*
 ### 1. Unduh Lume
 
 1. Buka [halaman **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) proyek ini di GitHub.
-2. Di versi terbaru, unduh berkas dengan nama seperti **`lume-0.3.1.apk`**.
+2. Di versi terbaru, unduh berkas dengan nama seperti **`lume-<version>.apk`**.
 3. Ingat di mana Anda menyimpannya (misalnya folder Downloads).
 
 ### 2. Pasang adb di komputer
@@ -86,7 +86,7 @@ adb devices
 Anda akan melihat TV Anda dengan kata `device` di sebelahnya. Sekarang pasang Lume (gunakan lokasi sebenarnya dari berkas yang Anda unduh):
 
 ```
-adb install "C:\Users\Anda\Downloads\lume-0.3.1.apk"
+adb install "C:\Users\Anda\Downloads\lume-<version>.apk"
 ```
 
 Jika muncul `Success`, Lume sudah terpasang.

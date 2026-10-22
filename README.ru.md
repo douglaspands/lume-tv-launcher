@@ -4,7 +4,7 @@
 
 [English](README.md) | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | Русский
 
-> **Статус:** Lume находится в разработке. Текущий выпуск — **версия 0.3.1**, он опубликован на [странице Releases](https://github.com/douglaspands/lume-tv-launcher/releases). Ниже показано, как его установить.
+> **Статус:** Lume находится в разработке. Самую новую версию и её загрузку смотрите на [странице **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases). Ниже показано, как её установить.
 
 <p align="center">
   <img src="docs/screenshots/home-ru.jpg" alt="Главный экран с доком" width="49%">
@@ -39,7 +39,7 @@
 ### 1. Скачайте Lume
 
 1. Откройте [страницу **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) этого проекта на GitHub.
-2. В самой новой версии скачайте файл с именем вроде **`lume-0.3.1.apk`**.
+2. В самой новой версии скачайте файл с именем вроде **`lume-<version>.apk`**.
 3. Запомните, куда вы его сохранили (например, в папку «Загрузки»).
 
 ### 2. Установите adb на компьютер
@@ -86,7 +86,7 @@ adb devices
 Вы должны увидеть свой телевизор со словом `device` рядом. Теперь установите Lume (укажите настоящий путь к скачанному файлу):
 
 ```
-adb install "C:\Users\User\Downloads\lume-0.3.1.apk"
+adb install "C:\Users\User\Downloads\lume-<version>.apk"
 ```
 
 Когда появится `Success`, Lume установлен.
