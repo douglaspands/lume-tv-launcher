@@ -74,6 +74,10 @@ pub struct SystemFonts {
     candidates: Vec<FontCandidate>,
     /// Memory maps, opened lazily. `None` after a failed attempt.
     maps: Vec<Option<Option<Mmap>>>,
+    /// Cached codepoint coverage intervals `(start, end)` per candidate.
+    coverage: Vec<Option<Vec<(u32, u32)>>>,
+    /// Candidate indexes whose font face could not be parsed.
+    invalid: Vec<bool>,
     loaded: Vec<Font>,
     /// Candidate index -> index in `loaded`.
     loaded_for: HashMap<usize, usize>,
@@ -84,9 +88,13 @@ pub struct SystemFonts {
 impl SystemFonts {
     pub fn new(candidates: Vec<FontCandidate>) -> SystemFonts {
         let maps = candidates.iter().map(|_| None).collect();
+        let coverage = candidates.iter().map(|_| None).collect();
+        let invalid = vec![false; candidates.len()];
         SystemFonts {
             candidates,
             maps,
+            coverage,
+            invalid,
             loaded: Vec::new(),
             loaded_for: HashMap::new(),
             results: HashMap::new(),
@@ -132,14 +140,70 @@ impl SystemFonts {
 
     /// Whether the candidate's `cmap` has `c`, read straight from the mapping.
     fn covers(&mut self, candidate: usize, c: char) -> bool {
+        if self.invalid[candidate] {
+            return false;
+        }
+        if let Some(intervals) = &self.coverage[candidate] {
+            let cp = c as u32;
+            return intervals
+                .binary_search_by(|&(start, end)| {
+                    if cp < start {
+                        std::cmp::Ordering::Greater
+                    } else if cp > end {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                })
+                .is_ok();
+        }
+
         let index = self.candidates[candidate].index;
         let Some(map) = self.map(candidate) else {
             return false;
         };
-        ttf_parser::Face::parse(map, index)
-            .ok()
-            .and_then(|face| face.glyph_index(c))
-            .is_some()
+        let Ok(face) = ttf_parser::Face::parse(map, index) else {
+            self.invalid[candidate] = true;
+            return false;
+        };
+
+        let mut cps = Vec::new();
+        if let Some(cmap) = face.tables().cmap {
+            for sub in cmap.subtables {
+                if sub.is_unicode() {
+                    sub.codepoints(|cp| cps.push(cp));
+                }
+            }
+        }
+        cps.sort_unstable();
+        cps.dedup();
+
+        let mut intervals: Vec<(u32, u32)> = Vec::new();
+        for cp in cps {
+            if let Some(last) = intervals.last_mut() {
+                if last.1 + 1 == cp {
+                    last.1 = cp;
+                    continue;
+                }
+            }
+            intervals.push((cp, cp));
+        }
+
+        let cp = c as u32;
+        let covered = intervals
+            .binary_search_by(|&(start, end)| {
+                if cp < start {
+                    std::cmp::Ordering::Greater
+                } else if cp > end {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            })
+            .is_ok();
+
+        self.coverage[candidate] = Some(intervals);
+        covered
     }
 
     fn load(&mut self, candidate: usize) -> Option<usize> {
@@ -190,9 +254,9 @@ impl FallbackFonts for SystemFonts {
         self.loaded.clear();
         self.loaded_for.clear();
         self.results.clear();
-        for map in &mut self.maps {
-            *map = None;
-        }
+        self.maps.fill_with(|| None);
+        self.coverage.fill(None);
+        self.invalid.fill(false);
     }
 }
 

@@ -213,48 +213,98 @@ impl TextEngine {
         style: &TextStyle,
         max_width: f32,
     ) -> Cow<'a, str> {
-        if self.measure(text, style) <= max_width {
-            return Cow::Borrowed(text);
+        if text.is_empty() || max_width <= 0.0 {
+            return Cow::Borrowed("");
         }
-        let boundaries: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
-        let fits = |engine: &mut TextEngine, end: usize| {
-            let candidate = format!("{}{ELLIPSIS}", text[..end].trim_end());
-            engine.measure(&candidate, style) <= max_width
-        };
-        // Largest number of leading characters that still fits with the ellipsis.
-        let (mut low, mut high) = (0usize, boundaries.len());
-        while low < high {
-            let mid = (low + high).div_ceil(2);
-            if fits(self, boundaries[mid.min(boundaries.len() - 1)]) && mid < boundaries.len() {
-                low = mid;
-            } else {
-                high = mid - 1;
+
+        let px = style.size * self.scale;
+        let spacing = style.letter_spacing * self.scale;
+        let ellipsis_res = self.resolve(ELLIPSIS, style.weight);
+        let ellipsis_font = self.font(ellipsis_res.font);
+        let ellipsis_advance = ellipsis_font
+            .metrics_indexed(ellipsis_res.glyph, px)
+            .advance_width;
+        let ellipsis_w = (ellipsis_advance + spacing) / self.scale;
+
+        let mut pen = 0.0f32;
+        let mut previous: Option<Resolved> = None;
+        let mut best_end = 0usize;
+
+        let mut pen_at_trimmed = 0.0f32;
+        let mut last_non_ws_res: Option<Resolved> = None;
+        let mut last_non_ws_end = 0usize;
+
+        for (idx, ch) in text.char_indices() {
+            let resolved = self.resolve(ch, style.weight);
+            let font = self.font(resolved.font);
+            if let Some(prev) = previous.filter(|p| p.font == resolved.font) {
+                if let Some(kern) = font.horizontal_kern_indexed(prev.glyph, resolved.glyph, px) {
+                    pen += kern;
+                }
+            }
+            let advance = font.metrics_indexed(resolved.glyph, px).advance_width;
+            pen += advance + spacing;
+            previous = Some(resolved);
+
+            let char_end = idx + ch.len_utf8();
+            if !ch.is_whitespace() {
+                last_non_ws_end = char_end;
+                pen_at_trimmed = pen;
+                last_non_ws_res = Some(resolved);
+            }
+
+            if last_non_ws_end > 0 {
+                let mut cand_pen = pen_at_trimmed;
+                if let Some(prev) = last_non_ws_res.filter(|p| p.font == ellipsis_res.font) {
+                    let e_font = self.font(ellipsis_res.font);
+                    if let Some(kern) =
+                        e_font.horizontal_kern_indexed(prev.glyph, ellipsis_res.glyph, px)
+                    {
+                        cand_pen += kern;
+                    }
+                }
+                cand_pen += ellipsis_advance + spacing;
+                let cand_w = cand_pen / self.scale;
+                if cand_w <= max_width {
+                    best_end = last_non_ws_end;
+                }
             }
         }
-        let end = boundaries.get(low).copied().unwrap_or(text.len());
-        let shortened = format!("{}{ELLIPSIS}", text[..end].trim_end());
-        if self.measure(&shortened, style) <= max_width {
-            Cow::Owned(shortened)
-        } else {
+
+        let width = pen / self.scale;
+        if width <= max_width {
+            Cow::Borrowed(text)
+        } else if ellipsis_w > max_width {
             Cow::Borrowed("")
+        } else if best_end == 0 {
+            Cow::Borrowed("…")
+        } else {
+            Cow::Owned(format!("{}…", &text[..best_end]))
         }
     }
 
-    /// Draws `text` with its pen starting at `x` on the baseline `baseline_y` (logical px).
-    pub fn draw(
+    fn pen_positions_and_width(
+        &mut self,
+        text: &str,
+        style: &TextStyle,
+    ) -> (Vec<(GlyphKey, f32)>, f32) {
+        let mut quads = Vec::new();
+        let (pen, _) = self.pen_positions(text, style, |key, pen, _| quads.push((key, pen)));
+        let width = pen / self.scale;
+        (quads, width)
+    }
+
+    fn emit_quads(
         &mut self,
         list: &mut DisplayList,
-        text: &str,
+        quads: Vec<(GlyphKey, f32)>,
         x: f32,
         baseline_y: f32,
-        style: &TextStyle,
         color: Color,
     ) {
         let scale = self.scale;
         let origin = x * scale;
         let baseline = (baseline_y * scale).round();
-        let mut quads: Vec<(GlyphKey, f32)> = Vec::new();
-        self.pen_positions(text, style, |key, pen, _| quads.push((key, pen)));
         for (key, pen) in quads {
             let Some(entry) = self.glyph(key) else {
                 continue;
@@ -281,6 +331,20 @@ impl TextEngine {
         }
     }
 
+    /// Draws `text` with its pen starting at `x` on the baseline `baseline_y` (logical px).
+    pub fn draw(
+        &mut self,
+        list: &mut DisplayList,
+        text: &str,
+        x: f32,
+        baseline_y: f32,
+        style: &TextStyle,
+        color: Color,
+    ) {
+        let (quads, _) = self.pen_positions_and_width(text, style);
+        self.emit_quads(list, quads, x, baseline_y, color);
+    }
+
     /// Draws one line inside `rect`, ellipsized to its width, aligned horizontally
     /// and centered vertically on the capital letters.
     pub fn draw_line(
@@ -293,7 +357,7 @@ impl TextEngine {
         color: Color,
     ) {
         let text = self.ellipsize(text, style, rect.w);
-        let width = self.measure(&text, style);
+        let (quads, width) = self.pen_positions_and_width(&text, style);
         let x = match align {
             Align::Start => rect.x,
             Align::Center => rect.x + (rect.w - width) / 2.0,
@@ -301,7 +365,7 @@ impl TextEngine {
         };
         let metrics = self.metrics(style);
         let baseline = rect.center().1 + metrics.cap_height / 2.0;
-        self.draw(list, &text, x, baseline, style, color);
+        self.emit_quads(list, quads, x, baseline, color);
     }
 
     /// Draws an icon from the icon font with its bitmap centered in `rect`. `size` is the font
@@ -737,6 +801,31 @@ mod tests {
             .ellipsize("Configurações avançadas do sistema", &BODY, 150.0)
             .into_owned();
         assert!(out.ends_with('…') && engine.measure(&out, &BODY) <= 150.0);
+    }
+
+    #[test]
+    fn ellipsize_single_pass_matches_exact_boundaries() {
+        let mut engine = TextEngine::new(1.0);
+        let text = "Hello world";
+        let full_width = engine.measure(text, &BODY);
+
+        // Fits exactly -> Cow::Borrowed
+        let res = engine.ellipsize(text, &BODY, full_width);
+        assert!(matches!(res, Cow::Borrowed(_)));
+        assert_eq!(res, "Hello world");
+
+        // Long string truncated with ellipsis -> engine.measure <= max_width
+        let long = "Um Aplicativo Muito Longo Para Caber No Retângulo";
+        let res_long = engine.ellipsize(long, &BODY, 120.0);
+        assert!(engine.measure(&res_long, &BODY) <= 120.0);
+        assert!(res_long.ends_with('…'));
+
+        // Trailing whitespace before ellipsis is trimmed ("Hello world" -> "Hello…")
+        let hello_w = engine.measure("Hello", &BODY);
+        let ellipsis_w = engine.measure("…", &BODY);
+        let res_trimmed = engine.ellipsize("Hello world", &BODY, hello_w + ellipsis_w + 1.0);
+        assert_eq!(res_trimmed, "Hello…");
+        assert_ne!(res_trimmed, "Hello …");
     }
 
     #[test]
