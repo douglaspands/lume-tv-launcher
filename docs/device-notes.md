@@ -400,7 +400,7 @@ o resto da espera é o splash: o logo entra em 120 ms enquanto os ícones carreg
 
 10 papéis em 1920x1080, embutidos na biblioteca (APK de 35 MB, com as duas arquiteturas; cada uma carrega os papéis). Textura do papel ativo: 6,2 MB.
 
-| Medida (estável, 35 a 40 s depois de abrir) | TCL 55C715 (192.168.0.8) | AIWA (192.168.0.3) |
+| Medida (estável, 35 a 40 s depois de abrir) | TCL 55C715 | AIWA |
 |---|---|---|
 | TOTAL PSS | 21 MB | 50 MB (GL 18 MB); uma medida logo após instalar deu 62,7 MB |
 | Primeiro quadro (após a janela) | 96 ms | 105 ms |

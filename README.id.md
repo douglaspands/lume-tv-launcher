@@ -36,13 +36,45 @@
 
 Anda akan mengirim aplikasi dari komputer ke TV dengan alat kecil bernama **adb**. Ini hanya perlu dilakukan sekali.
 
-### 1. Unduh Lume
+### Yang Anda perlukan
 
-1. Buka [halaman **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) proyek ini di GitHub.
-2. Di versi terbaru, unduh berkas dengan nama seperti **`lume-<version>.apk`**.
+- TV dengan **Android TV 9 atau lebih baru**, di **jaringan yang sama dengan komputer Anda** (Wi-Fi atau kabel).
+- **adb** di komputer (Opsi 2 menunjukkan cara mendapatkannya).
+- **Debugging USB** (atau **debugging jaringan**) aktif di opsi pengembang TV.
+- **APK** Lume, dari repositori proyek: <https://github.com/douglaspands/lume-tv-launcher>.
+
+### Apa itu adb?
+
+**adb** (Android Debug Bridge) adalah alat baris perintah gratis dari Google. Alat ini berbicara dengan TV Anda lewat jaringan dan memasang aplikasi di sana dari komputer. Anda memerlukannya karena Lume tidak ada di toko aplikasi TV, jadi harus dikirim dari luar.
+
+### Opsi 1: dengan asisten AI
+
+Jika Anda memakai asisten AI yang bisa menjalankan perintah di komputer Anda (misalnya agen baris perintah), tempel prompt ini dan jawab pertanyaannya. Asisten akan meminta alamat IP TV dan konfirmasi Anda sebelum mengubah apa pun.
+
+```text
+Saya ingin memasang launcher Lume di Android TV saya memakai adb. Tolong lakukan untuk saya, langkah demi langkah, dan jawab dalam bahasa Indonesia.
+
+1. Periksa apakah adb sudah terpasang (`adb version`). Jika belum, jelaskan cara memasang SDK Platform-Tools dari Google untuk sistem saya dan tunggu saya.
+2. Unduh APK Lume terbaru dari https://github.com/douglaspands/lume-tv-launcher (lihat halaman Releases) ke sebuah folder dan beri tahu saya lokasinya.
+3. Tanyakan alamat IP TV (Pengaturan > Jaringan & Internet) dan minta saya memastikan debugging USB (atau jaringan) aktif di opsi pengembang. Jangan menebak alamatnya.
+4. Jalankan `adb connect <ip>:5555` lalu `adb devices`. Ingatkan saya untuk menerima pesan "Izinkan debugging USB?" di TV (Selalu izinkan), lalu jalankan kedua perintah lagi sampai TV saya tampil sebagai `device`.
+5. Jalankan `adb install <lokasi APK>` dan pastikan muncul `Success`.
+6. Jalankan `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity` agar Lume menjadi layar beranda.
+
+Jangan jalankan perintah lain yang mengubah TV (seperti `pm disable-user`) kecuali saya minta, dan tanyakan dulu sebelum menjalankan sesuatu yang tidak ada dalam daftar di atas.
+```
+
+### Opsi 2: manual
+
+Lakukan sendiri enam langkah di bawah ini.
+
+#### 1. Unduh Lume
+
+1. Buka halaman proyek di GitHub: <https://github.com/douglaspands/lume-tv-launcher>.
+2. Di *Releases*, unduh berkas **`.apk`** Lume.
 3. Ingat di mana Anda menyimpannya (misalnya folder Downloads).
 
-### 2. Pasang adb di komputer
+#### 2. Pasang adb di komputer
 
 1. Unduh **SDK Platform-Tools** dari Google untuk sistem Anda di <https://developer.android.com/tools/releases/platform-tools>.
 2. Ekstrak di folder yang mudah, misalnya `C:\platform-tools` di Windows atau `~/platform-tools` di macOS/Linux.
@@ -55,7 +87,7 @@ Untuk memeriksa, ketik `adb version` (di Windows) atau `./adb version` (di macOS
 
 > Di macOS dan Linux, tambahkan `./` di depan setiap perintah `adb` di bawah (misalnya `./adb devices`).
 
-### 3. Aktifkan debugging di TV
+#### 3. Aktifkan debugging di TV
 
 1. Di TV, buka **Setelan → Preferensi Perangkat → Tentang**.
 2. Pilih **Build** (atau *Build Android TV OS*) lalu tekan OK **7 kali** sampai muncul pesan bahwa Anda sudah menjadi developer.
@@ -64,12 +96,12 @@ Untuk memeriksa, ketik `adb version` (di Windows) atau `./adb version` (di macOS
 
 Nama menu sedikit berbeda antar merek TV.
 
-### 4. Cari alamat TV
+#### 4. Cari alamat TV
 
 Di TV buka **Setelan → Jaringan & Internet**, pilih koneksi Anda, lalu catat **alamat IP**-nya, misalnya `192.168.1.50`.
 (Beberapa TV juga menampilkannya di *Opsi developer*, di dekat sakelar debugging jaringan.)
 
-### 5. Hubungkan dan pasang
+#### 5. Hubungkan dan pasang
 
 Di terminal yang Anda buka pada langkah 2, ketik (ganti alamatnya dengan milik Anda):
 
@@ -86,12 +118,12 @@ adb devices
 Anda akan melihat TV Anda dengan kata `device` di sebelahnya. Sekarang pasang Lume (gunakan lokasi sebenarnya dari berkas yang Anda unduh):
 
 ```
-adb install "C:\Users\Anda\Downloads\lume-<version>.apk"
+adb install "C:\Users\Anda\Downloads\lume.apk"
 ```
 
 Jika muncul `Success`, Lume sudah terpasang.
 
-### 6. Jadikan Lume layar beranda Anda
+#### 6. Jadikan Lume layar beranda Anda
 
 1. Tekan tombol **Beranda** di remote. Android mungkin menanyakan aplikasi beranda mana yang dipakai: pilih **Lume** lalu **Selalu**.
 2. Jika tidak ada pertanyaan, atau Beranda masih membuka launcher lama, jalankan:
@@ -238,7 +270,7 @@ Terjemahan adalah berkas `strings.xml` standar Android di `android/app/src/main/
 
 ### Wallpaper
 
-Lume menggambar salah satu dari enam wallpaper di belakang setiap layar, semuanya dibuat oleh penulis proyek sebagai gambar 3840x2160 dan diperkecil ke Full HD saat build. Cara pemrosesannya, cara menambah atau mengganti satu wallpaper, dan tempat asal serta lisensinya dicatat: [`docs/wallpaper.md`](docs/wallpaper.md).
+Lume menggambar salah satu dari enam wallpaper di belakang setiap layar, semuanya gambar 3840x2160 (Unsplash License) dan diperkecil ke Full HD saat build. Cara pemrosesannya, cara menambah atau mengganti satu wallpaper, dan tempat asal serta lisensinya dicatat: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Kontribusi, lisensi, dan merek dagang
 

@@ -198,7 +198,7 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 
 #### Scenario: Tela Sobre
 - **WHEN** o usuário escolhe "Sobre o Lume"
-- **THEN** é exibida uma tela com a versão do build (a mesma do canto da tela "Configurações"), a licença (GPL-3.0-or-later), o endereço do código-fonte `https://github.com/douglaspands/lume-tv-launcher` e as licenças de terceiros (fonte, ícones e bibliotecas)
+- **THEN** é exibida uma tela com a versão do build (a mesma do canto da tela "Configurações"), a licença (GPL-3.0-or-later), o endereço do código-fonte `https://github.com/douglaspands/lume-tv-launcher` e as licenças de terceiros (fonte, ícones, papéis de parede e bibliotecas)
 
 ### Requirement: Nome do app com L maiúsculo
 O nome do app SHALL ser escrito "Lume" em todo texto que o usuário lê: o rótulo do app no sistema, a barra superior, o tile da grade, a tela Sobre e as telas de configurações, em todos os idiomas fornecidos. Identificadores técnicos (pacote, biblioteca nativa, tag de log) SHALL NOT mudar.

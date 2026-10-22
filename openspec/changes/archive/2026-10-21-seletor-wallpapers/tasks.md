@@ -33,7 +33,7 @@
 
 - [x] 6.1 Gerar os 10 papéis em 1920x1080 (Full HD) com dithering (`tools/wallpaper/aurora06.py`, `generate_wallpapers.py`), atualizar `crates/lume-core/build.rs` e `src/wallpaper/mod.rs` e ajustar a calibração do topo para o pico de luminância; verificar com `cargo test --workspace`
 - [x] 6.2 Subir os orçamentos (APK 40 MB, PSS 64 MB) em `scripts/verify-apk.py`, `CLAUDE.md` e no delta de `resource-efficiency`
-- [x] 6.3 Medir na TCL (192.168.0.8) e na AIWA: PSS por categoria, primeiro quadro, interface pronta e quadros de 33 ms ou mais; comparar visualmente os degradês em 4K e registrar em `docs/device-notes.md`
+- [x] 6.3 Medir na TCL e na AIWA: PSS por categoria, primeiro quadro, interface pronta e quadros de 33 ms ou mais; comparar visualmente os degradês em 4K e registrar em `docs/device-notes.md`
 - [x] 6.4 Splash: tempo mínimo do logo (`--splash-hold-cold` 600 ms, `--splash-hold-warm` 300 ms), entrada de 300 ms com escala, saída em 60% da revelação (600 ms a frio); atualizar `splash.rs` e os testes
 - [x] 6.5 Descrição no painel de favoritos do editor com espaço de 48 px até os cartões
 

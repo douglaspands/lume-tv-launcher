@@ -36,13 +36,45 @@ English | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md) | [B
 
 You will send the app to the TV from your computer with a small tool called **adb**. You only do this once.
 
-### 1. Download Lume
+### What you need
 
-1. Open the [**Releases** page](https://github.com/douglaspands/lume-tv-launcher/releases) of this project on GitHub.
-2. Under the newest version, download the file named like **`lume-<version>.apk`**.
+- A TV with **Android TV 9 or newer**, on the **same network as your computer** (Wi-Fi or cable).
+- **adb** on your computer (Option 2 shows how to get it).
+- **USB debugging** (or **Network debugging**) turned on in the TV's developer options.
+- The Lume **APK**, from the project's repository: <https://github.com/douglaspands/lume-tv-launcher>.
+
+### What is adb?
+
+**adb** (Android Debug Bridge) is a free command-line tool from Google. It talks to your TV over the network and installs apps on it from your computer. You need it because Lume is not in the TV's app store, so it has to be sent from outside.
+
+### Option 1: with an AI assistant
+
+If you use an AI assistant that can run commands on your computer (for example a command-line agent), paste this prompt and answer its questions. It asks for your TV's IP address and for your confirmation before changing anything.
+
+```text
+I want to install the Lume launcher on my Android TV using adb. Please do it for me, step by step, and answer in English.
+
+1. Check that adb is installed (`adb version`). If it is not, tell me how to install Google's SDK Platform-Tools for my system and wait for me.
+2. Download the latest Lume APK from https://github.com/douglaspands/lume-tv-launcher (see the Releases page) to a folder and tell me the path.
+3. Ask me for the TV's IP address (Settings > Network & Internet) and ask me to confirm that USB debugging (or network debugging) is on in the developer options. Do not guess the address.
+4. Run `adb connect <ip>:5555` and then `adb devices`. Remind me to accept the "Allow USB debugging?" prompt on the TV (Always allow), then run both commands again until my TV is listed as `device`.
+5. Run `adb install <path to the APK>` and confirm it printed `Success`.
+6. Run `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity` to make Lume the home screen.
+
+Do not run any other command that changes the TV (such as `pm disable-user`) unless I ask, and ask me before running anything not listed above.
+```
+
+### Option 2: manually
+
+Do the six steps below yourself.
+
+#### 1. Download Lume
+
+1. Open the project page on GitHub: <https://github.com/douglaspands/lume-tv-launcher>.
+2. Under *Releases*, download the Lume **`.apk`** file.
 3. Remember where you saved it (for example, your Downloads folder).
 
-### 2. Get adb on your computer
+#### 2. Get adb on your computer
 
 1. Download Google's **SDK Platform-Tools** for your system from <https://developer.android.com/tools/releases/platform-tools>.
 2. Unzip it somewhere easy, for example `C:\platform-tools` on Windows or `~/platform-tools` on macOS/Linux.
@@ -55,7 +87,7 @@ To check that it works, type `adb version` (on Windows) or `./adb version` (on m
 
 > On macOS and Linux put `./` in front of every `adb` command below (for example `./adb devices`).
 
-### 3. Turn on debugging on the TV
+#### 3. Turn on debugging on the TV
 
 1. On the TV, open **Settings → Device Preferences → About**.
 2. Select **Build** (or *Android TV OS build*) and press OK **7 times** until it says you are a developer.
@@ -64,12 +96,12 @@ To check that it works, type `adb version` (on Windows) or `./adb version` (on m
 
 The exact menu names change a little between TV brands.
 
-### 4. Find the TV's address
+#### 4. Find the TV's address
 
 On the TV open **Settings → Network & Internet**, select your connection and write down the **IP address**, something like `192.168.1.50`.
 (Some TVs also show it under *Developer options* next to the network debugging switch.)
 
-### 5. Connect and install
+#### 5. Connect and install
 
 In the terminal you opened in step 2, type (replace the address with yours):
 
@@ -86,12 +118,12 @@ adb devices
 You should see your TV with the word `device` next to it. Now install Lume (use the real path of the file you downloaded):
 
 ```
-adb install "C:\Users\You\Downloads\lume-<version>.apk"
+adb install "C:\Users\You\Downloads\lume.apk"
 ```
 
 When you see `Success`, Lume is installed.
 
-### 6. Make Lume your home screen
+#### 6. Make Lume your home screen
 
 1. Press the **Home** button on your remote. Android may ask which home app to use: choose **Lume** and **Always**.
 2. If nothing was asked, or Home still opens the old launcher, run:
@@ -238,7 +270,7 @@ Translations are standard Android `strings.xml` files in `android/app/src/main/r
 
 ### Wallpaper
 
-Lume draws one of six wallpapers behind every screen, all made by the project's author as 3840x2160 images and reduced to Full HD at build time. How they are processed, how to add or replace one and where their origin and license are recorded: [`docs/wallpaper.md`](docs/wallpaper.md).
+Lume draws one of six wallpapers behind every screen, 3840x2160 images (Unsplash License), reduced to Full HD at build time. How they are processed, how to add or replace one and where their origin and license are recorded: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contributing, license and trademarks
 

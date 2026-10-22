@@ -18,9 +18,8 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 
 ## Estado
 
-v0.2.0, v0.2.1, a versão do build e a `escala-tipografica` (escala de texto de 6 níveis, barra superior, régua de layout para todas as
-telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. `seletor-wallpapers` (10 papéis em Full HD, seletor e descrição na tela Início, splash com tempo mínimo do logo, limites de APK 40 MB e PSS 64 MB) arquivada em `openspec/changes/archive/2026-10-21-seletor-wallpapers`, na branch `feat/seletor-wallpapers`. A tag `v0.3.0` sai depois do merge. `wallpapers-full-hd` (6 papéis 4K em QOI nos `assets/`, redução na GPU, cache, favoritos redondos por padrão, README em 5 idiomas) arquivada em `openspec/changes/archive/2026-10-22-wallpapers-full-hd`, na branch `feat/wallpapers-full-hd` (PR #15). Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
-Pendências conhecidas, que dependem do autor: destino dos masters 4K dos papéis de parede (60 MB em `tools/wallpaper/masters/`, sem Git LFS; próxima change: verificar se `generate_4k_all_options.py`, `build_all_4k.py` e `build_opcao_d.py` os reproduzem byte a byte e, se sim, tirar os PNGs do repositório e gerá-los sob demanda, senão migrar para Git LFS ou aceitar o peso); assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
+A `main` está na versão da última tag (`git tag`); o histórico das changes mescladas fica em `openspec/changes/archive/`. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
+Pendências conhecidas, que dependem do autor: masters 4K em Git LFS (change `masters-no-lfs`; o histórico antigo guarda os 60 MB como blobs, decisão de não reescrevê-lo); assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
 imagem `system-images;android-28;android-tv;x86`, para validar o Android 9, tarefa 5.3 da `v0-2-1`, encerrada sem essa validação e deixada para uma spec futura de testes) e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
@@ -35,6 +34,7 @@ commit (`-dirty` se há mudança rastreada não commitada; `dev` sem git) e `ver
 ## Como trabalhar aqui
 
 - **Uma branch por change OpenSpec**: logo após `openspec new change "<nome>"`, `git checkout -b feat/<nome>`.
+- **Git LFS nos masters**: `tools/wallpaper/masters/*.png` são objetos LFS (`.gitattributes`); rode `git lfs install` uma vez. Clone sem `git-lfs` traz ponteiros de texto nesses PNGs: o build, os testes e a CI não os leem (a CI não usa `lfs: true`, para poupar banda), mas `generate_wallpapers.py` precisa dos PNGs reais (`git lfs pull`).
 - **Não commitar sem o autor pedir.** Quando pedir, commits por tema; o fechamento é `/opsx:archive` e merge **squash** na `main`.
 - **Tela Sobre ao fim de cada change**: a última tarefa de toda change revisa a tela Sobre (Configurações do Lume › Sobre o Lume)
   e a atualiza se a change trouxe algo novo: componente de terceiros (crate, fonte, ícones), licença, endereço do repositório
@@ -77,7 +77,7 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 - **Construção 100% Rust.** Java só quando a funcionalidade não tem como ser feita sem consumir ou usar um recurso
   do Java (API do Android sem equivalente no NDK). Antes de escrever ou mudar qualquer Java, pergunte ao autor no chat,
   explicando por que o Rust não resolve; sem o sim dele, não entra Java.
-- Papel de parede: 6 papéis em 3840x2160 produzidos pelo autor com scripts procedurais do projeto (`tools/wallpaper/`, masters em `tools/wallpaper/masters/`); a Aurora é o padrão; nenhuma foto de terceiros.
+- Papel de parede: 6 papéis em 3840x2160 (masters em `tools/wallpaper/masters/`), baixados, não gerados pelos scripts; licença Unsplash License segundo o autor, com autores e URLs desconhecidos (ver `docs/wallpaper.md`); a Aurora é o padrão.
 - Tela Início: só o dock (até 12 favoritos, Magnification), com favoritos redondos por padrão. Sem carrossel nem seções.
 - Abas: mover o foco para uma aba troca a tela sem OK, com fade de 180 ms. Sublinhado azul com o foco na barra, branco com o foco no conteúdo.
 - Cores por papel (`--primary` azul `#4DB3FF`, `--secondary`); todo contorno de foco é azul primário; o nome do app em foco fica branco.
@@ -102,5 +102,4 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 ## Orçamentos (spec `resource-efficiency`)
 
 PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD; hoje 21,6 MB, com uma cópia de cada papel em `assets/`); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
-até 300 ms; o laço não pede quadros parado além do relógio. Última medida (v0.2.0): 17 a 20 MB e 12,2 MB de PSS, APK de 3,15 MB, 0 a 1% de
-quadros perdidos, abertura a frio de 373 ms.
+até 300 ms; o laço não pede quadros parado além do relógio. Última medida (2026-10-21, `docs/device-notes.md`): TCL com 14,7 MB de PSS em primeiro plano e 16,9 MB em segundo, APK de 21,6 MB, 0 de 454 quadros perdidos no dock e 1,5% na grade (7 de 459), primeiro quadro a frio em 89 a 98 ms.
