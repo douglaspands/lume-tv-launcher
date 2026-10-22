@@ -7,7 +7,7 @@
 //! Lifecycle: **active** (the window is on screen: the text engine and its glyph atlas exist)
 //! and **dormant** (another app is in front: only the small data lives on, a few kilobytes).
 
-pub mod keys;
+pub use crate::keys;
 pub mod protocol;
 
 use crate::app::{Effect, Key, LumeApp, Painter};
@@ -25,6 +25,7 @@ use std::time::Duration;
 const CONFIG_FILE: &str = "config.v1";
 const CATALOG_FILE: &str = "catalog.v1";
 const USAGE_FILE: &str = "usage.v1";
+const KEYS_FILE: &str = "keys.v1";
 
 /// How many times a frame is built again when the glyph atlas was rebuilt in the middle of it.
 const MAX_FRAME_PASSES: usize = 4;
@@ -79,7 +80,8 @@ impl Shell {
         config.remove_uninstalled(&catalog);
 
         let preferred: Vec<&str> = locales.iter().map(String::as_str).collect();
-        let app = LumeApp::new(catalog, usage, config, Translator::new(&preferred), clock);
+        let mut app = LumeApp::new(catalog, usage, config, Translator::new(&preferred), clock);
+        app.keys = crate::keys::KeyMap::load_or_heal(&files.join(KEYS_FILE));
         Shell {
             app,
             files: files.to_path_buf(),
@@ -257,6 +259,9 @@ impl Shell {
                     self.app.usage.save(&self.files.join(USAGE_FILE)),
                     USAGE_FILE,
                 ),
+                Effect::SaveKeys => {
+                    save_log(self.app.keys.save(&self.files.join(KEYS_FILE)), KEYS_FILE)
+                }
                 other => platform.push(other),
             }
         }
@@ -571,7 +576,7 @@ mod tests {
         assert_eq!(scans, 1);
         assert_eq!(shell.app().catalog.len(), 3, "lume itself is not listed");
         assert!(!shell.app().catalog.contains(OWN));
-        for file in [CONFIG_FILE, CATALOG_FILE, USAGE_FILE] {
+        for file in [CONFIG_FILE, CATALOG_FILE, USAGE_FILE, KEYS_FILE] {
             assert!(dir.join(file).exists(), "{file} was not created");
         }
         assert_eq!(shell.app().config.favorites, [NETFLIX, YOUTUBE]);
@@ -994,5 +999,63 @@ mod tests {
             drawn >= 5,
             "only {drawn} frames of the animation were drawn"
         );
+    }
+
+    #[test]
+    fn shell_start_creates_keys_file_and_recreates_on_clean_data() {
+        let dir = dir("keys_first_run");
+        let keys_path = dir.join(KEYS_FILE);
+        assert!(!keys_path.exists());
+
+        let shell = start(&dir);
+        assert!(keys_path.exists());
+        assert!(shell.app().keys.is_all_default());
+
+        // Simulate "Clear data" in Android settings by deleting keys.v1
+        std::fs::remove_file(&keys_path).unwrap();
+        assert!(!keys_path.exists());
+
+        let shell2 = start(&dir);
+        assert!(keys_path.exists());
+        assert!(shell2.app().keys.is_all_default());
+    }
+
+    #[test]
+    fn shell_start_respects_custom_keys_and_heals_corrupt_file() {
+        let dir = dir("keys_custom");
+        let keys_path = dir.join(KEYS_FILE);
+        let custom = "lume=1\nup=19\ndown=20\nleft=21\nright=22\nok=23,66,160,96\nback=4,111,97\nhome=3\nmenu=165\n#end\n";
+        std::fs::write(&keys_path, custom).unwrap();
+
+        let shell = start(&dir);
+        assert_eq!(shell.app().keys.codes(Key::Menu), &[165]);
+        assert_eq!(shell.app().keys.from_android(165), Some(Key::Menu));
+
+        // Corrupt keys.v1
+        std::fs::write(&keys_path, "lume=1\nmenu=165\n").unwrap(); // missing #end
+        let shell2 = start(&dir);
+        assert!(shell2.app().keys.is_all_default());
+        let healed = std::fs::read_to_string(&keys_path).unwrap();
+        assert!(healed.ends_with("#end\n"));
+    }
+
+    #[test]
+    fn effect_save_keys_persists_changes() {
+        let dir = dir("keys_save_effect");
+        let mut shell = start(&dir);
+        assert!(shell.app().keys.is_all_default());
+
+        // Modify keys
+        shell.app_mut_for_test().keys.set(Key::Menu, vec![165]);
+        assert_eq!(shell.app().keys.codes(Key::Menu), &[165]);
+
+        // Process SaveKeys effect through shell.finish
+        let remaining = shell.finish(vec![Effect::SaveKeys]);
+        assert!(remaining.is_empty(), "SaveKeys handled by shell");
+
+        // Verify keys.v1 has updated mapping
+        let reloaded = crate::keys::KeyMap::load_or_heal(&dir.join(KEYS_FILE));
+        assert_eq!(reloaded.codes(Key::Menu), &[165]);
+        assert_eq!(reloaded.from_android(165), Some(Key::Menu));
     }
 }

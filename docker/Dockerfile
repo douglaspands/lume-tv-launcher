@@ -68,12 +68,16 @@ RUN --mount=type=cache,target=/opt/cargo/registry \
     --mount=type=secret,id=lume_store_password,required=false \
     --mount=type=secret,id=lume_key_alias,required=false \
     --mount=type=secret,id=lume_key_password,required=false \
+    --mount=type=secret,id=lume_keys_file,required=false \
     set -e; \
     if [ -f /run/secrets/lume_keystore ]; then \
         export LUME_KEYSTORE=/run/secrets/lume_keystore; \
         export LUME_KEYSTORE_PASSWORD="$(cat /run/secrets/lume_store_password)"; \
         export LUME_KEY_ALIAS="$(cat /run/secrets/lume_key_alias)"; \
         export LUME_KEY_PASSWORD="$(cat /run/secrets/lume_key_password)"; \
+    fi; \
+    if [ -f /run/secrets/lume_keys_file ]; then \
+        export LUME_KEYS_FILE=/run/secrets/lume_keys_file; \
     fi; \
     # The project's sources must look newer than anything in the cached target directory: with a
     # container clock ahead of the host's, cargo took fresh edits for already compiled code.

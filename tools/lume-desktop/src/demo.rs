@@ -189,18 +189,13 @@ pub fn synthetic_icons(app: &mut LumeApp) -> Vec<([u32; 4], Vec<u8>)> {
 pub fn parse_keys(text: &str) -> Result<Vec<Key>, String> {
     text.split(',')
         .filter(|name| !name.trim().is_empty())
-        .map(|name| match name.trim().to_ascii_lowercase().as_str() {
-            "up" => Ok(Key::Up),
-            "down" => Ok(Key::Down),
-            "left" => Ok(Key::Left),
-            "right" => Ok(Key::Right),
-            "ok" | "enter" => Ok(Key::Ok),
-            "back" => Ok(Key::Back),
-            "home" => Ok(Key::Home),
-            "menu" => Ok(Key::Menu),
-            other => Err(format!(
-                "unknown key '{other}' (use up, down, left, right, ok, back, home, menu)"
-            )),
+        .map(|name| {
+            Key::parse_name(name).ok_or_else(|| {
+                format!(
+                    "unknown key '{}' (use up, down, left, right, ok, back, home, menu)",
+                    name.trim()
+                )
+            })
         })
         .collect()
 }

@@ -106,6 +106,13 @@ elif [[ "$variant" == "release" ]]; then
   echo "note: LUME_KEYSTORE is not set, so the release is signed with the debug key (do not publish it)"
 fi
 
+if [[ -n "${LUME_KEYS_FILE:-}" ]]; then
+  [[ -f "$LUME_KEYS_FILE" ]] || { echo "error: $LUME_KEYS_FILE does not exist" >&2; exit 1; }
+  secrets+=(
+    --secret "id=lume_keys_file,src=$(path_for_runtime "$(realpath "$LUME_KEYS_FILE")")"
+  )
+fi
+
 # wslc cannot export a directory, only a tar file; the same works for docker buildx and podman.
 "${runtime_cmd[@]}" build \
   --progress plain \
