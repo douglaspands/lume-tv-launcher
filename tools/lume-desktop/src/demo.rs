@@ -1,6 +1,7 @@
 //! The demonstration data the harness runs with: apps of the design mockup and a fixed clock.
 
 use lume_core::app::{Key, LumeApp};
+use lume_core::app_icons::Art;
 use lume_core::catalog::color::ICON_SIZE;
 use lume_core::catalog::{Catalog, Discovered};
 use lume_core::clock::WallClock;
@@ -150,6 +151,38 @@ pub fn feed_stats(app: &mut LumeApp, now_ms: u64) {
             now_ms,
         );
     }
+}
+
+/// The color of every synthetic banner: a light yellow no app here has, so a ring of the tile
+/// color around it shows in a capture.
+pub const SYNTHETIC_BANNER: u32 = 0xF0D060;
+
+/// Stand-ins for the pictures the platform fetches, which the desktop cannot read: a solid banner
+/// for every app tile and an opaque white icon for every favorite. Reserves their cells and
+/// returns each region (`[x, y, width, height]`) with its premultiplied RGBA pixels.
+pub fn synthetic_icons(app: &mut LumeApp) -> Vec<([u32; 4], Vec<u8>)> {
+    let solid = |region: [u32; 4], rgb: u32| {
+        let pixel = [(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, 0xFF];
+        (region, pixel.repeat((region[2] * region[3]) as usize))
+    };
+    let packages: Vec<String> = app
+        .catalog
+        .apps()
+        .iter()
+        .map(|a| a.package.clone())
+        .collect();
+    let mut uploads = Vec::new();
+    for package in &packages {
+        if let Some(region) = app.icons.reserve(package, Art::Banner) {
+            uploads.push(solid(region, SYNTHETIC_BANNER));
+        }
+    }
+    for package in app.config.favorites.clone() {
+        if let Some(region) = app.icons.reserve_dock(&package) {
+            uploads.push(solid(region, 0xFFFFFF));
+        }
+    }
+    uploads
 }
 
 /// Parses names such as `down`, `right` and `ok`.

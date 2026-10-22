@@ -104,3 +104,61 @@ fn stars_are_sharp_points_of_the_render_buffer_at_720p_and_1080p() {
         );
     }
 }
+
+/// The dimmed wallpaper of the text screens, rendered as it is and without its dither.
+fn dimmed_with_and_without_dither(width: u32, height: u32) -> Option<(Vec<u8>, Vec<u8>)> {
+    let mut session = match screenshot::Session::new(width, height) {
+        Ok(session) => session,
+        Err(e) if e.contains("EGL") || e.contains("GL context") => {
+            eprintln!("skipped: {e}");
+            return None;
+        }
+        Err(e) => panic!("{e}"),
+    };
+    session.build(|scene| {
+        let mut painter = Painter {
+            list: scene.list,
+            text: scene.text,
+            display: *scene.display,
+        };
+        painter.wallpaper(true);
+    });
+    let dithered = session.render();
+    session.set_wallpaper_dither(false);
+    let plain = session.render();
+    session.finish();
+    Some((dithered, plain))
+}
+
+#[test]
+fn the_dither_breaks_the_bands_without_changing_the_average_color() {
+    for (width, height) in [(1280, 720), (1920, 1080)] {
+        let Some((dithered, plain)) = dimmed_with_and_without_dither(width, height) else {
+            return;
+        };
+        assert_ne!(
+            dithered, plain,
+            "{width}x{height}: the wallpaper is dithered"
+        );
+        let mut worst = 0.0f64;
+        for top in (0..height - 15).step_by(16) {
+            for left in (0..width - 15).step_by(16) {
+                for c in 0..3 {
+                    let (mut a, mut b) = (0u32, 0u32);
+                    for y in top..top + 16 {
+                        for x in left..left + 16 {
+                            let i = ((y * width + x) * 4) as usize + c;
+                            a += u32::from(dithered[i]);
+                            b += u32::from(plain[i]);
+                        }
+                    }
+                    worst = worst.max((f64::from(a) - f64::from(b)).abs() / 256.0);
+                }
+            }
+        }
+        assert!(
+            worst <= 1.0,
+            "{width}x{height}: a 16x16 region changed {worst:.2}/255 on average"
+        );
+    }
+}
