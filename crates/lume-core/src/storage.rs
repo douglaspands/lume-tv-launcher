@@ -32,6 +32,12 @@ impl Kv {
         Kv::default()
     }
 
+    pub fn with_capacity(capacity: usize) -> Kv {
+        Kv {
+            entries: Vec::with_capacity(capacity),
+        }
+    }
+
     /// Sets `key`, replacing an earlier value. Keys use letters, digits, `.`, `_` and `-`.
     pub fn set(&mut self, key: &str, value: impl Into<String>) {
         assert!(valid_key(key), "invalid key {key:?}");
@@ -171,7 +177,7 @@ pub fn decode(text: &str, expected_version: u32) -> Result<Kv, StorageError> {
     if version != expected_version {
         return Err(StorageError::UnknownVersion(version));
     }
-    let mut kv = Kv::new();
+    let mut kv = Kv::with_capacity(text.lines().count().saturating_sub(2));
     let mut complete = false;
     for (index, line) in lines.enumerate() {
         let number = index + 2;

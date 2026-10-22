@@ -7,6 +7,8 @@ pub mod normalize;
 use crate::storage::{self, Kv, StorageError};
 use crate::theme::{vars, Color};
 use known::KnownApp;
+use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 /// Version of the `catalog.v1` file format.
@@ -107,12 +109,19 @@ impl Catalog {
     }
 
     fn choose_activities(entries: &[Discovered]) -> Vec<&Discovered> {
-        let mut chosen: Vec<&Discovered> = Vec::new();
+        let mut chosen: Vec<&Discovered> = Vec::with_capacity(entries.len());
+        let mut index_by_package: HashMap<&str, usize> = HashMap::with_capacity(entries.len());
         for entry in entries {
-            match chosen.iter_mut().find(|c| c.package == entry.package) {
-                Some(existing) if entry.leanback && !existing.leanback => *existing = entry,
-                Some(_) => {}
-                None => chosen.push(entry),
+            match index_by_package.get(entry.package.as_str()) {
+                Some(&pos) => {
+                    if entry.leanback && !chosen[pos].leanback {
+                        chosen[pos] = entry;
+                    }
+                }
+                None => {
+                    index_by_package.insert(entry.package.as_str(), chosen.len());
+                    chosen.push(entry);
+                }
             }
         }
         chosen
@@ -183,15 +192,20 @@ impl Catalog {
     pub fn replace_with(&mut self, entries: &[Discovered]) -> Changes {
         let fresh = Catalog::from_discovered(entries, &self.own_package);
         let mut changes = Changes::default();
+        let old_by_pkg: HashMap<&str, &App> =
+            self.apps.iter().map(|a| (a.package.as_str(), a)).collect();
+        let fresh_by_pkg: HashMap<&str, &App> =
+            fresh.apps.iter().map(|a| (a.package.as_str(), a)).collect();
+
         for old in &self.apps {
-            match fresh.get(&old.package) {
+            match fresh_by_pkg.get(old.package.as_str()) {
                 None => changes.removed.push(old.package.clone()),
-                Some(new) if new != old => changes.updated.push(old.package.clone()),
+                Some(new) if *new != old => changes.updated.push(old.package.clone()),
                 Some(_) => {}
             }
         }
         for new in &fresh.apps {
-            if !self.contains(&new.package) {
+            if !old_by_pkg.contains_key(new.package.as_str()) {
                 changes.added.push(new.package.clone());
             }
         }
@@ -200,17 +214,28 @@ impl Catalog {
     }
 
     fn to_kv(&self) -> Kv {
-        let mut kv = Kv::new();
+        let mut kv = Kv::with_capacity(1 + self.apps.len() * 5);
         kv.set("count", self.apps.len().to_string());
+        let mut key_buf = String::with_capacity(32);
         for (i, app) in self.apps.iter().enumerate() {
-            kv.set(&format!("a{i}.package"), app.package.as_str());
-            kv.set(&format!("a{i}.label"), app.label.as_str());
-            kv.set(&format!("a{i}.activity"), app.activity.as_str());
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.package");
+            kv.set(&key_buf, app.package.as_str());
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.label");
+            kv.set(&key_buf, app.label.as_str());
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.activity");
+            kv.set(&key_buf, app.activity.as_str());
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.color");
             kv.set(
-                &format!("a{i}.color"),
+                &key_buf,
                 format!("{:02x}{:02x}{:02x}", app.color.r, app.color.g, app.color.b),
             );
-            kv.set(&format!("a{i}.system"), if app.system { "1" } else { "0" });
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.system");
+            kv.set(&key_buf, if app.system { "1" } else { "0" });
         }
         kv
     }
@@ -218,21 +243,37 @@ impl Catalog {
     fn from_kv(kv: &Kv, own_package: &str) -> Option<Catalog> {
         let count: usize = kv.parse("count")?;
         let mut catalog = Catalog::new(own_package);
+        catalog.apps.reserve(count);
+        let mut key_buf = String::with_capacity(32);
         for i in 0..count {
-            let hex = kv.get(&format!("a{i}.color"))?;
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.color");
+            let hex = kv.get(&key_buf)?;
             let rgb = u32::from_str_radix(hex, 16)
                 .ok()
                 .filter(|_| hex.len() == 6)?;
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.package");
+            let package = kv.get(&key_buf)?.to_string();
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.label");
+            let label = kv.get(&key_buf)?.to_string();
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.activity");
+            let activity = kv.get(&key_buf)?.to_string();
+            key_buf.clear();
+            let _ = write!(key_buf, "a{i}.system");
+            let system = match kv.get(&key_buf)? {
+                "1" => true,
+                "0" => false,
+                _ => return None,
+            };
             catalog.apps.push(App {
-                package: kv.get(&format!("a{i}.package"))?.to_string(),
-                label: kv.get(&format!("a{i}.label"))?.to_string(),
-                activity: kv.get(&format!("a{i}.activity"))?.to_string(),
+                package,
+                label,
+                activity,
                 color: Color::rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8),
-                system: match kv.get(&format!("a{i}.system"))? {
-                    "1" => true,
-                    "0" => false,
-                    _ => return None,
-                },
+                system,
             });
         }
         catalog.apps.retain(|a| a.package != own_package);
