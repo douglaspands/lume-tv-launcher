@@ -522,3 +522,43 @@ do `am start -W` não serve (ver acima).
 - A TCL desenha o editor a 33 ms por quadro mesmo só movendo o foco, também no build da base: não vem da mudança.
 - A AIWA (`low_ram`) já passava de 20 MB em segundo plano na base (41 a 44 MB); fica fora do orçamento de 20 MB, que vale para a TCL.
 - Retorno a quente: sem mudança além da medida (um novo quadro depois da janela em 87 a 103 ms na AIWA e 87 a 92 ms na TCL).
+
+## Tuning de performance na TV: perfil CPU/GPU, culling, batching e memória (2026-10-22)
+
+Medições realizadas durante a change `tuning-performance-tv` (benchmark automatizado `perf_benchmark.rs` em `crates/lume-core/tests/perf_benchmark.rs`), comparando o baseline da `main` (`opt-level = "z"`, alocações por quadro e renderização sem culling vertical) contra a implementação otimizada (`opt-level = 3`, flags Cortex-A53 para ARM, culling de viewport, passo único em elipsização de texto, batching de draw calls, cache de licenças e short-circuit no carregamento de ícones).
+
+### Resultados Comparativos (Antes vs. Depois)
+
+| Operação | Antes (Baseline) | Depois (Tuning) | Ganho (*Speedup*) | Redução de Tempo / Recursos |
+|---|---|---|---|---|
+| `TextEngine::ellipsize` (100 chamadas com corte de palavra) | 412.40 µs | **119.99 µs** | **3.44x mais rápido** | -70.9% |
+| Quadro da Grade de Apps (48 apps, viewport 1080p) | 312.72 µs | **115.36 µs** | **2.71x mais rápido** | -63.1% |
+| Batches GPU na Grade de Apps | 8 batches | **7 batches** | **-1 batch** | -12.5% |
+| Quadro do Editor (`Screen::Editor`, cartões e seções) | 300.82 µs | **130.52 µs** | **2.31x mais rápido** | -56.6% |
+| Quadro da tela Sobre (`Screen::About`, 343 linhas de licença) | 578.87 µs | **88.95 µs** | **6.51x mais rápido** | -84.6% |
+| `Shell::icons_wanted(1)` (1.000 chamadas sequenciais) | 1185.10 µs | **60.46 µs** | **19.60x mais rápido** | -94.9% |
+
+### Principais Otimizações Implementadas
+
+1. **Texto e Tipografia**:
+   - `TextEngine::ellipsize`: passo único sem alocação dinâmica de `String` intermediária por iteração; busca do corte e elipsização em tempo linear.
+   - `TextEngine::pen_positions_and_width`: cálculo conjunto de posições de glifos e largura de linha evitando re-medição redundante em `draw_line` e `draw`.
+   - `SystemFonts`: cache de busca de intervalos de codepoints e registro de falhas de parse de fonte em tabela estática de faces.
+
+2. **Culling de Viewport e Batching de Telas**:
+   - **Grade de Apps**: `apps_viewport_culling` descarta linhas inteiras de aplicativos situadas acima ou abaixo da janela visível. Reordenação da emissão de primitivas agrupando caixas de fundo e logo no 1º loop e textos no 3º loop, garantindo exatamente 1 batch contíguo de texto para a grade de apps e reduzindo a fragmentação de comandos da GPU.
+   - **Editor e Configurações**: Culling de cartões, seções e chips fora da janela visível no editor; emissão de animações restrita a frames de desenho ativo (`draw == true`).
+   - **Licenças na tela Sobre**: Linhas de texto cacheadas via `OnceLock` estático, eliminando alocações repetidas de `split('\n')` a cada quadro de renderização.
+
+3. **Backend OpenGL ES 2.0 e Upload de Papel de Parede**:
+   - Reutilização de vertex buffer estático compartilhado em `reduce_wallpaper`, eliminando geração e destruição de VBOs a cada chamada.
+   - Reutilização de buffer de vértices em `Renderer::render` usando `glBufferSubData` quando a capacidade atual suporta o tamanho do lote, mitigando realocações de memória na GPU.
+   - Cache de `uniform locations` no `ShaderProgram` para a redução de wallpaper.
+   - Upload do papel de parede particionado em fatias de 90 linhas (`WALLPAPER_UPLOAD_ROWS = 90`), completando o envio de imagens 1080p em 12 quadros sucessivos para eliminar engasgos na TV.
+   - `read_pixels`: Inversão de linhas verticais in-place (`flip_rows_in_place`), eliminando buffer heap intermediário.
+
+4. **Gerenciador de Ícones e Catálogo**:
+   - `AppIcons`: Reciclagem e reuso de slots no atlas de texturas através de pilha `free_slots`, permitindo atualizar ícones sem recriar o atlas e evitando vazamento de capacidade.
+   - `Shell::icons_wanted`: Filtro com dedup de pacotes e interrupção antecipada (`.take(limit)`) assim que a cota solicitada for atendida, reduzindo o tempo de resolução de 1.18 ms para 0.06 ms.
+   - `Catalog`: Busca por pacote em $O(N)$ usando mapa de posições pré-computado em `choose_activities`, serialização/desserialização de pares chave-valor com reutilização de buffers sem alocações temporárias.
+
