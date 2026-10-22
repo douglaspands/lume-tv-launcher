@@ -13,7 +13,8 @@
 - [x] 2.3 Converter os arquivos atuais sem reescrever o histórico: `git lfs migrate import --no-rewrite --include="tools/wallpaper/masters/*.png"`; conferir com `git lfs ls-files` (6 arquivos) e `git status`
 - [x] 2.4 Confirmar que `.github/workflows/*.yml` não precisa de `lfs: true` (`cargo test --workspace` e `scripts/container-build.sh release` não leem os masters)
 - [x] 2.5 Documentar o LFS em `docs/wallpaper.md` (substituir "check Git LFS with the author before committing") e no "Como trabalhar aqui" de `CLAUDE.md`, incluindo o aviso sobre clone sem `git-lfs`
-- [ ] 2.6 Após o push, conferir no GitHub que os masters aparecem como "Stored with Git LFS" e que a CI passa
+- [x] 2.6 Após o push, conferir no GitHub que os masters aparecem como "Stored with Git LFS" e que a CI passa
+  - Conferido na PR #16: masters servidos por `media.githubusercontent.com` (LFS) e checks `rust`, `android`, `licenses` e `cla` verdes.
 
 ## 3. Limpeza de CLAUDE.md e device-notes
 
