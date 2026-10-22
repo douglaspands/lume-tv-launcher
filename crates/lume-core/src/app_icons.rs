@@ -91,11 +91,21 @@ pub enum Art {
 pub struct AppIcons {
     layout: AtlasLayout,
     slots: HashMap<String, (usize, Art)>,
+    free_slots: Vec<usize>,
     /// Who holds each dock cell.
     dock: [Option<String>; DOCK_CAPACITY],
 }
 
 impl AppIcons {
+    /// Number of app tiles currently holding an atlas slot.
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
     /// The sizes of the texture and its cells.
     pub fn layout(&self) -> AtlasLayout {
         self.layout
@@ -132,9 +142,19 @@ impl AppIcons {
         if !self.has_room() {
             return None;
         }
-        let slot = self.slots.len();
+        let slot = self.free_slots.pop().unwrap_or(self.slots.len());
         self.slots.insert(package.to_string(), (slot, art));
         Some(self.region(slot))
+    }
+
+    /// Removes an app from the atlas, making its slot available for reuse.
+    pub fn remove(&mut self, package: &str) -> bool {
+        if let Some((slot, _)) = self.slots.remove(package) {
+            self.free_slots.push(slot);
+            true
+        } else {
+            false
+        }
     }
 
     /// The cell of `package`, by number.
@@ -195,6 +215,7 @@ impl AppIcons {
     /// Forgets every cell: the texture is gone.
     pub fn clear(&mut self) {
         self.slots.clear();
+        self.free_slots.clear();
         self.dock = Default::default();
     }
 
@@ -242,6 +263,42 @@ mod tests {
 
     fn cell() -> [u32; 2] {
         AtlasLayout::default().cell
+    }
+
+    #[test]
+    fn removed_slots_are_reused_before_hitting_capacity() {
+        let mut icons = AppIcons::default();
+        for i in 0..CAPACITY {
+            let pkg = format!("com.pkg{i}");
+            assert!(icons.reserve(&pkg, Art::Banner).is_some());
+        }
+        assert_eq!(icons.len(), CAPACITY);
+        assert!(!icons.has_room());
+        assert!(icons.reserve("com.overflow", Art::Banner).is_none());
+
+        // Remove 2 packages
+        assert!(icons.remove("com.pkg0"));
+        assert!(icons.remove("com.pkg1"));
+        assert_eq!(icons.len(), CAPACITY - 2);
+        assert!(icons.has_room());
+
+        // Insert 2 new packages
+        let r1 = icons.reserve("com.new0", Art::Banner);
+        let r2 = icons.reserve("com.new1", Art::Banner);
+        assert!(r1.is_some());
+        assert!(r2.is_some());
+        assert_eq!(icons.len(), CAPACITY);
+        assert_ne!(icons.slot("com.new0"), icons.slot("com.new1"));
+
+        // Verify no collision with still-active packages
+        let s0 = icons.slot("com.new0").unwrap();
+        let s1 = icons.slot("com.new1").unwrap();
+        for i in 2..CAPACITY {
+            let pkg = format!("com.pkg{i}");
+            let s = icons.slot(&pkg).unwrap();
+            assert_ne!(s0, s);
+            assert_ne!(s1, s);
+        }
     }
 
     #[test]

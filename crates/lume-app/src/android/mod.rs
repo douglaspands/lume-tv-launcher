@@ -66,7 +66,7 @@ pub extern "system" fn Java_app_lume_tv_LumeActivity_nativeHomePressed(
 }
 
 /// Icons fetched per call, so keys are still answered while they load.
-const ICONS_PER_TURN: usize = 1;
+const ICONS_PER_TURN: usize = 8;
 /// How long a turn of the loop may load icons: while the splash waits for them (nothing moves and
 /// nobody sees them come), with the interface at rest (one frame, so a key is not kept waiting),
 /// and while a faint fade runs (the splash logo or an icon coming in: a slice of a frame).
@@ -491,7 +491,7 @@ impl Runtime {
         };
         let start = Instant::now();
         loop {
-            self.load_icons();
+            self.load_icons(start, budget);
             let time_left = self.shell.splash_time_left(self.now_ms());
             if !self.icons_pending
                 || start.elapsed() >= budget
@@ -503,7 +503,7 @@ impl Runtime {
     }
 
     /// Fetches the next few missing icons and uploads them to the icon texture.
-    fn load_icons(&mut self) {
+    fn load_icons(&mut self, started: Instant, budget: Duration) {
         let now = self.now_ms();
         let Some(graphics) = self.graphics.as_mut() else {
             self.icons_pending = false;
@@ -516,6 +516,9 @@ impl Runtime {
             .shell
             .dock_icons_wanted(&self.dock_failed, ICONS_PER_TURN);
         for (package, activity) in &dock {
+            if started.elapsed() >= budget {
+                break;
+            }
             let fetch = Instant::now();
             let pixels = self.bridge.dock_icon(package, activity, layout.dock_cell);
             self.icon_times.fetched(fetch.elapsed());
@@ -544,6 +547,9 @@ impl Runtime {
         }
         let wanted = self.shell.icons_wanted(&self.icons_failed, ICONS_PER_TURN);
         for (package, activity) in &wanted {
+            if started.elapsed() >= budget {
+                break;
+            }
             let fetch = Instant::now();
             let art = self
                 .bridge

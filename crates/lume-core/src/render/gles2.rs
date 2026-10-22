@@ -32,7 +32,7 @@ struct WallpaperUpload {
 }
 
 /// Rows of the wallpaper sent to the GPU per frame while it replaces another one (about 2 ms on the TV).
-const WALLPAPER_UPLOAD_ROWS: u32 = 40;
+const WALLPAPER_UPLOAD_ROWS: u32 = 90;
 
 struct ShaderProgram {
     program: glow::Program,
@@ -40,6 +40,8 @@ struct ShaderProgram {
     u_surface: Option<glow::UniformLocation>,
     u_texture: Option<glow::UniformLocation>,
     u_bayer: Option<glow::UniformLocation>,
+    u_step: Option<glow::UniformLocation>,
+    u_dest: Option<glow::UniformLocation>,
 }
 
 #[derive(Clone, Copy)]
@@ -58,8 +60,10 @@ pub struct Gles2Backend {
     reduce_program: ShaderProgram,
     rect_vbo: glow::Buffer,
     tex_vbo: glow::Buffer,
+    reduce_vbo: glow::Buffer,
     index_buffer: glow::Buffer,
     index_quads: u32,
+    tex_staging: Vec<TexVertex>,
     atlas: Option<Texture>,
     image: Option<Texture>,
     /// The wallpaper, created the first time a frame draws it and freed with everything else.
@@ -120,6 +124,15 @@ impl Gles2Backend {
             let reduce_program = link(&gl, REDUCE_VERTEX, REDUCE_FRAGMENT, &["a_pos"])?;
             let rect_vbo = gl.create_buffer()?;
             let tex_vbo = gl.create_buffer()?;
+            let reduce_vbo = gl.create_buffer()?;
+            let quad: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(reduce_vbo));
+            gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&quad),
+                glow::STATIC_DRAW,
+            );
+            gl.bind_buffer(glow::ARRAY_BUFFER, None);
             let index_buffer = gl.create_buffer()?;
             Ok(Gles2Backend {
                 gl,
@@ -130,8 +143,10 @@ impl Gles2Backend {
                 reduce_program,
                 rect_vbo,
                 tex_vbo,
+                reduce_vbo,
                 index_buffer,
                 index_quads: 0,
+                tex_staging: Vec::new(),
                 atlas: None,
                 image: None,
                 wallpaper: None,
@@ -583,30 +598,18 @@ impl Gles2Backend {
             }
             // A quarter of the footprint of a destination pixel, in source texture coordinates.
             let step = [0.25 / cover.0 as f32, 0.25 / cover.1 as f32];
+            gl.uniform_2_f32(self.reduce_program.u_step.as_ref(), step[0], step[1]);
             gl.uniform_2_f32(
-                gl.get_uniform_location(program.program, "u_step").as_ref(),
-                step[0],
-                step[1],
-            );
-            gl.uniform_2_f32(
-                gl.get_uniform_location(program.program, "u_dest").as_ref(),
+                self.reduce_program.u_dest.as_ref(),
                 cover.0 as f32,
                 cover.1 as f32,
             );
-            let quad: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
-            let vbo = gl.create_buffer().expect("cannot create the quad buffer");
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-            gl.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&quad),
-                glow::STREAM_DRAW,
-            );
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.reduce_vbo));
             gl.enable_vertex_attrib_array(0);
             gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
             gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
             gl.disable_vertex_attrib_array(0);
             gl.bind_buffer(glow::ARRAY_BUFFER, None);
-            gl.delete_buffer(vbo);
         }
         gl.bind_framebuffer(
             glow::FRAMEBUFFER,
@@ -777,7 +780,8 @@ impl Gles2Backend {
             );
         }
         let stride = (width * 4) as usize;
-        bottom_up.chunks(stride).rev().flatten().copied().collect()
+        flip_rows_in_place(&mut bottom_up, stride);
+        bottom_up
     }
 
     /// Releases every GL object. The context itself belongs to the host.
@@ -793,7 +797,12 @@ impl Gles2Backend {
             ] {
                 self.gl.delete_program(program.program);
             }
-            for buffer in [self.rect_vbo, self.tex_vbo, self.index_buffer] {
+            for buffer in [
+                self.rect_vbo,
+                self.tex_vbo,
+                self.reduce_vbo,
+                self.index_buffer,
+            ] {
                 self.gl.delete_buffer(buffer);
             }
             for texture in [
@@ -918,14 +927,15 @@ impl Backend for Gles2Backend {
                 glow::STREAM_DRAW,
             );
             // Text and image quads share one buffer: text first, then images.
-            let mut tex_data: Vec<TexVertex> =
-                Vec::with_capacity(frame.text_vertices.len() + frame.image_vertices.len());
-            tex_data.extend_from_slice(&frame.text_vertices);
-            tex_data.extend_from_slice(&frame.image_vertices);
+            self.tex_staging.clear();
+            self.tex_staging
+                .reserve(frame.text_vertices.len() + frame.image_vertices.len());
+            self.tex_staging.extend_from_slice(&frame.text_vertices);
+            self.tex_staging.extend_from_slice(&frame.image_vertices);
             self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.tex_vbo));
             self.gl.buffer_data_u8_slice(
                 glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&tex_data),
+                bytemuck::cast_slice(&self.tex_staging),
                 glow::STREAM_DRAW,
             );
             let image_quad_base = (frame.text_vertices.len() / 4) as u32;
@@ -1116,12 +1126,45 @@ unsafe fn link(
         u_surface: gl.get_uniform_location(program, "u_surface"),
         u_texture: gl.get_uniform_location(program, "u_texture"),
         u_bayer: gl.get_uniform_location(program, "u_bayer"),
+        u_step: gl.get_uniform_location(program, "u_step"),
+        u_dest: gl.get_uniform_location(program, "u_dest"),
     })
+}
+
+/// Reverses image rows top-to-bottom in-place, eliminating second full-screen buffer allocations.
+pub(crate) fn flip_rows_in_place(buf: &mut [u8], stride: usize) {
+    if stride == 0 || buf.len() <= stride {
+        return;
+    }
+    let num_rows = buf.len() / stride;
+    let (mut top, mut bottom) = (0, num_rows.saturating_sub(1));
+    while top < bottom {
+        let (head, tail) = buf.split_at_mut(bottom * stride);
+        let top_row = &mut head[top * stride..(top + 1) * stride];
+        let bottom_row = &mut tail[..stride];
+        top_row.swap_with_slice(bottom_row);
+        top += 1;
+        bottom -= 1;
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flip_rows_in_place_reverses_top_to_bottom_without_allocating() {
+        let stride = 8;
+        let mut buf = vec![
+            1, 1, 1, 1, 1, 1, 1, 1, // row 0
+            2, 2, 2, 2, 2, 2, 2, 2, // row 1
+            3, 3, 3, 3, 3, 3, 3, 3, // row 2
+        ];
+        flip_rows_in_place(&mut buf, stride);
+        assert_eq!(&buf[0..8], &[3, 3, 3, 3, 3, 3, 3, 3]);
+        assert_eq!(&buf[8..16], &[2, 2, 2, 2, 2, 2, 2, 2]);
+        assert_eq!(&buf[16..24], &[1, 1, 1, 1, 1, 1, 1, 1]);
+    }
 
     #[test]
     fn the_wallpaper_cover_reaches_the_whole_buffer_in_any_proportion() {

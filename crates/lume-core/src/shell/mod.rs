@@ -157,7 +157,7 @@ impl Shell {
         skip: &std::collections::HashSet<String>,
         limit: usize,
     ) -> Vec<(String, String)> {
-        if !self.is_active() || !self.app.icons.has_room() {
+        if limit == 0 || !self.is_active() || !self.app.icons.has_room() {
             return Vec::new();
         }
         let splash = self
@@ -171,17 +171,18 @@ impl Shell {
             .favorites
             .iter()
             .filter_map(|p| self.app.catalog.get(p));
+        let mut seen = std::collections::HashSet::new();
         splash
             .chain(favorites)
             .chain(self.app.catalog.apps().iter())
-            .filter(|app| !self.app.icons.has(&app.package) && !skip.contains(&app.package))
-            .map(|app| (app.package.clone(), app.activity.clone()))
-            .fold(Vec::new(), |mut found, entry| {
-                if found.len() < limit && !found.contains(&entry) {
-                    found.push(entry);
-                }
-                found
+            .filter(|app| {
+                !self.app.icons.has(&app.package)
+                    && !skip.contains(&app.package)
+                    && seen.insert(app.package.as_str())
             })
+            .take(limit)
+            .map(|app| (app.package.clone(), app.activity.clone()))
+            .collect()
     }
 
     /// Up to `limit` favorites (package and activity) that have no dock icon in the icon texture

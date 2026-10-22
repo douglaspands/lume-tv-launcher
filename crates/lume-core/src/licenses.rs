@@ -9,18 +9,27 @@ pub const ASSETS: &[(&str, &str)] = &[
     ("Wallpapers (images)", "Unsplash License"),
 ];
 
+static LINES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Cached slice of the third-party list, as `name version: license`.
+pub fn cached_lines() -> &'static [String] {
+    LINES.get_or_init(|| {
+        let mut lines: Vec<String> = ASSETS
+            .iter()
+            .map(|(name, license)| format!("{name}: {license}"))
+            .collect();
+        lines.extend(
+            CRATES
+                .iter()
+                .map(|(name, version, license)| format!("{name} {version}: {license}")),
+        );
+        lines
+    })
+}
+
 /// Every line of the third-party list, as `name version: license`.
 pub fn lines() -> Vec<String> {
-    let mut lines: Vec<String> = ASSETS
-        .iter()
-        .map(|(name, license)| format!("{name}: {license}"))
-        .collect();
-    lines.extend(
-        CRATES
-            .iter()
-            .map(|(name, version, license)| format!("{name} {version}: {license}")),
-    );
-    lines
+    cached_lines().to_vec()
 }
 
 #[cfg(test)]
