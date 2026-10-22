@@ -6,6 +6,7 @@ include!(concat!(env!("OUT_DIR"), "/third_party_generated.rs"));
 pub const ASSETS: &[(&str, &str)] = &[
     ("Plus Jakarta Sans (font)", "SIL Open Font License 1.1"),
     ("Lucide (icons)", "ISC License"),
+    ("Wallpapers (images)", "Unsplash License"),
 ];
 
 /// Every line of the third-party list, as `name version: license`.
