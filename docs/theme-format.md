@@ -51,6 +51,21 @@ A variable can use another one (`--accent: var(--primary);`), so a theme can set
 .tile:focus { outline: var(--focus-ring); }
 ```
 
+## Edges
+
+Every shape and every clipped image (tile corners, round favorites, focus outlines, round buttons) is antialiased by
+the shaders over one ramp whose width is `--edge-softness`, and the icons of the icon font (inputs, gear...) get the
+same ramp when they are rasterized; text keeps the font's own edges. Unlike the other lengths, it is in pixels of the
+render buffer, not of the 1280x720 canvas, so an edge looks the same at 720p and 1080p. Keep it between 1 and 1.5:
+under 1 the edges stair-step once the TV upscales and sharpens the picture, over 1.5 they look blurred. The default is
+1.5, chosen on the 4K panel of the reference TV.
+
+```css
+:root {
+  --edge-softness: 1.5px;
+}
+```
+
 ## Selectors
 
 Only the components below, with at most one pseudo-class: `:focus` (D-pad focus), `:active` (selected) and `:disabled`.

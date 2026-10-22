@@ -409,3 +409,82 @@ o resto da espera é o splash: o logo entra em 120 ms enquanto os ícones carreg
 
 Splash: logo à vista por no mínimo 600 ms a frio e 300 ms a quente, revelação de 600 ms a frio e 360 ms a quente. Os limites de `resource-efficiency` subiram (APK 40 MB, PSS 64 MB em primeiro plano).
 
+## Antialiasing do tema (change `antialiasing-do-tema`, 2026-10-21)
+
+### Base, antes do change (tarefa 1.1)
+
+Build da `main` (`1d64123`, o mesmo conteúdo do APK `58b4986-dirty` instalado), TCL 55C715. Quadros pelo `--latency` da camada
+simples, em 4 rodadas de 12 teclas com 0,4 s entre elas; intervalos acima de 150 ms são a espera entre teclas e não contam.
+Grade: foco andando 5 tiles para a direita, uma linha para baixo, 5 para a esquerda e uma para cima. Dock: 6 para cada lado.
+
+| Medida | TCL 55C715 |
+|---|---|
+| Grade de Apps, quadros de 33 ms ou mais | 16 de 458 (3,5%) e 18 de 460 (3,9%) |
+| Dock, quadros de 33 ms ou mais | 0 de 422 |
+| PSS em primeiro plano, 30 s parado | 18,1 MB |
+
+- **Medida feita com a TV ligada havia 21 h** (carga média 20). Refeita com a TV recém-reiniciada, ainda com este build:
+  grade **7 de 458 (1,5%)**, dock 0 de 417, PSS 28,1 MB. A carga média da TCL fica perto de 19 mesmo logo depois do
+  boot (é o normal dela), e a grade já passa de 1% sem este change: é a base da tarefa 7.3.
+- Na captura da TCL, a curva interna do contorno de foco do tile mostra pixels de azul mais escuro, misturados com o fundo
+  do banner e o papel de parede: é o fio que este change remove.
+
+### Depois do change (tarefas 6.3, 7.1 a 7.3), só na TCL
+
+Mesmo método da base, TV reiniciada no mesmo dia, `--edge-softness` 1,5 (escolhido pelo autor olhando o painel 4K).
+
+| Medida | Base (`main`) | Com o change |
+|---|---|---|
+| Grade de Apps, quadros de 33 ms ou mais | 7 de 458 (1,5%) | 8 de 459 (1,7%) e 5 de 459 (1,1%) |
+| Dock, quadros de 33 ms ou mais | 0 de 417 | 1 de 427 (0,2%) |
+| PSS em primeiro plano, 30 s parado | 28,1 MB | 33,1 MB (atlas de 1088x2610 em 1080p, contra 1024x2304) |
+
+- **Dither por pixel derruba a Mali-470.** A primeira versão calculava o Bayer 4x4 com `floor`/`mod` no fragmento do
+  papel de parede: **58 a 62% de quadros perdidos na grade e 44% no dock**. Sem o dither do papel de parede, 3 a 4%
+  (sobrava o fragmento de imagem maior, com a composição sobre o fundo, rodando em tela cheia). Com o papel de parede
+  num programa próprio e o dither lido de uma textura 4x4 em `REPEAT` (coordenada calculada no vértice), voltou à base.
+  Regra: nada por pixel no quad de tela cheia além de leituras diretas de textura.
+- **Coordenada de textura sem conta no fragmento.** Crescer o quad da imagem e prender a coordenada na borda dentro do
+  fragmento vira leitura dependente em fp16 na Mali-470 (erro de cerca de 1 texel num atlas de 2600 linhas); a forma
+  recortada passou a ficar meia rampa para dentro do quad.
+- Capturas na TCL: dock e grade sem anel da cor do app e sem fio escuro entre o contorno e o banner; a curva interna do
+  contorno vai do azul ao banner sem pixel mais escuro.
+
+### TCL 55C715, remedida em 2026-10-21 (tarefa 7.3)
+
+Mesmo método da base (4 rodadas de 12 teclas, 0,4 s entre elas, `--latency` limpo a cada rodada), APK `1d64123-dirty` com o
+change, TV ligada havia ~1 h 7 min, carga média 19.
+
+| Medida | Base (`main`) | Esta rodada |
+|---|---|---|
+| Grade, quadros de 33 ms ou mais | 7 de 458 (1,5%) | 7 de 459 (1,5%): 1, 1, 4 e 1 por rodada |
+| Dock, quadros de 33 ms ou mais | 0 de 417 | 0 de 454 |
+| PSS parado (30 s) | 28,1 MB | 21,1 MB (21,6 MB depois da navegação) |
+| CPU do Lume nas 8 rodadas | n/d | 5,36 s |
+
+- A grade empata com a base (1,5%, acima de 1% nos dois casos); o dock não perdeu quadro. A rodada com 4 perdidos é uma
+  só; as outras três tiveram 1.
+
+### AIWA SMART TV (tarefas 6.3 e 7.1)
+
+APK `1d64123-dirty` com o change, 1280x720, Android 11, `low_ram`; instalado limpo (`adb uninstall` antes).
+
+- PSS em primeiro plano: 86,5 MB logo após a abertura a frio (splash e carga dos ícones; fora do regime parado), **44,7 a 46,1 MB**
+  depois de navegar dock e grade. Dentro do limite de 64 MB.
+- Capturas: dock com favoritos redondos e grade com foco no Play Store sem anel da cor do app nem fio escuro entre o contorno e o banner.
+- Quadros e CPU, 2 rodadas (4 voltas de 12 teclas no dock e 4 de 12 na grade, 0,4 s entre teclas; a carga média da AIWA é ~55, o laço
+  de teclas levou ~68 s por fase). O `--latency` guarda só os últimos ~127 quadros, então os quadros contados (111 a 112 por fase)
+  são o fim de cada fase, não ela toda.
+
+| Medida | Rodada 1 | Rodada 2 |
+|---|---|---|
+| Dock, quadros de 33 ms ou mais | 0 de 112 | 0 de 112 |
+| Grade, quadros de 33 ms ou mais | 0 de 111 | 0 de 111 |
+| CPU do Lume no dock (utime+stime) | 1,83 s em 48 teclas (~38 ms por tecla) | 1,80 s |
+| CPU do Lume na grade | 1,98 s em 48 teclas (~41 ms por tecla) | 1,96 s |
+| CPU parado, 30 s | 0,01 s | 0 s |
+| PSS parado | 44,8 MB (Graphics 14,5, Native 3,3, Java 1,7) | 44,5 MB |
+
+- CPU médio de navegação: ~2,7 a 2,9% de um núcleo na janela de 68 s (cerca de 0,7% da capacidade dos 4 núcleos); o laço não
+  pede quadros parado, como pede a spec. PSS a 70% do limite de 64 MB.
+
