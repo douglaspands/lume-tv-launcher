@@ -9,7 +9,10 @@ use super::batch::{
     QUAD_INDICES,
 };
 use super::geometry::Rect;
-use super::shaders::{IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, TEXT_FRAGMENT, TEX_VERTEX};
+use super::shaders::{
+    BAYER_4X4, IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, TEXT_FRAGMENT, TEX_VERTEX,
+    WALLPAPER_FRAGMENT, WALLPAPER_VERTEX,
+};
 use super::{Backend, Viewport};
 use crate::text::{TextEngine, Update};
 use crate::theme::Color;
@@ -22,6 +25,7 @@ struct ShaderProgram {
     u_view: Option<glow::UniformLocation>,
     u_surface: Option<glow::UniformLocation>,
     u_texture: Option<glow::UniformLocation>,
+    u_bayer: Option<glow::UniformLocation>,
 }
 
 #[derive(Clone, Copy)]
@@ -36,6 +40,7 @@ pub struct Gles2Backend {
     rect_program: ShaderProgram,
     text_program: ShaderProgram,
     image_program: ShaderProgram,
+    wallpaper_program: ShaderProgram,
     rect_vbo: glow::Buffer,
     tex_vbo: glow::Buffer,
     index_buffer: glow::Buffer,
@@ -46,6 +51,10 @@ pub struct Gles2Backend {
     wallpaper: Option<Texture>,
     wallpaper_id: Option<WallpaperId>,
     wallpaper_thumbs: Option<Texture>,
+    /// The 4x4 dither pattern the wallpaper is drawn with, made with the wallpaper.
+    bayer: Option<Texture>,
+    /// Whether the wallpaper is dithered (tests compare it with and without).
+    dither: bool,
 }
 
 impl Gles2Backend {
@@ -72,7 +81,13 @@ impl Gles2Backend {
                 &gl,
                 TEX_VERTEX,
                 IMAGE_FRAGMENT,
-                &["a_pos_uv", "a_color", "a_local", "a_params"],
+                &["a_pos_uv", "a_color", "a_local", "a_params", "a_bg"],
+            )?;
+            let wallpaper_program = link(
+                &gl,
+                WALLPAPER_VERTEX,
+                WALLPAPER_FRAGMENT,
+                &["a_pos_uv", "a_color"],
             )?;
             let rect_vbo = gl.create_buffer()?;
             let tex_vbo = gl.create_buffer()?;
@@ -82,6 +97,7 @@ impl Gles2Backend {
                 rect_program,
                 text_program,
                 image_program,
+                wallpaper_program,
                 rect_vbo,
                 tex_vbo,
                 index_buffer,
@@ -91,6 +107,8 @@ impl Gles2Backend {
                 wallpaper: None,
                 wallpaper_id: None,
                 wallpaper_thumbs: None,
+                bayer: None,
+                dither: true,
             })
         }
     }
@@ -194,12 +212,17 @@ impl Gles2Backend {
         }
     }
 
-    /// Creates the RGBA image texture empty, if it does not exist yet. Regions are filled in
-    /// by [`Gles2Backend::update_image`].
+    /// Creates the RGBA image texture empty, if it does not exist yet at this size (a texture of
+    /// another size, from another scale, is freed first). Regions are filled in by
+    /// [`Gles2Backend::update_image`].
     pub fn ensure_image(&mut self, width: u32, height: u32) {
-        if self.image.is_some() {
-            return;
+        match self.image {
+            Some(image) if (image.width, image.height) == (width, height) => return,
+            // SAFETY: see `new`.
+            Some(image) => unsafe { self.gl.delete_texture(image.texture) },
+            None => {}
         }
+        self.image = None;
         // SAFETY: see `new`.
         unsafe {
             let texture = self
@@ -297,6 +320,58 @@ impl Gles2Backend {
                 height: wallpaper.height,
             });
             self.wallpaper_id = Some(id);
+        }
+        self.ensure_bayer();
+    }
+
+    /// Creates the 4x4 dither texture of the wallpaper, repeated over the screen and read texel by
+    /// texel; without dither, a flat one at the middle level (which adds nothing).
+    fn ensure_bayer(&mut self) {
+        let pattern = if self.dither { BAYER_4X4 } else { [128; 16] };
+        // SAFETY: see `new`.
+        unsafe {
+            let texture = match self.bayer {
+                Some(existing) => existing.texture,
+                None => self
+                    .gl
+                    .create_texture()
+                    .expect("cannot create the dither texture"),
+            };
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                glow::LUMINANCE as i32,
+                4,
+                4,
+                0,
+                glow::LUMINANCE,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(&pattern)),
+            );
+            for (parameter, value) in [
+                (glow::TEXTURE_MIN_FILTER, glow::NEAREST),
+                (glow::TEXTURE_MAG_FILTER, glow::NEAREST),
+                (glow::TEXTURE_WRAP_S, glow::REPEAT),
+                (glow::TEXTURE_WRAP_T, glow::REPEAT),
+            ] {
+                self.gl
+                    .tex_parameter_i32(glow::TEXTURE_2D, parameter, value as i32);
+            }
+            self.bayer = Some(Texture {
+                texture,
+                width: 4,
+                height: 4,
+            });
+        }
+    }
+
+    /// Turns the dither of the wallpaper on or off (for tests that compare the two).
+    pub fn set_wallpaper_dither(&mut self, enabled: bool) {
+        self.dither = enabled;
+        if self.bayer.is_some() {
+            self.ensure_bayer();
         }
     }
 
@@ -405,7 +480,12 @@ impl Gles2Backend {
     pub fn destroy(self) {
         // SAFETY: see `new`.
         unsafe {
-            for program in [&self.rect_program, &self.text_program, &self.image_program] {
+            for program in [
+                &self.rect_program,
+                &self.text_program,
+                &self.image_program,
+                &self.wallpaper_program,
+            ] {
                 self.gl.delete_program(program.program);
             }
             for buffer in [self.rect_vbo, self.tex_vbo, self.index_buffer] {
@@ -416,6 +496,7 @@ impl Gles2Backend {
                 self.image,
                 self.wallpaper,
                 self.wallpaper_thumbs,
+                self.bayer,
             ]
             .into_iter()
             .flatten()
@@ -467,7 +548,7 @@ impl Gles2Backend {
         let stride = size_of::<TexVertex>() as i32;
         let base = first_quad as i32 * 4 * stride;
         self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.tex_vbo));
-        for index in 0..4u32 {
+        for index in 0..5u32 {
             self.gl.enable_vertex_attrib_array(index);
             self.gl.vertex_attrib_pointer_f32(
                 index,
@@ -478,7 +559,7 @@ impl Gles2Backend {
                 base + index as i32 * 16,
             );
         }
-        for index in 4..7u32 {
+        for index in 5..7u32 {
             self.gl.disable_vertex_attrib_array(index);
         }
     }
@@ -557,10 +638,11 @@ impl Backend for Gles2Backend {
                     }
                     None => {}
                 }
-                let program = match batch.program {
-                    Program::Rect => &self.rect_program,
-                    Program::Text => &self.text_program,
-                    Program::Image => &self.image_program,
+                let program = match (batch.program, batch.texture) {
+                    (Program::Rect, _) => &self.rect_program,
+                    (Program::Text, _) => &self.text_program,
+                    (Program::Image, ImageTexture::Wallpaper) => &self.wallpaper_program,
+                    (Program::Image, _) => &self.image_program,
                 };
                 self.gl.use_program(Some(program.program));
                 self.gl.uniform_4_f32(
@@ -568,7 +650,7 @@ impl Backend for Gles2Backend {
                     viewport.scale,
                     viewport.offset_x,
                     viewport.offset_y,
-                    0.0,
+                    viewport.edge_softness,
                 );
                 self.gl.uniform_2_f32(
                     program.u_surface.as_ref(),
@@ -587,6 +669,13 @@ impl Backend for Gles2Backend {
                             ImageTexture::Wallpaper => self.wallpaper.as_ref(),
                             ImageTexture::WallpaperThumbs => self.wallpaper_thumbs.as_ref(),
                         };
+                        if batch.texture == ImageTexture::Wallpaper {
+                            // The dither pattern on unit 1, back to unit 0 for the rest.
+                            self.gl.active_texture(glow::TEXTURE1);
+                            self.gl
+                                .bind_texture(glow::TEXTURE_2D, self.bayer.map(|t| t.texture));
+                            self.gl.uniform_1_i32(program.u_bayer.as_ref(), 1);
+                        }
                         self.bind_texture(texture, program);
                         self.bind_tex_attributes(image_quad_base + batch.first_quad);
                     }
@@ -707,6 +796,7 @@ unsafe fn link(
         u_view: gl.get_uniform_location(program, "u_view"),
         u_surface: gl.get_uniform_location(program, "u_surface"),
         u_texture: gl.get_uniform_location(program, "u_texture"),
+        u_bayer: gl.get_uniform_location(program, "u_bayer"),
     })
 }
 
@@ -722,6 +812,7 @@ mod tests {
             scale: 1.5,
             offset_x: 0.0,
             offset_y: 0.0,
+            edge_softness: 1.0,
         };
         // Logical (10.2, 20.2)-(110.2, 70.2) -> device (15.3, 30.3)-(165.3, 105.3).
         let [x, y, w, h] = device_scissor(&Rect::new(10.2, 20.2, 100.0, 50.0), &viewport);
@@ -737,6 +828,7 @@ mod tests {
             scale: 1.0,
             offset_x: 100.0,
             offset_y: 50.0,
+            edge_softness: 1.0,
         };
         let [x, y, w, h] = device_scissor(&Rect::new(-500.0, -500.0, 5000.0, 5000.0), &viewport);
         assert_eq!([x, w, h], [0, 1000, 800]);

@@ -14,7 +14,6 @@ use android_activity::{AndroidApp, AndroidAppWaker, InputStatus, MainEvent, Poll
 use bridge::{unix_seconds, Bridge};
 use egl::Graphics;
 use lume_core::app::{Effect, Key};
-use lume_core::app_icons as icons;
 use lume_core::render::Backend;
 use lume_core::shell::protocol::Changed;
 use lume_core::shell::{keys, Shell};
@@ -463,12 +462,13 @@ impl Runtime {
         };
         // The dock is what Home shows: its icons come first, a couple per turn, so the first frames
         // are drawn right away with the app color and initial.
+        let layout = self.shell.icon_layout();
         let dock = self
             .shell
             .dock_icons_wanted(&self.dock_failed, ICONS_PER_TURN);
         for (package, activity) in &dock {
             let fetch = Instant::now();
-            let pixels = self.bridge.dock_icon(package, activity);
+            let pixels = self.bridge.dock_icon(package, activity, layout.dock_cell);
             self.icon_times.fetched(fetch.elapsed());
             let region = pixels.and_then(|pixels| {
                 self.shell
@@ -479,7 +479,7 @@ impl Runtime {
                 Some((region, pixels)) => {
                     let upload = Instant::now();
                     let backend = graphics.backend();
-                    backend.ensure_image(icons::ATLAS_WIDTH, icons::ATLAS_HEIGHT);
+                    backend.ensure_image(layout.width, layout.height);
                     backend.update_image(region, &pixels);
                     self.icon_times.upload += upload.elapsed();
                 }
@@ -498,8 +498,8 @@ impl Runtime {
             let fetch = Instant::now();
             let art = self
                 .bridge
-                .tile_art(package, activity)
-                .filter(|(p, _)| p.len() == (icons::CELL_WIDTH * icons::CELL_HEIGHT * 4) as usize);
+                .tile_art(package, activity, layout.cell)
+                .filter(|(p, _)| p.len() == (layout.cell[0] * layout.cell[1] * 4) as usize);
             self.icon_times.fetched(fetch.elapsed());
             let region = art
                 .as_ref()
@@ -508,7 +508,7 @@ impl Runtime {
                 (Some((pixels, _)), Some(region)) => {
                     let upload = Instant::now();
                     let backend = graphics.backend();
-                    backend.ensure_image(icons::ATLAS_WIDTH, icons::ATLAS_HEIGHT);
+                    backend.ensure_image(layout.width, layout.height);
                     backend.update_image(region, &pixels);
                     self.icon_times.upload += upload.elapsed();
                 }

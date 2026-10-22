@@ -26,6 +26,9 @@ pub struct Viewport {
     /// Device-pixel offset of the logical origin (centers the canvas on the screen).
     pub offset_x: f32,
     pub offset_y: f32,
+    /// Width of the antialiasing ramp of every shape and clipped image, in device pixels: the
+    /// theme's `--edge-softness`.
+    pub edge_softness: f32,
 }
 
 /// What a graphics backend must provide. `lume-core` produces [`Frame`]s;

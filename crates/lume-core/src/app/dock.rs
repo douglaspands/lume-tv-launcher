@@ -272,21 +272,27 @@ impl LumeApp {
 
         let radius_ratio = self.dock_radius_ratio();
         let radius = |rect: &Rect| rect.w * radius_ratio;
+        let uv = |item: &DockItem| item.package.as_deref().and_then(|p| self.icons.dock_uv(p));
+        // An item without an icon is its color; one with an icon is drawn in one piece, the icon
+        // over the color, so its edge is antialiased once (a fill under the image left a ring of
+        // the color around it). Each kind is one draw call.
         for (item, rect) in items.iter().zip(&layout.items) {
-            p.list.fill(*rect, radius(rect), Paint::Solid(item.color));
+            if uv(item).is_none() {
+                p.list.fill(*rect, radius(rect), Paint::Solid(item.color));
+            }
         }
         for (item, rect) in items.iter().zip(&layout.items) {
-            let uv = item.package.as_deref().and_then(|p| self.icons.dock_uv(p));
-            if let Some(uv) = uv {
+            if let Some(uv) = uv(item) {
                 let visible = item
                     .package
                     .as_deref()
                     .map_or(1.0, |p| self.icon_visibility(p, true));
-                p.list.image_rounded(
+                p.list.image_over(
                     *rect,
                     uv,
                     super::painter::fade(Color::WHITE, visible),
                     radius(rect),
+                    item.color,
                 );
             }
         }
@@ -408,11 +414,17 @@ impl LumeApp {
         let radius_ratio = self.dock_radius_ratio();
         let rect = ghost.rect.scaled_about_center(left);
         let radius = rect.w * radius_ratio;
-        p.list
-            .fill(rect, radius, Paint::Solid(fade(ghost.color, left)));
-        if let Some(uv) = ghost.package.as_deref().and_then(|p| self.icons.dock_uv(p)) {
-            p.list
-                .image_rounded(rect, uv, fade(Color::WHITE, left), radius);
+        match ghost.package.as_deref().and_then(|p| self.icons.dock_uv(p)) {
+            Some(uv) => p.list.image_over(
+                rect,
+                uv,
+                fade(Color::WHITE, left),
+                radius,
+                fade(ghost.color, left),
+            ),
+            None => p
+                .list
+                .fill(rect, radius, Paint::Solid(fade(ghost.color, left))),
         }
     }
 

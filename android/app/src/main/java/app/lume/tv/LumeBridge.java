@@ -12,13 +12,10 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PaintFlagsDrawFilter;
-import android.graphics.RectF;
-import android.graphics.Shader;
 import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
@@ -52,8 +49,6 @@ import java.util.TimeZone;
 public final class LumeBridge {
     /** Side of the icon bitmap handed to Rust, in pixels. */
     private static final int ICON_SIZE = 24;
-    /** The tile's corner radius (12) over its width (211), so a banner has the same corners. */
-    private static final float TILE_RADIUS_RATIO = 12f / 211f;
     /** Side of the icon in a tile, over the tile height. */
     private static final float ICON_RATIO = 0.5f;
     /** The dock icon's corner radius over its side: a rounded square. */
@@ -61,13 +56,12 @@ public final class LumeBridge {
     private static final float ADAPTIVE_LAYER_RATIO = 108f / 72f;
     /** Reused by every call of {@link #dockIcon}, like the tile bitmaps below. */
     private static Bitmap dockBitmap;
-    /** Reused by every call of {@link #iconPixels}: the final cell and the banner as it is drawn. */
+    /** Reused by every call of {@link #iconPixels}: the cell. */
     private static Bitmap cellBitmap;
-    private static Bitmap sourceBitmap;
     /** Folder, inside the cache directory, of the saved tile images. */
     private static final String TILE_CACHE_DIR = "tiles";
     /** Changes when the drawing of a tile changes, so old files are not reused. */
-    private static final String TILE_CACHE_VERSION = "v1";
+    private static final String TILE_CACHE_VERSION = "v2";
     /** Same for the dock icons, which are drawn by other code. */
     private static final String DOCK_CACHE_VERSION = "d5";
     private static boolean cachePruned;
@@ -255,18 +249,17 @@ public final class LumeBridge {
         Context context, String packageName, String activityName, int width, int height) {
         PackageManager pm = context.getPackageManager();
         ComponentName component = new ComponentName(packageName, activityName);
-        // The same two bitmaps serve every app: new ones for each would leave the native heap
+        // The same bitmap serves every app: a new one for each would leave the native heap
         // full of freed pages the allocator takes a while to give back.
         if (cellBitmap == null || cellBitmap.getWidth() != width || cellBitmap.getHeight() != height) {
             cellBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            sourceBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         }
         Bitmap bitmap = cellBitmap;
         bitmap.eraseColor(Color.TRANSPARENT);
         boolean banner = false;
         Drawable drawable = loadBanner(pm, component, packageName);
         if (drawable != null) {
-            drawBanner(bitmap, sourceBitmap, drawable);
+            drawBanner(bitmap, drawable);
             banner = true;
         } else {
             drawable = loadIcon(pm, component, packageName);
@@ -439,17 +432,10 @@ public final class LumeBridge {
         }
     }
 
-    /** The banner stretched over the whole bitmap, with the same rounded corners as a tile. */
-    private static void drawBanner(Bitmap bitmap, Bitmap source, Drawable drawable) {
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        source.eraseColor(Color.TRANSPARENT);
-        drawable.setBounds(0, 0, width, height);
-        drawable.draw(new Canvas(source));
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        paint.setShader(new BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
-        float radius = width * TILE_RADIUS_RATIO;
-        new Canvas(bitmap).drawRoundRect(new RectF(0, 0, width, height), radius, radius, paint);
+    /** The banner stretched over the whole bitmap; lume's shader rounds the corners at the final size. */
+    private static void drawBanner(Bitmap bitmap, Drawable drawable) {
+        drawable.setBounds(0, 0, bitmap.getWidth(), bitmap.getHeight());
+        drawable.draw(new Canvas(bitmap));
     }
 
     /** The icon in a square (`ICON_RATIO` of the height) centered in the bitmap, keeping its proportions. */

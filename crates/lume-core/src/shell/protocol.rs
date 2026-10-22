@@ -15,15 +15,16 @@ pub enum Changed {
     Packages(Vec<String>),
 }
 
-/// How many bytes a `dockIcon` answer has: `DOCK_CELL` x `DOCK_CELL` premultiplied RGBA pixels and
-/// nothing else (unlike a tile image, there is no flag byte at the end).
-pub const fn dock_icon_len() -> usize {
-    (crate::app_icons::DOCK_CELL * crate::app_icons::DOCK_CELL * 4) as usize
+/// How many bytes a `dockIcon` answer has for a dock cell of `side` pixels: `side` x `side`
+/// premultiplied RGBA pixels and nothing else (unlike a tile image, there is no flag byte at the end).
+pub const fn dock_icon_len(side: u32) -> usize {
+    (side * side * 4) as usize
 }
 
-/// Whether the bytes the platform answered for a dock icon can be uploaded to a dock cell.
-pub fn is_dock_icon(bytes: &[u8]) -> bool {
-    bytes.len() == dock_icon_len()
+/// Whether the bytes the platform answered for a dock icon can be uploaded to a dock cell of
+/// `side` pixels.
+pub fn is_dock_icon(bytes: &[u8], side: u32) -> bool {
+    bytes.len() == dock_icon_len(side)
 }
 
 /// Parses the `apps` and `query` answers: `package<TAB>label<TAB>activity<TAB>leanback<TAB>system`
@@ -111,13 +112,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_dock_icon_answer_is_a_128_square_of_rgba_without_a_flag_byte() {
-        assert_eq!(dock_icon_len(), 128 * 128 * 4);
-        assert!(is_dock_icon(&vec![0; 128 * 128 * 4]));
-        // A tile answer (256x144 and a flag byte) or a truncated one must not be uploaded.
-        assert!(!is_dock_icon(&vec![0; 256 * 144 * 4 + 1]));
-        assert!(!is_dock_icon(&vec![0; 128 * 128 * 4 + 1]));
-        assert!(!is_dock_icon(&[]));
+    fn a_dock_icon_answer_is_a_square_of_rgba_of_the_cell_side_without_a_flag_byte() {
+        assert_eq!(dock_icon_len(156), 156 * 156 * 4);
+        assert!(is_dock_icon(&vec![0; 156 * 156 * 4], 156));
+        // A tile answer (272x153 and a flag byte), one of another scale or a truncated one must
+        // not be uploaded.
+        assert!(!is_dock_icon(&vec![0; 272 * 153 * 4 + 1], 156));
+        assert!(!is_dock_icon(&vec![0; 104 * 104 * 4], 156));
+        assert!(!is_dock_icon(&vec![0; 156 * 156 * 4 + 1], 156));
+        assert!(!is_dock_icon(&[], 156));
     }
 
     #[test]

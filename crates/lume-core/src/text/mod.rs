@@ -458,18 +458,20 @@ impl TextEngine {
 
     fn rasterize(&mut self, key: GlyphKey) -> Option<GlyphEntry> {
         let px = key.size4 as f32 / 4.0;
-        let (metrics, bitmap) = self.font(key.font).rasterize_indexed(key.glyph, px);
-        let (width, height) = (metrics.width as u32, metrics.height as u32);
+        let (metrics, mut bitmap) = self.font(key.font).rasterize_indexed(key.glyph, px);
+        let (mut width, mut height) = (metrics.width as u32, metrics.height as u32);
+        let (mut left, mut bottom) = (metrics.xmin, metrics.ymin);
+        if key.font == FontId::Icons && width > 0 && height > 0 {
+            // The icons' edges get the theme's softness, like every shape (the text stays as is).
+            bitmap = soften(&bitmap, width, height, crate::theme::vars::EDGE_SOFTNESS);
+            (width, height, left, bottom) = (width + 2, height + 2, left - 1, bottom - 1);
+        }
         let slot = if width == 0 || height == 0 {
             None
         } else {
             Some(self.atlas.insert(width, height, &bitmap)?)
         };
-        Some(GlyphEntry {
-            slot,
-            left: metrics.xmin,
-            bottom: metrics.ymin,
-        })
+        Some(GlyphEntry { slot, left, bottom })
     }
 
     fn rebuild(&mut self) {
@@ -483,6 +485,47 @@ impl TextEngine {
             }
         }
     }
+}
+
+/// Widens the antialiased edge of a coverage bitmap to `softness` pixels, the ramp the shaders give
+/// every shape: a 3-tap filter `[a, 1 - 2a, a]` across and down, whose spread added to the one pixel
+/// of the rasterizer's own ramp makes `softness` (variances `1/12 + 2a = softness² / 12`). The
+/// bitmap grows by one pixel on every side for the spread.
+fn soften(bitmap: &[u8], width: u32, height: u32, softness: f32) -> Vec<u8> {
+    let a = ((softness * softness - 1.0) / 24.0).clamp(0.0, 1.0 / 3.0);
+    let (w, h) = (width as usize + 2, height as usize + 2);
+    let mut padded = vec![0.0f32; w * h];
+    for y in 0..height as usize {
+        for x in 0..width as usize {
+            padded[(y + 1) * w + x + 1] = f32::from(bitmap[y * width as usize + x]);
+        }
+    }
+    let at = |v: &[f32], x: usize, y: usize, dx: isize, dy: isize| {
+        let (x, y) = (x as isize + dx, y as isize + dy);
+        if x < 0 || y < 0 || x >= w as isize || y >= h as isize {
+            0.0
+        } else {
+            v[y as usize * w + x as usize]
+        }
+    };
+    let mut across = vec![0.0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            across[y * w + x] = a * at(&padded, x, y, -1, 0)
+                + (1.0 - 2.0 * a) * at(&padded, x, y, 0, 0)
+                + a * at(&padded, x, y, 1, 0);
+        }
+    }
+    let mut out = Vec::with_capacity(w * h);
+    for y in 0..h {
+        for x in 0..w {
+            let v = a * at(&across, x, y, 0, -1)
+                + (1.0 - 2.0 * a) * at(&across, x, y, 0, 0)
+                + a * at(&across, x, y, 0, 1);
+            out.push(v.round().clamp(0.0, 255.0) as u8);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -752,6 +795,55 @@ mod tests {
         let quads = glyph_quads(&list);
         assert_eq!(quads.len(), 1);
         assert!(quads[0].0.w > 10.0, "the gear icon has a visible size");
+    }
+
+    #[test]
+    fn soften_spreads_the_edge_by_the_theme_softness_and_keeps_the_ink() {
+        // A hard 4x4 square of full coverage in a 6x6 bitmap.
+        let mut square = vec![0u8; 36];
+        for y in 1..5 {
+            for x in 1..5 {
+                square[y * 6 + x] = 255;
+            }
+        }
+        let soft = soften(&square, 6, 6, 1.5);
+        assert_eq!(soft.len(), 8 * 8, "one more pixel on every side");
+        // The ink is the same (within rounding), spread over a wider edge.
+        let ink = |b: &[u8]| b.iter().map(|&v| u32::from(v)).sum::<u32>();
+        assert!(ink(&soft).abs_diff(ink(&square)) <= 64);
+        let partial = |b: &[u8]| b.iter().filter(|&&v| v > 0 && v < 255).count();
+        assert!(partial(&soft) > partial(&square));
+        // The middle stays fully covered and the new border stays empty.
+        assert_eq!(soft[4 * 8 + 4], 255);
+        assert!(soft[..8].iter().all(|&v| v == 0));
+        // With a ramp of 1 pixel, the rasterizer's own, nothing changes.
+        assert_eq!(&soften(&square, 6, 6, 1.0)[9..15], &[0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn icons_are_softened_and_text_is_not() {
+        let mut engine = TextEngine::new(1.5);
+        let style = TextStyle::new(22.0, 500);
+        let icon = engine
+            .glyph(GlyphKey {
+                font: FontId::Icons,
+                glyph: engine.icons.lookup_glyph_index(crate::icons::SETTINGS),
+                size4: (22.0 * 1.5 * 4.0) as u32,
+            })
+            .and_then(|e| e.slot)
+            .unwrap();
+        let (metrics, _) = engine.icons.rasterize_indexed(
+            engine.icons.lookup_glyph_index(crate::icons::SETTINGS),
+            33.0,
+        );
+        assert_eq!(icon.width, metrics.width as u32 + 2);
+        let mut list = DisplayList::new();
+        engine.draw(&mut list, "H", 0.0, 40.0, &style, Color::WHITE);
+        let face = engine.face_index(500);
+        let h = engine.faces[face].1.lookup_glyph_index('H');
+        let (text_metrics, _) = engine.faces[face].1.rasterize_indexed(h, 33.0);
+        let quad = glyph_quads(&list)[0].0;
+        assert_eq!((quad.w * 1.5).round() as usize, text_metrics.width);
     }
 
     #[test]

@@ -46,6 +46,22 @@ use crate::ui::focus::{Direction, Focus, FocusId, Row};
 use crate::ui::scroll;
 use crate::usage::UsageHistory;
 
+/// The largest an app tile (focused) and a dock icon (at the peak of the Magnification) are drawn,
+/// in canvas units: the sizes the icon texture keeps their pictures at (see
+/// [`crate::app_icons::AtlasLayout`]).
+pub(crate) fn image_peaks() -> (f32, f32) {
+    let focused = THEME
+        .resolve(&THEME.tile, crate::theme::StateFlags::FOCUS)
+        .scale;
+    (apps::TILE_WIDTH * focused, dock::BASE * dock::PEAK)
+}
+
+/// The size of a dock icon at rest, in canvas units.
+#[cfg(test)]
+pub(crate) fn dock_rest() -> f32 {
+    dock::BASE
+}
+
 /// Numbers of the focusable elements. Each screen has its own range.
 pub mod ids {
     use crate::ui::focus::FocusId;
@@ -898,6 +914,11 @@ impl LumeApp {
     ///
     /// Tiles are drawn in passes (boxes, then images, then text) so each pass is one draw call:
     /// alternating the three programs tile by tile took ~3 calls per tile on the TV's GPU.
+    ///
+    /// A banner, or an icon in the middle of the tile, is drawn in one piece with the tile color
+    /// (`style.background`) under it, clipped once by the tile's corners at its final size: the box
+    /// pass then leaves the color out (see [`LumeApp::tile_has_image`]), and the tile has a single
+    /// antialiased edge.
     pub(super) fn draw_tile_image(
         &self,
         p: &mut painter::Painter,
@@ -915,13 +936,30 @@ impl LumeApp {
             crate::theme::Color::WHITE,
             style.opacity * self.icon_visibility(package, false),
         );
-        match art {
-            Art::Banner => p.list.image(tile, uv, tint),
-            Art::Icon if name_on_tile => {
-                p.list.image(tile.translate(0.0, -tile.h * 0.17), uv, tint);
-            }
-            Art::Icon => p.list.image(tile, uv, tint),
+        if art == Art::Icon && name_on_tile {
+            // The lifted icon leaves room for the name: the box pass draws the tile color.
+            p.list.image(tile.translate(0.0, -tile.h * 0.17), uv, tint);
+            return;
         }
+        let color = match style.background {
+            Some(crate::theme::Paint::Solid(color)) => painter::fade(color, style.opacity),
+            _ => crate::theme::Color::TRANSPARENT,
+        };
+        let radius = style.border_radius * style.scale;
+        p.list.image_over(tile, uv, tint, radius, color);
+    }
+
+    /// Whether [`draw_tile_image`](Self::draw_tile_image) draws the tile color with the image, so
+    /// the box pass must leave it out.
+    pub(super) fn tile_has_image(&self, package: Option<&str>, name_on_tile: bool) -> bool {
+        package.is_some_and(|package| {
+            self.icons.uv(package).is_some()
+                && match self.icons.art(package) {
+                    Some(Art::Banner) => true,
+                    Some(Art::Icon) => !name_on_tile,
+                    None => false,
+                }
+        })
     }
 
     /// The name inside an app tile: the whole name while there is no image, under a lifted icon

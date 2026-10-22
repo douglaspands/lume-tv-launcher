@@ -13,7 +13,7 @@ use crate::ui::focus::{Focusable, Row};
 const COLUMNS: usize = 6;
 const WIDTH: f32 = 1280.0 - 2.0 * topbar::MARGIN;
 const GAP: f32 = 24.0;
-const TILE_WIDTH: f32 = (WIDTH - (COLUMNS as f32 - 1.0) * GAP) / COLUMNS as f32;
+pub(super) const TILE_WIDTH: f32 = (WIDTH - (COLUMNS as f32 - 1.0) * GAP) / COLUMNS as f32;
 const TILE_HEIGHT: f32 = TILE_WIDTH * 9.0 / 16.0;
 /// Distance between the tops of two grid rows: the tile and its name below it.
 const ROW_PITCH: f32 = 148.0;
@@ -156,8 +156,19 @@ impl LumeApp {
             })
             .collect();
         // Boxes, then images, then text: one draw call for each kind (see `draw_tile_image`).
-        for (_, rect, style) in &tiles {
-            p.draw_box(*rect, style);
+        for (cell, rect, style) in &tiles {
+            if self.tile_has_image(cell.package.as_deref(), false) {
+                // The image pass draws the tile color with the image, under one edge, and the
+                // outline runs under that edge until the image is opaque: the image is clipped
+                // half a ramp in and fades over one more, and the outline has its own half ramp,
+                // so two ramps (pixels of the buffer, in canvas units).
+                let mut style = *style;
+                style.background = None;
+                let under = 2.0 * vars::EDGE_SOFTNESS / p.display.scale;
+                p.list.draw_box_under(*rect, &style, under);
+            } else {
+                p.draw_box(*rect, style);
+            }
         }
         for (cell, rect, style) in &tiles {
             self.draw_tile_image(p, cell.package.as_deref(), *rect, style, false);
