@@ -14,5 +14,5 @@
 ## 3. Verificação em Dispositivo e Conformidade
 
 - [x] 3.1 Gerar build de release pelo container com `scripts/container-build.sh release`
-- [x] 3.2 Instalar o APK na TV (AIWA em 192.168.0.3) e verificar via `screencap` a definição e formato consistente de todos os favoritos
+- [x] 3.2 Instalar o APK na TV (AIWA) e verificar via `screencap` a definição e formato consistente de todos os favoritos
 - [x] 3.3 Revisar a tela Sobre (Configurações do Lume › Sobre o Lume); sem novidade, registrar "Sobre revisado, sem mudança"
