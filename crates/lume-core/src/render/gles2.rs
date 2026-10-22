@@ -10,8 +10,8 @@ use super::batch::{
 };
 use super::geometry::Rect;
 use super::shaders::{
-    BAYER_4X4, IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, TEXT_FRAGMENT, TEX_VERTEX,
-    WALLPAPER_FRAGMENT, WALLPAPER_VERTEX,
+    BAYER_4X4, IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, REDUCE_FRAGMENT, REDUCE_VERTEX,
+    TEXT_FRAGMENT, TEX_VERTEX, WALLPAPER_FRAGMENT, WALLPAPER_VERTEX,
 };
 use super::{Backend, Viewport};
 use crate::text::{TextEngine, Update};
@@ -19,6 +19,20 @@ use crate::theme::Color;
 use crate::wallpaper::WallpaperId;
 use glow::HasContext;
 use std::mem::size_of;
+
+/// A wallpaper going up to the GPU: the decoded image and how many rows are already there.
+struct WallpaperUpload {
+    id: WallpaperId,
+    cover: (u32, u32),
+    rgb: Vec<u8>,
+    rows_done: u32,
+    source: glow::Texture,
+    started: std::time::Instant,
+    loaded: std::time::Duration,
+}
+
+/// Rows of the wallpaper sent to the GPU per frame while it replaces another one (about 2 ms on the TV).
+const WALLPAPER_UPLOAD_ROWS: u32 = 40;
 
 struct ShaderProgram {
     program: glow::Program,
@@ -41,6 +55,7 @@ pub struct Gles2Backend {
     text_program: ShaderProgram,
     image_program: ShaderProgram,
     wallpaper_program: ShaderProgram,
+    reduce_program: ShaderProgram,
     rect_vbo: glow::Buffer,
     tex_vbo: glow::Buffer,
     index_buffer: glow::Buffer,
@@ -50,6 +65,19 @@ pub struct Gles2Backend {
     /// The wallpaper, created the first time a frame draws it and freed with everything else.
     wallpaper: Option<Texture>,
     wallpaper_id: Option<WallpaperId>,
+    /// The size the wallpaper texture covers, in render-buffer pixels (the 1920x1080 image is
+    /// reduced to it when smaller).
+    wallpaper_cover: (u32, u32),
+    /// The render buffer's size, set by the host and by every frame.
+    render_size: (u32, u32),
+    /// Whether a wallpaper that is not on the GPU yet is prepared on a worker thread (the frame loop
+    /// keeps the current one until the new one is ready) instead of inside the frame.
+    async_wallpaper: bool,
+    /// The wallpaper being prepared on the worker thread.
+    pending_wallpaper: Option<(WallpaperId, std::sync::mpsc::Receiver<Option<Vec<u8>>>)>,
+    uploading: Option<WallpaperUpload>,
+    /// The wallpaper whose asset could not be read or decoded; not tried again.
+    wallpaper_failed: Option<WallpaperId>,
     wallpaper_thumbs: Option<Texture>,
     /// The 4x4 dither pattern the wallpaper is drawn with, made with the wallpaper.
     bayer: Option<Texture>,
@@ -89,6 +117,7 @@ impl Gles2Backend {
                 WALLPAPER_FRAGMENT,
                 &["a_pos_uv", "a_color"],
             )?;
+            let reduce_program = link(&gl, REDUCE_VERTEX, REDUCE_FRAGMENT, &["a_pos"])?;
             let rect_vbo = gl.create_buffer()?;
             let tex_vbo = gl.create_buffer()?;
             let index_buffer = gl.create_buffer()?;
@@ -98,6 +127,7 @@ impl Gles2Backend {
                 text_program,
                 image_program,
                 wallpaper_program,
+                reduce_program,
                 rect_vbo,
                 tex_vbo,
                 index_buffer,
@@ -106,6 +136,12 @@ impl Gles2Backend {
                 image: None,
                 wallpaper: None,
                 wallpaper_id: None,
+                wallpaper_cover: (0, 0),
+                render_size: (1920, 1080),
+                async_wallpaper: false,
+                pending_wallpaper: None,
+                uploading: None,
+                wallpaper_failed: None,
                 wallpaper_thumbs: None,
                 bayer: None,
                 dither: true,
@@ -285,21 +321,83 @@ impl Gles2Backend {
     /// [`WallpaperId`], if not already loaded. If a different wallpaper was previously loaded, its
     /// texture data is updated. Until then a frame has only the clear color behind its content.
     pub fn ensure_wallpaper(&mut self, id: WallpaperId) {
-        if self.wallpaper.is_some() && self.wallpaper_id == Some(id) {
+        // Waiting is only acceptable when there is nothing to show yet: the first frame needs a wallpaper.
+        let block = !self.async_wallpaper || self.wallpaper.is_none();
+        self.prepare_wallpaper(id, block);
+    }
+
+    /// Makes the host prepare wallpapers on a worker thread: [`ensure_wallpaper`](Self::ensure_wallpaper)
+    /// then returns at once while a new one is being prepared, and the frame keeps the current one.
+    pub fn set_async_wallpaper(&mut self, enabled: bool) {
+        self.async_wallpaper = enabled;
+    }
+
+    /// Like [`ensure_wallpaper`](Self::ensure_wallpaper) but never waits: starts the preparation on
+    /// the worker thread and uploads the wallpaper once it is ready (called again by the host's loop).
+    pub fn poll_wallpaper(&mut self, id: WallpaperId) {
+        self.prepare_wallpaper(id, !self.async_wallpaper);
+    }
+
+    fn prepare_wallpaper(&mut self, id: WallpaperId, block: bool) {
+        let cover = cover_size(self.render_size);
+        if let Some(upload) = &self.uploading {
+            if (upload.id, upload.cover) == (id, cover) {
+                self.step_wallpaper_upload(block);
+                return;
+            }
+            // The choice changed while it was going up: that one is dropped.
+            if let Some(upload) = self.uploading.take() {
+                // SAFETY: see `new`.
+                unsafe { self.gl.delete_texture(upload.source) };
+            }
+        }
+        if self.wallpaper.is_some()
+            && self.wallpaper_id == Some(id)
+            && self.wallpaper_cover == cover
+        {
             return;
         }
         let wallpaper = id.wallpaper();
-        let rgb = wallpaper.decompress_rgb();
-        assert_eq!(rgb.len(), (wallpaper.width * wallpaper.height * 3) as usize);
-        // SAFETY: see `new`.
-        unsafe {
-            let texture = match self.wallpaper {
-                Some(existing) => existing.texture,
-                None => self
-                    .gl
-                    .create_texture()
-                    .expect("cannot create the wallpaper texture"),
+        if self.wallpaper_failed == Some(id) {
+            return;
+        }
+        let started = std::time::Instant::now();
+        let loaded_rgb = if self.async_wallpaper {
+            // Only the last choice is prepared: a different pending one is dropped (its thread ends alone).
+            if self.pending_wallpaper.as_ref().map(|(pending, _)| *pending) != Some(id) {
+                self.pending_wallpaper = Some((id, crate::wallpaper::load_in_background(id)));
+            }
+            let Some((_, receiver)) = self.pending_wallpaper.as_ref() else {
+                return;
             };
+            let result = if block {
+                receiver.recv().map_err(|_| ())
+            } else {
+                match receiver.try_recv() {
+                    Ok(rgb) => Ok(rgb),
+                    Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => Err(()),
+                }
+            };
+            self.pending_wallpaper = None;
+            result.unwrap_or(None)
+        } else {
+            wallpaper.load_rgb()
+        };
+        let Some(rgb) = loaded_rgb else {
+            // Tried once: the frames keep the clear color instead of retrying (and logging) every frame.
+            log::error!("cannot load the wallpaper {}", id.as_str());
+            self.wallpaper_failed = Some(id);
+            return;
+        };
+        let loaded = started.elapsed();
+        self.ensure_bayer();
+        // SAFETY: see `new`.
+        let source = unsafe {
+            let texture = self
+                .gl
+                .create_texture()
+                .expect("cannot create the wallpaper source texture");
             self.gl.bind_texture(glow::TEXTURE_2D, Some(texture));
             self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
             self.gl.tex_image_2d(
@@ -311,17 +409,223 @@ impl Gles2Backend {
                 0,
                 glow::RGB,
                 glow::UNSIGNED_BYTE,
-                glow::PixelUnpackData::Slice(Some(&rgb)),
+                glow::PixelUnpackData::Slice(None),
             );
             set_filtering(&self.gl);
-            self.wallpaper = Some(Texture {
-                texture,
+            texture
+        };
+        self.uploading = Some(WallpaperUpload {
+            id,
+            cover,
+            rgb,
+            rows_done: 0,
+            source,
+            started,
+            loaded,
+        });
+        // A wallpaper that replaces another goes up a slice per frame, so no frame is late for it.
+        self.step_wallpaper_upload(!(self.async_wallpaper && self.wallpaper.is_some()));
+    }
+
+    /// Whether a wallpaper is still going up to the GPU, slice by slice: the host keeps drawing frames.
+    pub fn wallpaper_uploading(&self) -> bool {
+        self.uploading.is_some()
+    }
+
+    /// Sends the next slice of the wallpaper being uploaded (all of it when `all`) and, with the last
+    /// one, reduces it if the render buffer is smaller and swaps it in.
+    fn step_wallpaper_upload(&mut self, all: bool) {
+        let Some(mut upload) = self.uploading.take() else {
+            return;
+        };
+        let wallpaper = upload.id.wallpaper();
+        let rows = if all {
+            wallpaper.height
+        } else {
+            WALLPAPER_UPLOAD_ROWS
+        }
+        .min(wallpaper.height - upload.rows_done);
+        let row_bytes = (wallpaper.width * 3) as usize;
+        let from = upload.rows_done as usize * row_bytes;
+        // SAFETY: see `new`.
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(upload.source));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                0,
+                upload.rows_done as i32,
+                wallpaper.width as i32,
+                rows as i32,
+                glow::RGB,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(
+                    &upload.rgb[from..from + rows as usize * row_bytes],
+                )),
+            );
+        }
+        upload.rows_done += rows;
+        if upload.rows_done < wallpaper.height {
+            self.uploading = Some(upload);
+            return;
+        }
+        let WallpaperUpload {
+            id,
+            cover,
+            source,
+            started,
+            loaded,
+            ..
+        } = upload;
+        let reduce = cover.0 < wallpaper.width && cover.1 < wallpaper.height;
+        // SAFETY: see `new`.
+        unsafe {
+            let mut texture = Texture {
+                texture: source,
                 width: wallpaper.width,
                 height: wallpaper.height,
-            });
+            };
+            if reduce {
+                let destination = match self.wallpaper {
+                    Some(existing) => existing.texture,
+                    None => self
+                        .gl
+                        .create_texture()
+                        .expect("cannot create the wallpaper texture"),
+                };
+                if self.reduce_wallpaper(source, destination, cover) {
+                    self.gl.delete_texture(source);
+                    self.wallpaper = None;
+                    texture = Texture {
+                        texture: destination,
+                        width: cover.0,
+                        height: cover.1,
+                    };
+                } else if self.wallpaper.is_none() {
+                    // The reduction is not available (no renderable texture): the image as it is,
+                    // which the GPU reduces with its linear filter at every frame.
+                    self.gl.delete_texture(destination);
+                }
+            }
+            if let Some(previous) = self.wallpaper.take() {
+                self.gl.delete_texture(previous.texture);
+            }
+            self.wallpaper = Some(texture);
             self.wallpaper_id = Some(id);
+            self.wallpaper_cover = cover;
         }
-        self.ensure_bayer();
+        log::info!(
+            "wallpaper {} ready: load {} ms, total {} ms ({}x{})",
+            id.as_str(),
+            loaded.as_millis(),
+            started.elapsed().as_millis(),
+            self.wallpaper.map_or(0, |t| t.width),
+            self.wallpaper.map_or(0, |t| t.height)
+        );
+    }
+
+    /// Draws `source` (the full image) into `destination`, a texture of `cover` pixels, with the
+    /// reduction shader. Returns false, with the GL state restored, when the framebuffer is not complete.
+    ///
+    /// # Safety
+    /// Needs the current GL context; the textures must belong to it.
+    unsafe fn reduce_wallpaper(
+        &mut self,
+        source: glow::Texture,
+        destination: glow::Texture,
+        cover: (u32, u32),
+    ) -> bool {
+        let gl = &self.gl;
+        let previous_framebuffer = gl.get_parameter_i32(glow::FRAMEBUFFER_BINDING);
+        let mut previous_viewport = [0i32; 4];
+        gl.get_parameter_i32_slice(glow::VIEWPORT, &mut previous_viewport);
+
+        gl.bind_texture(glow::TEXTURE_2D, Some(destination));
+        gl.tex_image_2d(
+            glow::TEXTURE_2D,
+            0,
+            glow::RGBA as i32,
+            cover.0 as i32,
+            cover.1 as i32,
+            0,
+            glow::RGBA,
+            glow::UNSIGNED_BYTE,
+            glow::PixelUnpackData::Slice(None),
+        );
+        set_filtering(gl);
+        let framebuffer = gl
+            .create_framebuffer()
+            .expect("cannot create the framebuffer");
+        gl.bind_framebuffer(glow::FRAMEBUFFER, Some(framebuffer));
+        gl.framebuffer_texture_2d(
+            glow::FRAMEBUFFER,
+            glow::COLOR_ATTACHMENT0,
+            glow::TEXTURE_2D,
+            Some(destination),
+            0,
+        );
+        let complete = gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE;
+        if complete {
+            gl.viewport(0, 0, cover.0 as i32, cover.1 as i32);
+            gl.disable(glow::BLEND);
+            gl.disable(glow::SCISSOR_TEST);
+            let program = &self.reduce_program;
+            gl.use_program(Some(program.program));
+            gl.active_texture(glow::TEXTURE0);
+            gl.bind_texture(glow::TEXTURE_2D, Some(source));
+            gl.uniform_1_i32(program.u_texture.as_ref(), 0);
+            if let Some(bayer) = self.bayer {
+                gl.active_texture(glow::TEXTURE1);
+                gl.bind_texture(glow::TEXTURE_2D, Some(bayer.texture));
+                gl.uniform_1_i32(program.u_bayer.as_ref(), 1);
+                gl.active_texture(glow::TEXTURE0);
+            }
+            // A quarter of the footprint of a destination pixel, in source texture coordinates.
+            let step = [0.25 / cover.0 as f32, 0.25 / cover.1 as f32];
+            gl.uniform_2_f32(
+                gl.get_uniform_location(program.program, "u_step").as_ref(),
+                step[0],
+                step[1],
+            );
+            gl.uniform_2_f32(
+                gl.get_uniform_location(program.program, "u_dest").as_ref(),
+                cover.0 as f32,
+                cover.1 as f32,
+            );
+            let quad: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0, 1.0];
+            let vbo = gl.create_buffer().expect("cannot create the quad buffer");
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+            gl.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&quad),
+                glow::STREAM_DRAW,
+            );
+            gl.enable_vertex_attrib_array(0);
+            gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
+            gl.draw_arrays(glow::TRIANGLE_STRIP, 0, 4);
+            gl.disable_vertex_attrib_array(0);
+            gl.bind_buffer(glow::ARRAY_BUFFER, None);
+            gl.delete_buffer(vbo);
+        }
+        gl.bind_framebuffer(
+            glow::FRAMEBUFFER,
+            std::num::NonZeroU32::new(previous_framebuffer as u32).map(glow::NativeFramebuffer),
+        );
+        gl.delete_framebuffer(framebuffer);
+        gl.viewport(
+            previous_viewport[0],
+            previous_viewport[1],
+            previous_viewport[2],
+            previous_viewport[3],
+        );
+        complete
+    }
+
+    /// Tells the backend the size of the render buffer, so the wallpaper is reduced to it when the
+    /// buffer is smaller than the image. Every frame also sets it from its viewport.
+    pub fn set_render_size(&mut self, width: u32, height: u32) {
+        self.render_size = (width.max(1), height.max(1));
     }
 
     /// Creates the 4x4 dither texture of the wallpaper, repeated over the screen and read texel by
@@ -477,7 +781,7 @@ impl Gles2Backend {
     }
 
     /// Releases every GL object. The context itself belongs to the host.
-    pub fn destroy(self) {
+    pub fn destroy(mut self) {
         // SAFETY: see `new`.
         unsafe {
             for program in [
@@ -485,6 +789,7 @@ impl Gles2Backend {
                 &self.text_program,
                 &self.image_program,
                 &self.wallpaper_program,
+                &self.reduce_program,
             ] {
                 self.gl.delete_program(program.program);
             }
@@ -502,6 +807,9 @@ impl Gles2Backend {
             .flatten()
             {
                 self.gl.delete_texture(texture.texture);
+            }
+            if let Some(upload) = self.uploading.take() {
+                self.gl.delete_texture(upload.source);
             }
         }
     }
@@ -576,6 +884,7 @@ impl Backend for Gles2Backend {
         // SAFETY: see `new`.
         unsafe {
             let gl = &self.gl;
+            self.render_size = (viewport.width.max(1), viewport.height.max(1));
             gl.viewport(0, 0, viewport.width as i32, viewport.height as i32);
             gl.disable(glow::SCISSOR_TEST);
             gl.disable(glow::DEPTH_TEST);
@@ -724,6 +1033,16 @@ fn device_scissor(clip: &Rect, viewport: &Viewport) -> [i32; 4] {
     ]
 }
 
+/// The size the wallpaper (16:9) covers in a render buffer: the buffer's width or height, whichever
+/// makes the image reach the whole buffer.
+fn cover_size((width, height): (u32, u32)) -> (u32, u32) {
+    if u64::from(width) * 9 >= u64::from(height) * 16 {
+        (width, (width * 9).div_ceil(16))
+    } else {
+        ((height * 16).div_ceil(9), height)
+    }
+}
+
 unsafe fn set_filtering(gl: &glow::Context) {
     gl.tex_parameter_i32(
         glow::TEXTURE_2D,
@@ -803,6 +1122,29 @@ unsafe fn link(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_wallpaper_cover_reaches_the_whole_buffer_in_any_proportion() {
+        for (w, h) in [
+            (1280, 720),
+            (1920, 1080),
+            (1366, 768),
+            (1000, 720),
+            (1280, 900),
+            (720, 1280),
+            (1, 1),
+        ] {
+            let (cw, ch) = cover_size((w, h));
+            assert!(cw >= w && ch >= h, "{w}x{h}: cover {cw}x{ch}");
+            // One of the two dimensions is exact; the other one is cropped.
+            assert!(cw == w || ch == h);
+            // The proportion stays 16:9, so the image is only cropped, never stretched.
+            assert!(
+                (cw as f32 / ch as f32 - 16.0 / 9.0).abs() < 0.01 * (16.0 / 9.0) + 1.0 / ch as f32
+            );
+        }
+        assert_eq!(cover_size((1280, 720)), (1280, 720));
+    }
 
     #[test]
     fn scissor_is_flipped_and_rounded_outwards() {

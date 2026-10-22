@@ -506,13 +506,13 @@ mod tests {
             Rect::new(0.0, 0.0, 100.0, 100.0),
             Rect::new(0.0, 0.0, 1.0, 1.0),
             WHITE,
-            crate::wallpaper::WallpaperId::ObsidianCanyon,
+            crate::wallpaper::WallpaperId::GlassFacade,
         );
         let frame = Frame::build(&list);
         assert!(frame.uses_wallpaper());
         assert_eq!(
             frame.wallpaper_id,
-            Some(crate::wallpaper::WallpaperId::ObsidianCanyon)
+            Some(crate::wallpaper::WallpaperId::GlassFacade)
         );
     }
 

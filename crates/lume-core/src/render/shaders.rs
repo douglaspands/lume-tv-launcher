@@ -160,6 +160,50 @@ void main() {
 }
 "#;
 
+/// Fills the destination of the wallpaper reduction (a framebuffer of the render buffer's size).
+pub const REDUCE_VERTEX: &str = r#"#version 100
+attribute vec2 a_pos;
+
+uniform vec2 u_dest;     // destination size in pixels
+
+varying vec2 v_uv;
+varying vec2 v_bayer;    // destination pixels over the 4 of the dither pattern
+
+void main() {
+    vec2 unit = a_pos * 0.5 + 0.5;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+    v_uv = unit;
+    v_bayer = unit * u_dest / 4.0;
+}
+"#;
+
+/// Reduces the wallpaper to the render buffer's size once, when it is loaded: four linear taps spread
+/// over the footprint of a destination pixel (a box of the size of the reduction, which is an area
+/// filter), then the dither is made again at the final size, before the 8 bits.
+pub const REDUCE_FRAGMENT: &str = r#"#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+uniform sampler2D u_texture;
+uniform sampler2D u_bayer;
+uniform vec2 u_step;     // a quarter of a destination pixel, in source texture coordinates
+
+varying vec2 v_uv;
+varying vec2 v_bayer;
+
+void main() {
+    vec3 color = texture2D(u_texture, v_uv + vec2(-u_step.x, -u_step.y)).rgb
+        + texture2D(u_texture, v_uv + vec2(u_step.x, -u_step.y)).rgb
+        + texture2D(u_texture, v_uv + vec2(-u_step.x, u_step.y)).rgb
+        + texture2D(u_texture, v_uv + vec2(u_step.x, u_step.y)).rgb;
+    color = color * 0.25 + (texture2D(u_bayer, v_bayer).r - 0.5) / 255.0;
+    gl_FragColor = vec4(color, 1.0);
+}
+"#;
+
 /// The 4x4 ordered dither thresholds, `(level + 0.5) / 16` as bytes, row by row: the texture
 /// [`WALLPAPER_FRAGMENT`] repeats over the screen.
 pub const BAYER_4X4: [u8; 16] = {

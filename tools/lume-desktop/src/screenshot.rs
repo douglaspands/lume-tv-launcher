@@ -31,7 +31,20 @@ impl Session {
         let gl = HeadlessGl::new(width, height)?;
         let backend = Gles2Backend::new(gl.glow())?;
         let display = Display::new(width, height);
-        let text = TextEngine::new(display.scale);
+        // `LUME_FALLBACK_FONT`: a font file for the letters the embedded font lacks (Cyrillic), as the
+        // fonts of the device give them on the TV.
+        let text = match std::env::var_os("LUME_FALLBACK_FONT") {
+            Some(path) => TextEngine::with_fallback(
+                display.scale,
+                Box::new(lume_core::text::SystemFonts::new(vec![
+                    lume_core::text::FontCandidate {
+                        path: path.into(),
+                        index: 0,
+                    },
+                ])),
+            ),
+            None => TextEngine::new(display.scale),
+        };
         Ok(Session {
             backend,
             _gl: gl,
@@ -77,7 +90,12 @@ impl Session {
     }
 
     /// Puts the demo's synthetic banners and icons in the app's cells of the image texture.
+    /// With `LUME_NO_SYNTHETIC_ICONS` set it puts nothing there, so the tiles show their color and letter
+    /// (the look of the README pictures).
     pub fn load_icons(&mut self, app: &mut LumeApp) {
+        if std::env::var_os("LUME_NO_SYNTHETIC_ICONS").is_some() {
+            return;
+        }
         let layout = lume_core::app_icons::AtlasLayout::for_scale(self.display.scale);
         app.icons.set_layout(layout);
         self.backend.ensure_image(layout.width, layout.height);

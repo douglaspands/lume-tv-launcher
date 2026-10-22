@@ -12,6 +12,7 @@ glow = { version = "0.18", default-features = false }
 log = "0.4"
 memmap2 = "0.9"
 miniz_oxide = { version = "0.8", default-features = false, features = ["with-alloc"] }
+qoi = "0.4"
 ttf-parser = { version = "0.25", default-features = false, features = ["std", "opentype-layout"] }
 bytemuck = { version = "1", features = ["derive"] }
 fontdue = { version = "0.9", default-features = false, features = ["hashbrown"] }

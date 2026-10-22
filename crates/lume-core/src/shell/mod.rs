@@ -442,6 +442,12 @@ impl Shell {
     }
 
     /// Whether the screen must be redrawn at `now_ms`.
+    /// Asks for a frame although nothing in the interface changed (a wallpaper prepared in the
+    /// background is ready to be swapped in).
+    pub fn invalidate(&mut self) {
+        self.dirty = true;
+    }
+
     pub fn frame_due(&self, now_ms: u64) -> bool {
         self.is_active() && self.next_timeout(now_ms) == Some(Duration::ZERO)
     }

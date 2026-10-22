@@ -384,7 +384,7 @@ impl LumeApp {
 
     // ---- drawing of the pieces --------------------------------------------------------------
 
-    /// Section displaying the 10 wallpapers as 178x100 mini-cards inside a panel with horizontal scrolling.
+    /// Section displaying the wallpapers as 178x100 mini-cards inside a panel with horizontal scrolling.
     fn wallpaper_section(
         &mut self,
         p: &mut Painter,
@@ -466,12 +466,13 @@ impl LumeApp {
             );
 
             let active_idx = focused_wp_index.unwrap_or_else(|| self.config.wallpaper.index());
+            let total = WallpaperId::ALL.len();
             let hint = if self.editor.wallpaper_scroll_x <= 4.0 {
-                format!("{} / 10  ›", active_idx + 1)
+                format!("{} / {}  ›", active_idx + 1, total)
             } else if self.editor.wallpaper_scroll_x >= max_scroll - 4.0 {
-                format!("‹  {} / 10", active_idx + 1)
+                format!("‹  {} / {}", active_idx + 1, total)
             } else {
-                format!("‹  {} / 10  ›", active_idx + 1)
+                format!("‹  {} / {}  ›", active_idx + 1, total)
             };
             let hint_style = TextStyle::new(16.0, 700);
             let width = p.text.measure(&hint, &hint_style);

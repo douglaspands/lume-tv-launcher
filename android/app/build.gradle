@@ -76,6 +76,11 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    androidResources {
+        // The wallpapers are QOI (already compressed): stored, so the APK reads them without inflating.
+        noCompress += "qoi"
+    }
+
     packaging {
         jniLibs {
             // Keep native libraries 16 KB aligned inside the APK.
@@ -111,6 +116,23 @@ abstract class CargoNdkTask extends DefaultTask {
     }
 }
 
+// The wallpapers are read by the Rust side from the APK's assets (one copy of each, not one inside
+// every liblume.so): stage the QOI files of the catalog under assets/wallpaper/.
+abstract class StageWallpapersTask extends DefaultTask {
+    @InputDirectory abstract DirectoryProperty getSourceDir()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+
+    @Inject abstract FileSystemOperations getFileOps()
+
+    @TaskAction
+    void stage() {
+        fileOps.sync {
+            from(sourceDir) { include "*.qoi" }
+            into(outputDir.dir("wallpaper"))
+        }
+    }
+}
+
 androidComponents {
     onVariants(selector().all()) { variant ->
         def isDebug = variant.buildType == "debug"
@@ -123,5 +145,11 @@ androidComponents {
             outputDir.set(layout.buildDirectory.dir("rustJniLibs/${variant.name}"))
         }
         variant.sources.jniLibs.addGeneratedSourceDirectory(task, CargoNdkTask::getOutputDir)
+
+        def stage = tasks.register("stageWallpapers${cap}", StageWallpapersTask) {
+            sourceDir.set(new File(lumeRepoRoot, "crates/lume-core/assets/wallpaper"))
+            outputDir.set(layout.buildDirectory.dir("wallpaperAssets/${variant.name}"))
+        }
+        variant.sources.assets.addGeneratedSourceDirectory(stage, StageWallpapersTask::getOutputDir)
     }
 }
