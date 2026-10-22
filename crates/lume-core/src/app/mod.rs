@@ -85,20 +85,7 @@ pub enum Tab {
     Apps = 1,
 }
 
-/// Remote control keys.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Key {
-    Up,
-    Down,
-    Left,
-    Right,
-    /// OK, Enter or the center of the D-pad.
-    Ok,
-    Back,
-    Home,
-    /// Opens the context menu of the focused item, where it has one.
-    Menu,
-}
+pub use crate::keys::Key;
 
 /// What the platform shell has to do for the app.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,6 +108,8 @@ pub enum Effect {
     SaveConfig,
     /// The usage history changed and must be written to disk.
     SaveUsage,
+    /// The key mapping changed and must be written to disk.
+    SaveKeys,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,6 +186,7 @@ pub struct LumeApp {
     pub icons: AppIcons,
     pub usage: UsageHistory,
     pub config: HomeConfig,
+    pub keys: crate::keys::KeyMap,
     pub translator: Translator,
     pub clock: WallClock,
     screen: Screen,
@@ -279,6 +269,7 @@ impl LumeApp {
             icons: AppIcons::default(),
             usage,
             config,
+            keys: crate::keys::KeyMap::default(),
             translator,
             clock,
             screen: Screen::Main(Tab::Home),

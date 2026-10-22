@@ -16,7 +16,7 @@ use egl::Graphics;
 use lume_core::app::{Effect, Key};
 use lume_core::render::Backend;
 use lume_core::shell::protocol::Changed;
-use lume_core::shell::{keys, Shell};
+use lume_core::shell::Shell;
 use lume_core::theme::{vars, Color};
 use std::collections::HashSet;
 use std::ffi::c_void;
@@ -391,7 +391,7 @@ impl Runtime {
                 let more = iter.next(|event| match event {
                     InputEvent::KeyEvent(key) => {
                         let code: u32 = key.key_code().into();
-                        match keys::from_android(code as i32) {
+                        match self.shell.app().keys.from_android(code as i32) {
                             Some(mapped) => {
                                 if key.action() == KeyAction::Down {
                                     pressed.push(mapped);
@@ -460,7 +460,7 @@ impl Runtime {
                 }
             }
             // The shell already saved these.
-            Effect::SaveConfig | Effect::SaveUsage => {}
+            Effect::SaveConfig | Effect::SaveUsage | Effect::SaveKeys => {}
         }
     }
 

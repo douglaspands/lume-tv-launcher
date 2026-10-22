@@ -20,10 +20,8 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 
 A `main` está na versão da última tag (`git tag`); o histórico das changes mescladas fica em `openspec/changes/archive/`. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
 Pendências conhecidas, que dependem do autor: masters 4K em Git LFS (change `masters-no-lfs`; o histórico antigo guarda os 60 MB como blobs, decisão de não reescrevê-lo); assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
-`cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
-verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
-imagem `system-images;android-28;android-tv;x86`, para validar o Android 9, tarefa 5.3 da `v0-2-1`, encerrada sem essa validação e deixada para uma spec futura de testes) e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
-gasta cerca de 400 ms só na troca de janelas, o Lume 75 a 110 ms; a proposta é medir só a parte do Lume, até 150 ms).
+`cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0` e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
+gasta cerca de 400 ms só na troca de janelas, o Lume 75 a 110 ms; a proposta é medir só a parte do Lume, até 150 ms). O emulador Android TV 9 (API 28 x86) está configurado (`tv_api28`, automação em `scripts/emulator.sh`).
 
 ## Versão do build
 
@@ -57,7 +55,20 @@ cargo run -p lume-desktop -- --size 1920x1080 --locale en --keys right --screens
 uv run scripts/measure-ink.py h.png columns --y 28 60   # vãos e alturas na tinta (captura em 1280x720); régua no design system
 scripts/container-build.sh release       # APK em dist/ (runtime: wslc, docker, podman, nesta ordem; LUME_CONTAINER força outro)
 uv run scripts/verify-apk.py dist/lume-<versão>-release-debugsigned.apk   # limite 40 MB
+scripts/emulator.sh start                # Inicia o emulador Android TV 9 (API 28, 1080p, KVM)
+scripts/emulator.sh install debug        # Instala APK debug (com x86) e abre o Lume
 ```
+
+## Emulador Android TV (testes locais)
+
+Emulador local Android TV 9 (API 28, x86) acelerado por KVM, com AVD `tv_api28` (1080p).
+
+- Iniciar e aguardar boot: `scripts/emulator.sh start` (ou `scripts/emulator.sh start --no-window` para modo headless).
+- Instalar e testar: `scripts/emulator.sh install debug` (o build debug embute `x86`, `x86_64`, `armeabi-v7a` e `arm64-v8a`).
+- Controle remoto por comando: `scripts/emulator.sh key up|down|left|right|ok|back|home|menu`.
+- Alternar resolução: `scripts/emulator.sh resolution 720p` (para simular a AIWA) ou `scripts/emulator.sh resolution reset`.
+- Captura de tela: `scripts/emulator.sh screenshot x.png`.
+- Encerrar: `scripts/emulator.sh stop`.
 
 ## TV de referência (testes por adb)
 

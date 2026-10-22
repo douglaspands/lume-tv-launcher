@@ -10,6 +10,7 @@ pub mod fonts;
 pub mod home;
 pub mod i18n;
 pub mod icons;
+pub mod keys;
 pub mod licenses;
 pub mod logo;
 pub mod render;

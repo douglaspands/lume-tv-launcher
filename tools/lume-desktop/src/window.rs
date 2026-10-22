@@ -90,6 +90,7 @@ impl Viewer {
                 Effect::Uninstall { package } => println!("uninstall {package}"),
                 Effect::SaveConfig => println!("save the configuration"),
                 Effect::SaveUsage => println!("save the usage history"),
+                Effect::SaveKeys => println!("save the key mapping"),
             }
         }
         self.needs_frame = true;
