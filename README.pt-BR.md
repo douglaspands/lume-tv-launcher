@@ -26,7 +26,7 @@
 
 **O que você precisa**
 
-- Uma TV com **Android TV 9, 10 ou 11**.
+- Uma TV com **Android TV 9 ou mais novo** (Android 9, 10, 11, 12, 13, 14+).
 - Um computador (Windows, macOS ou Linux) na **mesma rede Wi-Fi** da TV.
 - Uns 10 minutos.
 

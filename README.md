@@ -26,7 +26,7 @@ English | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md) | [B
 
 **What you need**
 
-- A TV running **Android TV 9, 10 or 11**.
+- A TV running **Android TV 9 or newer** (Android 9, 10, 11, 12, 13, 14+).
 - A computer (Windows, macOS or Linux) on the **same Wi-Fi or network** as the TV.
 - About 10 minutes.
 
