@@ -1,26 +1,27 @@
-# Lume
+# Lume - Android TV Launcher
 
 **A fast, lightweight home screen for Android TV.** Lume replaces the launcher that came with your TV with a clean, remote-friendly one that uses very little memory, so your streaming apps get more of it.
 
-English | [Português](README.pt-BR.md)
+English | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Русский](README.ru.md)
 
 > **Status:** Lume is in development. The current release is **version 0.3.1**, published on the [Releases page](https://github.com/douglaspands/lume-tv-launcher/releases). The steps below show how to install it.
 
 <p align="center">
-  <img src="docs/screenshots/home-en.png" alt="Home screen with the dock" width="49%">
-  <img src="docs/screenshots/apps-en.png" alt="Apps screen" width="49%">
+  <img src="docs/screenshots/home-en.jpg" alt="Home screen with the dock" width="49%">
+  <img src="docs/screenshots/apps-en.jpg" alt="Apps screen" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings-en.png" alt="Settings" width="49%">
-  <img src="docs/screenshots/editor-en.png" alt="Editing the favorites" width="49%">
+  <img src="docs/screenshots/settings-en.jpg" alt="Settings" width="49%">
+  <img src="docs/screenshots/editor-en.jpg" alt="Editing the favorites" width="49%">
 </p>
 
 **What you get**
 
-- A home screen with a floating dock for your favorite apps: the icon under the focus grows, and the neighbors make room.
+- A home screen with a floating dock for your favorite apps: the icon under the focus grows, and the neighbors make room. The favorites are round, or square if you prefer.
+- Six wallpapers to choose from (the northern-lights Aurora is the default), made for this project.
 - An "Apps" screen with everything installed on your TV.
 - Everything works with the normal TV remote (arrows, OK, Back, Home).
-- Portuguese (Brazil) and English, following your TV's language.
+- English, Portuguese (Brazil), Spanish, Indonesian and Russian, following your TV's language.
 - No internet access at all: Lume never connects to the network and asks for no dangerous permissions.
 
 **What you need**
@@ -162,7 +163,7 @@ cargo run -p lume-desktop -- --screenshot home home.png
 cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screenshot home focus.png
 ```
 
-`--keys` presses keys first (`up down left right ok back home`), `--locale` picks the language and `--pseudo-locale` stretches every text by 40% to find layouts that do not fit.
+`--keys` presses keys first (`up down left right ok back home`), `--locale` picks the language and `--pseudo-locale` stretches every text by 40% to find layouts that do not fit. The pictures of this README were made with `--favorites 8`, `LUME_NO_SYNTHETIC_ICONS=1` (tiles show their color and letter) and, for Russian, `LUME_FALLBACK_FONT` pointing to a font with Cyrillic letters (on the TV the system gives them).
 
 ### Build with a container (recommended)
 
@@ -197,7 +198,7 @@ scripts/container-build.sh release    # dist/lume-<version>-release-debugsigned.
 
 Keep the keystore outside the repository and back it up: the same key must sign every update. The version comes from the build, not from a file: a release tag `v0.3.0` gives `0.3.0` (`LUME_VERSION_NAME=v0.3.0` does the same), and a local build uses the short git commit (`4d8438b`, with `-dirty` for uncommitted changes to tracked files; `dev` without git), so the file is named `dist/lume-4d8438b-release-debugsigned.apk`.
 
-**Checking an APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` checks the size (6 MB), the ABIs, the 16 KB alignment of the native libraries, and that the app asks for neither `INTERNET` nor `QUERY_ALL_PACKAGES`.
+**Checking an APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` checks the size (40 MB), the ABIs, the 16 KB alignment of the native libraries, that each wallpaper is stored once in `assets/` and not inside a library, and that the app asks for neither `INTERNET` nor `QUERY_ALL_PACKAGES`.
 
 ### Build without a container
 
@@ -237,7 +238,7 @@ Translations are standard Android `strings.xml` files in `android/app/src/main/r
 
 ### Wallpaper
 
-Lume draws one northern-lights photograph behind every screen. How it is processed at build time, how to replace it and where its source and license are recorded: [`docs/wallpaper.md`](docs/wallpaper.md).
+Lume draws one of six wallpapers behind every screen, all made by the project's author as 3840x2160 images and reduced to Full HD at build time. How they are processed, how to add or replace one and where their origin and license are recorded: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contributing, license and trademarks
 
