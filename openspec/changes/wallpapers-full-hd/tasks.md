@@ -50,7 +50,8 @@
 
 ## Workflow follow-up
 
-- [ ] Pendência antes do merge: decidir o destino dos masters 4K (60 MB em `tools/wallpaper/masters/`, sem Git LFS). Verificar se os scripts procedurais (`generate_4k_all_options.py`, `build_all_4k.py`, `build_opcao_d.py`) reproduzem os masters byte a byte; se sim, tirar os PNGs do repositório e gerá-los sob demanda; se não, migrar para Git LFS (`git lfs migrate`) ou aceitar o peso no histórico.
+- Destino dos masters 4K (60 MB, sem Git LFS) fica para a próxima change: ver "Pendências conhecidas" no `CLAUDE.md`.
+
 
 - Arquivar com `/opsx:archive` e mesclar por squash na `main` quando o autor pedir.
 - Criar a tag `v0.3.0` depois do merge, se o autor quiser.
