@@ -71,6 +71,21 @@ impl Session {
             .read_pixels(self.display.width, self.display.height)
     }
 
+    /// Turns the dither of the wallpaper on or off, to compare the two.
+    pub fn set_wallpaper_dither(&mut self, enabled: bool) {
+        self.backend.set_wallpaper_dither(enabled);
+    }
+
+    /// Puts the demo's synthetic banners and icons in the app's cells of the image texture.
+    pub fn load_icons(&mut self, app: &mut LumeApp) {
+        let layout = lume_core::app_icons::AtlasLayout::for_scale(self.display.scale);
+        app.icons.set_layout(layout);
+        self.backend.ensure_image(layout.width, layout.height);
+        for (region, pixels) in crate::demo::synthetic_icons(app) {
+            self.backend.update_image(region, &pixels);
+        }
+    }
+
     pub fn finish(self) {
         self.backend.destroy();
     }
@@ -110,6 +125,7 @@ pub fn render_app(
     splash: Option<u64>,
 ) -> Result<Vec<u8>, String> {
     let mut session = Session::new(width, height)?;
+    session.load_icons(app);
     let mut now = 0u64;
     let frame = |session: &mut Session, app: &mut LumeApp, now: u64| {
         session.build(|scene| {

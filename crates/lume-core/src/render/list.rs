@@ -31,6 +31,9 @@ pub struct TexturedCmd {
     pub uv: Rect,
     pub color: Color,
     pub radius: f32,
+    /// What an image is composed over inside its shape: the item's own color, so the shape has
+    /// one antialiased edge instead of one for a fill and another for the image over it.
+    pub background: Color,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,6 +115,7 @@ impl DisplayList {
             uv,
             color,
             radius: 0.0,
+            background: Color::TRANSPARENT,
         }));
     }
 
@@ -120,11 +124,26 @@ impl DisplayList {
     }
 
     pub fn image_rounded(&mut self, dest: Rect, uv: Rect, color: Color, radius: f32) {
+        self.image_over(dest, uv, color, radius, Color::TRANSPARENT);
+    }
+
+    /// An image composed over `background` and clipped once by the rounded shape: `color` (a
+    /// fade-in, for instance) only touches the image, and `background` shows wherever the image
+    /// is transparent or not visible yet.
+    pub fn image_over(
+        &mut self,
+        dest: Rect,
+        uv: Rect,
+        color: Color,
+        radius: f32,
+        background: Color,
+    ) {
         self.cmds.push(Cmd::Image(TexturedCmd {
             dest,
             uv,
             color,
             radius,
+            background,
         }));
     }
 
@@ -139,6 +158,7 @@ impl DisplayList {
             uv,
             color,
             radius: 0.0,
+            background: Color::TRANSPARENT,
         }));
     }
 
@@ -148,6 +168,7 @@ impl DisplayList {
             uv,
             color: Color::WHITE,
             radius,
+            background: Color::TRANSPARENT,
         }));
     }
 
@@ -160,6 +181,7 @@ impl DisplayList {
                 Cmd::Rect(r) => r.opacity *= factor,
                 Cmd::Glyph(t) | Cmd::Image(t) | Cmd::Wallpaper(t) | Cmd::WallpaperThumb(t) => {
                     t.color.a = (f32::from(t.color.a) * factor).round() as u8;
+                    t.background.a = (f32::from(t.background.a) * factor).round() as u8;
                 }
                 Cmd::PushClip(_) | Cmd::PopClip => {}
             }
@@ -197,6 +219,14 @@ impl DisplayList {
     /// Draws a box the way its theme style describes it: shadow, fill, then outline.
     /// `rect` is the box before `style.scale`, which is applied here about its center.
     pub fn draw_box(&mut self, rect: Rect, style: &ComputedStyle) {
+        self.draw_box_under(rect, style, 0.0);
+    }
+
+    /// Like [`draw_box`](Self::draw_box), for a box an image is drawn over afterwards: the outline
+    /// also reaches `under` inside the box, where the image covers it, so the image's antialiased
+    /// edge blends with the outline and not with what is behind (no dark line between them). From
+    /// outside, the outline looks the same.
+    pub fn draw_box_under(&mut self, rect: Rect, style: &ComputedStyle, under: f32) {
         let rect = rect.scaled_about_center(style.scale);
         let radius = style.border_radius * style.scale;
         let opacity = style.opacity.clamp(0.0, 1.0);
@@ -225,7 +255,7 @@ impl DisplayList {
                 rect.grow(grow),
                 radius + grow,
                 RectKind::Ring {
-                    width: outline.width,
+                    width: outline.width + under,
                     color: outline.color,
                 },
                 opacity,

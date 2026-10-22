@@ -61,6 +61,7 @@ impl Display {
             scale: self.scale,
             offset_x: self.offset_x,
             offset_y: self.offset_y,
+            edge_softness: crate::theme::vars::EDGE_SOFTNESS,
         }
     }
 

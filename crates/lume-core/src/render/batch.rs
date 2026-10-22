@@ -83,7 +83,7 @@ pub struct RectVertex {
     pub colors: [[f32; 4]; 3],
 }
 
-/// Vertex of the text and image programs. Four vec4 attributes.
+/// Vertex of the text and image programs. Five vec4 attributes (text uses the first two).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct TexVertex {
@@ -97,10 +97,13 @@ pub struct TexVertex {
     pub local: [f32; 2],
     /// Attribute 2, zw: half of the quad size.
     pub half_size: [f32; 2],
-    /// Attribute 3, x: corner radius.
+    /// Attribute 3, x: corner radius. The rounded shape sits half an antialiasing ramp inside the
+    /// quad, so its whole edge is drawn over the image's own pixels.
     pub radius: f32,
     /// Attribute 3, yzw: unused padding to complete vec4.
     pub _padding: [f32; 3],
+    /// Attribute 4: premultiplied RGBA the image is composed over.
+    pub background: [f32; 4],
 }
 
 /// Everything a backend needs to draw one frame.
@@ -236,15 +239,15 @@ impl Builder {
         }
         self.start_quad(program, texture, clip);
         let color = premultiplied(cmd.color, 1.0);
+        let background = premultiplied(cmd.background, 1.0);
         let (d, uv) = (cmd.dest, cmd.uv);
         let half_size = [d.w / 2.0, d.h / 2.0];
         let radius = cmd.radius.min(half_size[0]).min(half_size[1]).max(0.0);
-        let corners = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)];
         let target = match program {
             Program::Image => &mut self.frame.image_vertices,
             _ => &mut self.frame.text_vertices,
         };
-        for (cx, cy) in corners {
+        for (cx, cy) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
             target.push(TexVertex {
                 position: [d.x + cx * d.w, d.y + cy * d.h],
                 uv: [uv.x + cx * uv.w, uv.y + cy * uv.h],
@@ -253,6 +256,7 @@ impl Builder {
                 half_size,
                 radius,
                 _padding: [0.0; 3],
+                background,
             });
         }
     }
@@ -355,7 +359,7 @@ mod tests {
     #[test]
     fn vertex_structs_have_no_padding() {
         assert_eq!(std::mem::size_of::<RectVertex>(), 28 * 4);
-        assert_eq!(std::mem::size_of::<TexVertex>(), 16 * 4);
+        assert_eq!(std::mem::size_of::<TexVertex>(), 20 * 4);
     }
 
     #[test]
@@ -372,9 +376,49 @@ mod tests {
         for v in &frame.image_vertices {
             assert_eq!(v.half_size, [32.0, 32.0]);
             assert_eq!(v.radius, 32.0);
+            assert_eq!(v.background, [0.0; 4]);
         }
+        // The quad is the image itself: the shader keeps the rounded edge inside it, so the texture
+        // is never read past the image's own pixels.
         assert_eq!(frame.image_vertices[0].local, [-32.0, -32.0]);
         assert_eq!(frame.image_vertices[3].local, [32.0, 32.0]);
+        assert_eq!(frame.image_vertices[0].position, [10.0, 20.0]);
+        assert_eq!(frame.image_vertices[3].uv, [1.0, 1.0]);
+    }
+
+    #[test]
+    fn an_image_over_a_color_carries_it_premultiplied_apart_from_its_tint() {
+        let mut list = DisplayList::new();
+        let tile = Rect::new(0.0, 0.0, 200.0, 100.0);
+        let uv = Rect::new(0.25, 0.5, 0.5, 0.25);
+        // Half way through the fade-in, over an opaque red.
+        let tint = Color {
+            a: 128,
+            ..Color::WHITE
+        };
+        list.image_over(tile, uv, tint, 12.0, Color::rgb(255, 0, 0));
+        let frame = Frame::build(&list);
+        let v = frame.image_vertices[0];
+        assert_eq!(v.background, [1.0, 0.0, 0.0, 1.0]);
+        assert!((v.color[3] - 128.0 / 255.0).abs() < 1e-5);
+        assert_eq!(v.radius, 12.0);
+        assert_eq!(v.uv, [0.25, 0.5]);
+        // One quad, one batch: the color under the image costs no draw call.
+        assert_eq!(frame.batches.len(), 1);
+    }
+
+    #[test]
+    fn an_image_without_corners_keeps_its_quad() {
+        let mut list = DisplayList::new();
+        list.image(
+            Rect::new(10.0, 20.0, 64.0, 32.0),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            Color::WHITE,
+        );
+        let v = Frame::build(&list).image_vertices;
+        assert_eq!(v[0].position, [10.0, 20.0]);
+        assert_eq!(v[3].position, [74.0, 52.0]);
+        assert_eq!((v[0].uv, v[3].uv), ([0.0, 0.0], [1.0, 1.0]));
     }
 
     #[test]

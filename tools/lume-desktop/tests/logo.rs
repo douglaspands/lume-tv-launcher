@@ -55,6 +55,7 @@ fn the_mark_matches_the_design_file() {
         scale: 2.0,
         offset_x: 0.0,
         offset_y: 0.0,
+        edge_softness: lume_core::theme::vars::EDGE_SOFTNESS,
     };
     backend.render(&viewport, vars::BG, &Frame::build(&list));
     let rendered = backend.read_pixels(SIZE, SIZE);

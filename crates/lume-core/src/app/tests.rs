@@ -936,6 +936,78 @@ fn an_idle_apps_grid_taller_than_the_screen_asks_for_no_frames() {
 }
 
 #[test]
+fn the_focus_outline_of_a_tile_with_a_banner_runs_under_the_banner_edge() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    let focused = rig.app.catalog.apps()[0].package.clone();
+    rig.app
+        .icons
+        .reserve(&focused, crate::app_icons::Art::Banner)
+        .unwrap();
+    rig.press(Key::Down);
+    rig.advance(1000);
+    let frame = rig.frame();
+    let ring = frame
+        .cmds()
+        .iter()
+        .find_map(|cmd| match cmd {
+            Cmd::Rect(r) if matches!(r.kind, crate::render::RectKind::Ring { .. }) => Some(*r),
+            _ => None,
+        })
+        .expect("the focus outline");
+    let crate::render::RectKind::Ring { width, .. } = ring.kind else {
+        unreachable!()
+    };
+    let banner = frame
+        .cmds()
+        .iter()
+        .find_map(|cmd| match cmd {
+            Cmd::Image(t) if t.background.a > 0 => Some(*t),
+            _ => None,
+        })
+        .expect("the banner");
+    // The outline is drawn first and reaches under the banner past where the banner turns opaque
+    // (1.5 ramps of the buffer in, and the outline's own half ramp; the rig is at 720p, one canvas
+    // unit per pixel), so the clipped edge blends with the blue and not with the wallpaper.
+    let inner_left = ring.rect.x + width;
+    let under = inner_left - banner.dest.x;
+    assert!(under >= 2.0 * vars::EDGE_SOFTNESS - 1e-3, "{under}");
+    // Seen from outside, the outline still starts where it did: 4 out of the grown tile.
+    assert!((banner.dest.x - ring.rect.x - 4.0).abs() < 1e-3);
+}
+
+#[test]
+fn a_tile_with_a_banner_is_one_shape_clipped_by_the_tile_corners() {
+    let mut rig = Rig::new();
+    open_apps(&mut rig);
+    rig.app
+        .icons
+        .reserve(NETFLIX, crate::app_icons::Art::Banner)
+        .unwrap();
+    let color = rig.app.catalog.get(NETFLIX).unwrap().color;
+    let frame = rig.frame();
+    let banner = frame
+        .cmds()
+        .iter()
+        .find_map(|cmd| match cmd {
+            Cmd::Image(t) if t.background == color => Some(*t),
+            _ => None,
+        })
+        .expect("the banner over the tile color");
+    // The corners are the tile's, cut by the shader at the final size (not baked in the banner).
+    assert!(banner.radius >= THEME.tile.base.border_radius.unwrap());
+    let fills_under = frame
+        .cmds()
+        .iter()
+        .filter(|cmd| {
+            matches!(cmd, Cmd::Rect(r) if matches!(r.kind, crate::render::RectKind::Fill(_))
+                && r.rect == banner.dest)
+        })
+        .count();
+    assert_eq!(fills_under, 0, "no second edge under the banner");
+}
+
+#[test]
 fn the_apps_grid_is_drawn_in_few_batches_however_many_tiles_it_has() {
     // Tiles are drawn in passes (boxes, images, text): alternating the programs tile by tile
     // made one draw call per kind for every tile, which a TV GPU takes a toll on.
@@ -956,7 +1028,8 @@ fn the_apps_grid_is_drawn_in_few_batches_however_many_tiles_it_has() {
     let batches = |rig: &mut Rig| crate::render::Frame::build(&rig.frame()).batches.len();
     let (small, large) = (batches(&mut few), batches(&mut many));
     assert_eq!(small, large, "ten more tiles must not add draw calls");
-    assert!(large <= 16, "{large} draw calls");
+    // The tile color drawn with the image (one edge per tile) did not add any: 14 before and after.
+    assert!(large <= 14, "{large} draw calls");
 }
 
 // ---- top bar focus ------------------------------------------------------------------------------
@@ -2993,6 +3066,37 @@ fn an_icon_that_arrives_with_the_interface_on_screen_fades_in() {
 
     rig.now += vars::ICON_IN.duration_ms as u64;
     assert_eq!(dock_image_alphas(&rig.frame()), [255]);
+}
+
+#[test]
+fn a_favorite_with_an_icon_is_one_shape_with_its_color_under_the_fading_icon() {
+    let mut rig = Rig::new();
+    rig.advance(1000);
+    let netflix = rig.app.config.favorites[0].clone();
+    let color = rig.app.catalog.get(&netflix).unwrap().color;
+    rig.app.icons.reserve_dock(&netflix).unwrap();
+    rig.app.icon_arrived(&netflix, true, rig.now);
+    rig.now += vars::ICON_IN.duration_ms as u64 / 2;
+    let frame = rig.frame();
+    let icon = frame
+        .cmds()
+        .iter()
+        .find_map(|cmd| match cmd {
+            Cmd::Image(t) if (t.dest.w - t.dest.h).abs() < 0.01 => Some(*t),
+            _ => None,
+        })
+        .unwrap();
+    // Half way through the fade-in the app's color is fully there under the icon...
+    assert!(icon.color.a > 0 && icon.color.a < 255);
+    assert_eq!(icon.background, color);
+    assert!(icon.radius > 0.0);
+    // ...and no fill of the same shape under it gives the edge a second ramp.
+    let fills_under = frame
+        .cmds()
+        .iter()
+        .filter(|cmd| matches!(cmd, Cmd::Rect(r) if r.rect == icon.dest))
+        .count();
+    assert_eq!(fills_under, 0);
 }
 
 #[test]

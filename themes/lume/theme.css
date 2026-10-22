@@ -47,6 +47,9 @@
 
   /* Shape */
   --radius: 12px;
+  /* Width of the antialiased edge of every shape and clipped image, in pixels of the render buffer
+     (not of the canvas), from 1 to 1.5: wide enough to survive the TV's upscaling and sharpening. */
+  --edge-softness: 1.5px;
 
   /* Focus */
   --focus-ring: 4px solid var(--primary);

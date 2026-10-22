@@ -119,8 +119,18 @@ impl Shell {
                 self.app.came_to_foreground();
             }
         }
+        // The pictures are kept at the size they reach on screen at this scale: a new scale drops
+        // them, and the platform makes the texture again at the new size (`icon_layout`).
+        self.app
+            .icons
+            .set_layout(crate::app_icons::AtlasLayout::for_scale(display.scale));
         self.display = Some(display);
         self.dirty = true;
+    }
+
+    /// The sizes of the icon texture and of its cells, at the current scale.
+    pub fn icon_layout(&self) -> crate::app_icons::AtlasLayout {
+        self.app.icons.layout()
     }
 
     /// Another app is in front: drops the glyph atlas and every other buffer used for drawing.
@@ -805,6 +815,37 @@ mod tests {
     }
 
     #[test]
+    fn changing_the_screen_size_brings_the_icons_back_at_the_new_size() {
+        let dir = dir("resize-icons");
+        let mut shell = start(&dir);
+        let none = std::collections::HashSet::new();
+        shell.wake(1280, 720);
+        let small = shell.icon_layout();
+        assert_eq!(shell.reserve_dock_icon(NETFLIX, 0).unwrap()[2], 104);
+        assert_eq!(
+            shell.reserve_icon(NETFLIX, Art::Banner, 0).unwrap()[2..],
+            [184, 104]
+        );
+        // Woken again at the same size, nothing is fetched again.
+        shell.wake(1280, 720);
+        assert_eq!(shell.icon_layout(), small);
+        assert!(shell.app().icons.has_dock(NETFLIX));
+
+        shell.wake(1920, 1080);
+        let large = shell.icon_layout();
+        assert_eq!((large.width, large.dock_cell), (1088, 156));
+        // The pictures of the old size are gone and asked for again, in cells of the new one.
+        assert!(!shell.app().icons.has(NETFLIX) && !shell.app().icons.has_dock(NETFLIX));
+        assert!(packages(shell.dock_icons_wanted(&none, 5)).contains(&NETFLIX.to_string()));
+        assert!(packages(shell.icons_wanted(&none, 5)).contains(&NETFLIX.to_string()));
+        assert_eq!(shell.reserve_dock_icon(NETFLIX, 0).unwrap()[2], 156);
+        assert_eq!(
+            shell.reserve_icon(NETFLIX, Art::Banner, 0).unwrap()[2..],
+            [272, 153]
+        );
+    }
+
+    #[test]
     fn changing_the_screen_size_rebuilds_the_text_for_the_new_scale() {
         let dir = dir("resize");
         let mut shell = start(&dir);
@@ -840,7 +881,7 @@ mod tests {
         let first = shell.dock_icons_wanted(&none, 1);
         assert_eq!(first, [(NETFLIX.to_string(), format!("{NETFLIX}.Main"))]);
         let region = shell.reserve_dock_icon(NETFLIX, 0).unwrap();
-        assert_eq!(region[2..], [crate::app_icons::DOCK_CELL; 2]);
+        assert_eq!(region[2..], [shell.icon_layout().dock_cell; 2]);
         let next = shell.dock_icons_wanted(&none, 5);
         assert_eq!(
             next.iter().map(|(p, _)| p.as_str()).collect::<Vec<_>>(),
@@ -900,7 +941,7 @@ mod tests {
         assert_eq!(shell.icons_wanted(&none, 1).len(), 1, "the limit holds");
 
         let region = shell.reserve_icon(NETFLIX, Art::Icon, 0).unwrap();
-        assert_eq!(region[2], crate::app_icons::CELL_WIDTH);
+        assert_eq!(region[2], shell.icon_layout().cell[0]);
         let wanted = packages(shell.icons_wanted(&none, 5));
         assert_eq!(wanted, [YOUTUBE, "com.demo.x"]);
 

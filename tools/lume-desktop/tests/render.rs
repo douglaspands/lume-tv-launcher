@@ -37,6 +37,7 @@ fn render(rig: &mut Rig, list: &DisplayList) -> Pixels {
             scale: 1.0,
             offset_x: 0.0,
             offset_y: 0.0,
+            edge_softness: lume_core::theme::vars::EDGE_SOFTNESS,
         },
     )
 }
@@ -87,8 +88,25 @@ fn solid_rounded_rect_has_antialiased_round_corners() {
     );
     // The very corner pixel is outside the rounded shape.
     assert_eq!(pixels.at(50, 50), [16, 24, 32, 255]);
-    // Straight edges are fully covered, and just outside them nothing is drawn.
-    assert!(close(pixels.at(150, 50), [200, 30, 40, 255], 1));
+    // A straight edge on a pixel boundary spreads over the theme's --edge-softness: the pixel
+    // inside and the one outside share it, and the next ones are untouched.
+    let inside = 0.5 + 0.5 / lume_core::theme::vars::EDGE_SOFTNESS;
+    let mix = |cover: f32| {
+        let blend =
+            |fg: u8, bg: u8| (f32::from(fg) * cover + f32::from(bg) * (1.0 - cover)).round() as u8;
+        [blend(200, 16), blend(30, 24), blend(40, 32), 255]
+    };
+    assert!(close(pixels.at(150, 51), [200, 30, 40, 255], 1));
+    assert!(
+        close(pixels.at(150, 50), mix(inside), 3),
+        "{:?}",
+        pixels.at(150, 50)
+    );
+    assert!(
+        close(pixels.at(150, 49), mix(1.0 - inside), 3),
+        "{:?}",
+        pixels.at(150, 49)
+    );
     assert_eq!(pixels.at(150, 48), [16, 24, 32, 255]);
     // The corner arc is partially covered: some pixel on the diagonal is a blend.
     let blended = (0..20)
@@ -277,6 +295,7 @@ fn viewport_scale_and_offset_place_the_canvas() {
         scale: 2.0,
         offset_x: 100.0,
         offset_y: 50.0,
+        edge_softness: lume_core::theme::vars::EDGE_SOFTNESS,
     };
     let pixels = render_with(&mut rig, &list, viewport);
     // Logical (10..30) becomes device 120..160 horizontally and 70..110 vertically.
@@ -362,9 +381,9 @@ fn image_regions_are_filled_in_place_and_drawn() {
     let Some(mut rig) = rig() else { return };
     // An empty 4x2 texture; only the left 2x2 cell is filled, with opaque red.
     rig.backend.ensure_image(4, 2);
-    rig.backend.ensure_image(8, 8); // a second call keeps the first texture
     let red = [255, 0, 0, 255].repeat(4);
     rig.backend.update_image([0, 0, 2, 2], &red);
+    rig.backend.ensure_image(4, 2); // a second call at the same size keeps the texture
     let mut list = DisplayList::new();
     list.image(
         Rect::new(10.0, 10.0, 20.0, 20.0),
@@ -378,6 +397,23 @@ fn image_regions_are_filled_in_place_and_drawn() {
         pixels.at(20, 20)
     );
     assert_eq!(pixels.at(60, 60), [16, 24, 32, 255], "outside the quad");
+
+    // Another size (another scale's cells) makes the texture again, to be filled anew.
+    rig.backend.ensure_image(8, 8);
+    let green = [0, 255, 0, 255].repeat(16);
+    rig.backend.update_image([4, 4, 4, 4], &green);
+    let mut list = DisplayList::new();
+    list.image(
+        Rect::new(10.0, 10.0, 20.0, 20.0),
+        Rect::new(0.5, 0.5, 0.5, 0.5),
+        Color::WHITE,
+    );
+    let pixels = render(&mut rig, &list);
+    assert!(
+        close(pixels.at(20, 20), [0, 255, 0, 255], 2),
+        "got {:?}",
+        pixels.at(20, 20)
+    );
 }
 
 #[test]

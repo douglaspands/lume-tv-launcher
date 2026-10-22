@@ -681,4 +681,14 @@ mod tests {
             assert!(contrast(c) >= 4.5, "{name}: contrast {:.2}", contrast(c));
         }
     }
+
+    #[test]
+    fn the_edge_softness_of_the_theme_reaches_the_renderer_at_every_resolution() {
+        // Pixels of the render buffer, the same at 720p and 1080p, from 1 to 1.5 (design-system).
+        assert!((1.0..=1.5).contains(&vars::EDGE_SOFTNESS));
+        for (width, height) in [(1280, 720), (1920, 1080)] {
+            let viewport = crate::display::Display::new(width, height).viewport();
+            assert_eq!(viewport.edge_softness, vars::EDGE_SOFTNESS);
+        }
+    }
 }

@@ -3,7 +3,7 @@
 use android_activity::AndroidApp;
 use jni::objects::{JByteArray, JObject, JString};
 use jni::{jni_sig, jni_str, JValue, JavaVM};
-use lume_core::app_icons::{Art, CELL_HEIGHT, CELL_WIDTH, DOCK_CELL};
+use lume_core::app_icons::Art;
 use lume_core::catalog::known::KnownApp;
 use lume_core::catalog::{Catalog, Discovered};
 use lume_core::clock::WallClock;
@@ -58,9 +58,14 @@ impl Bridge {
         }
     }
 
-    /// What a tile shows for an app: `width` x `height` premultiplied RGBA bytes and whether they
-    /// are the TV banner or the icon.
-    pub fn tile_art(&self, package: &str, activity: &str) -> Option<(Vec<u8>, Art)> {
+    /// What a tile shows for an app: `cell` (width and height) premultiplied RGBA bytes and whether
+    /// they are the TV banner or the icon.
+    pub fn tile_art(
+        &self,
+        package: &str,
+        activity: &str,
+        cell: [u32; 2],
+    ) -> Option<(Vec<u8>, Art)> {
         let result = self
             .vm
             .attach_current_thread(|env| -> jni::errors::Result<Option<(Vec<u8>, Art)>> {
@@ -75,8 +80,8 @@ impl Bridge {
                     &[
                         JValue::Object(&package_arg),
                         JValue::Object(&activity_arg),
-                        JValue::Int(CELL_WIDTH as i32),
-                        JValue::Int(CELL_HEIGHT as i32),
+                        JValue::Int(cell[0] as i32),
+                        JValue::Int(cell[1] as i32),
                     ],
                 )?;
                 let object = answer.l()?;
@@ -101,8 +106,8 @@ impl Bridge {
         }
     }
 
-    /// The square icon of an app for the dock: `DOCK_CELL` x `DOCK_CELL` premultiplied RGBA bytes.
-    pub fn dock_icon(&self, package: &str, activity: &str) -> Option<Vec<u8>> {
+    /// The square icon of an app for the dock: `side` x `side` premultiplied RGBA bytes.
+    pub fn dock_icon(&self, package: &str, activity: &str, side: u32) -> Option<Vec<u8>> {
         let result = self
             .vm
             .attach_current_thread(|env| -> jni::errors::Result<Option<Vec<u8>>> {
@@ -117,7 +122,7 @@ impl Bridge {
                     &[
                         JValue::Object(&package_arg),
                         JValue::Object(&activity_arg),
-                        JValue::Int(DOCK_CELL as i32),
+                        JValue::Int(side as i32),
                     ],
                 )?;
                 let object = answer.l()?;
@@ -128,7 +133,7 @@ impl Bridge {
                 Ok(Some(env.convert_byte_array(&bytes)?))
             });
         match result {
-            Ok(pixels) => pixels.filter(|p| protocol::is_dock_icon(p)),
+            Ok(pixels) => pixels.filter(|p| protocol::is_dock_icon(p, side)),
             Err(e) => {
                 log::warn!("dock icon of {package} failed: {e}");
                 None
