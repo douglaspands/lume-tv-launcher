@@ -20,7 +20,7 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 
 v0.2.0, v0.2.1, a versão do build e a `escala-tipografica` (escala de texto de 6 níveis, barra superior, régua de layout para todas as
 telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. `seletor-wallpapers` (10 papéis em Full HD, seletor e descrição na tela Início, splash com tempo mínimo do logo, limites de APK 40 MB e PSS 64 MB) arquivada em `openspec/changes/archive/2026-10-21-seletor-wallpapers`, na branch `feat/seletor-wallpapers`. A tag `v0.3.0` sai depois do merge. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
-Pendências conhecidas, que dependem do autor: destino dos masters 4K dos papéis de parede (60 MB em `tools/wallpaper/masters/`, sem Git LFS; próxima change: verificar se `generate_4k_all_options.py`, `build_all_4k.py` e `build_opcao_d.py` os reproduzem byte a byte e, se sim, tirar os PNGs do repositório e gerá-los sob demanda, senão migrar para Git LFS ou aceitar o peso); decisão sobre o contraste da barra superior sem a sombra nos papéis mais claros (dois testes de contraste estão com `#[ignore]`); assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
+Pendências conhecidas, que dependem do autor: destino dos masters 4K dos papéis de parede (60 MB em `tools/wallpaper/masters/`, sem Git LFS; próxima change: verificar se `generate_4k_all_options.py`, `build_all_4k.py` e `build_opcao_d.py` os reproduzem byte a byte e, se sim, tirar os PNGs do repositório e gerá-los sob demanda, senão migrar para Git LFS ou aceitar o peso); assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
 imagem `system-images;android-28;android-tv;x86`, para validar o Android 9, tarefa 5.3 da `v0-2-1`, encerrada sem essa validação e deixada para uma spec futura de testes) e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
@@ -73,6 +73,7 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Decisões fixas do autor
 
+- **Contraste da barra superior**: os papéis de parede não levam sombra no topo nem na base (o autor achou feia). O texto da barra pode ficar abaixo de 4,5:1 sobre os papéis mais claros e isso é decisão do autor, não pendência: dois testes de contraste estão com `#[ignore]` por isso. Só mude se o autor pedir.
 - **Construção 100% Rust.** Java só quando a funcionalidade não tem como ser feita sem consumir ou usar um recurso
   do Java (API do Android sem equivalente no NDK). Antes de escrever ou mudar qualquer Java, pergunte ao autor no chat,
   explicando por que o Rust não resolve; sem o sim dele, não entra Java.

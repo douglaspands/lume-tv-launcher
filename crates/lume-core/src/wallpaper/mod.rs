@@ -353,7 +353,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "the wallpapers no longer carry the top and dock darkening (author's decision, 2026-10-21); see the wallpapers-full-hd change"]
+    #[ignore = "the wallpapers no longer carry the top and dock darkening (author's decision, 2026-10-21; see CLAUDE.md); see the wallpapers-full-hd change"]
     fn all_wallpapers_dark_top_and_bottom_for_ui() {
         for id in WallpaperId::ALL {
             let w = id.wallpaper();

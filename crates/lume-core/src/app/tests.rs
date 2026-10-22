@@ -1449,7 +1449,7 @@ fn text_on_the_dimmed_screens_has_4_5_to_1_over_the_brightest_part_of_the_wallpa
 }
 
 #[test]
-#[ignore = "the wallpapers no longer carry the top darkening (author's decision, 2026-10-21): the top bar text does not reach 4.5:1 over the bright ones; see the wallpapers-full-hd change"]
+#[ignore = "the wallpapers no longer carry the top darkening (author's decision, 2026-10-21; see CLAUDE.md): the top bar text does not reach 4.5:1 over the bright ones; see the wallpapers-full-hd change"]
 fn the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home() {
     let mut rig = Rig::new();
     let tabs = topbar::BarLayout::new(
