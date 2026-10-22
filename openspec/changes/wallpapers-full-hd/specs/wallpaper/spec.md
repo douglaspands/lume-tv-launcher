@@ -50,8 +50,8 @@ O papel de parede SHALL ocupar no máximo 6,5 MB de memória gráfica em 1920x10
 O lume SHALL oferecer um catálogo de papéis de parede de alta definição embutidos, cada um guardado em 1920x1080 sem perda e com dither nos degradês escuros. O catálogo tem 6 papéis de parede, produzidos pelo autor em 3840x2160: a Aurora (o padrão do projeto), três paisagens de natureza noturna (montanhas estreladas, lago espelhado, floresta enevoada), uma fachada moderna de vidro e uma grade synthwave. Cada papel de parede SHALL possuir um identificador estável para persistência e um rótulo traduzido.
 
 #### Scenario: Contraste do topo com os detalhes da imagem
-- **WHEN** o papel de parede é mostrado sem escurecimento atrás da barra superior
-- **THEN** o pixel mais claro atrás dos textos da barra mantém contraste de pelo menos 4,5:1 com o texto esmaecido, e não só a média da faixa
+- **WHEN** o papel de parede é mostrado sem escurecimento atrás da barra superior (a tela Início)
+- **THEN** a imagem não leva sombra no topo nem na base, por decisão do autor, e o texto da barra superior pode ficar abaixo de 4,5:1 de contraste sobre os papéis mais claros
 
 #### Scenario: Listagem de papéis de parede no editor
 - **WHEN** o usuário abre o seletor de papéis de parede no modo edição
@@ -60,6 +60,13 @@ O lume SHALL oferecer um catálogo de papéis de parede de alta definição embu
 #### Scenario: Identificador preservado
 - **WHEN** um papel de parede existente tem a imagem trocada por uma versão nova
 - **THEN** o identificador continua o mesmo, e a escolha gravada em `config.v1` continua valendo
+
+### Requirement: Legibilidade sobre o papel de parede
+Decisão do autor (2026-10-21): os papéis de parede SHALL NOT levar sombra assada no topo nem na base (o autor achou o efeito feio). O logo, as abas, a engrenagem e o relógio da barra superior, na tela Início, podem ficar abaixo de 4,5:1 de contraste sobre os papéis mais claros (por exemplo, montanhas estreladas, fachada de vidro, grade synthwave e lago espelhado); isso é uma escolha do autor, não uma pendência, e SHALL ser mudada só se o autor pedir. As telas de texto (Apps, Configurações, Sobre e modo edição) continuam escurecidas pelo requisito "Escurecimento nas telas de texto" e mantêm 4,5:1. O gerador oferece `--calibrate` para quem quiser a calibração antiga, e dois testes de contraste (`all_wallpapers_dark_top_and_bottom_for_ui` e `the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home`) ficam com `#[ignore]` por causa desta decisão.
+
+#### Scenario: Barra superior legível
+- **WHEN** a parte mais clara de um papel de parede está sob a barra superior da tela Início
+- **THEN** o contraste do texto da barra pode ser menor que 4,5:1, por decisão do autor, e as telas de texto continuam com pelo menos 4,5:1
 
 ### Requirement: Troca dinâmica de papel de parede
 A seleção de papel de parede SHALL ser dinâmica: ao escolher um papel de parede no modo edição, a escolha SHALL ser persistida em `config.v1` na hora, e o fundo SHALL passar para a nova imagem assim que ela estiver pronta, sem travar a navegação. Enquanto a nova imagem é preparada, o papel anterior SHALL continuar na tela; a troca SHALL ser direta, sem transição translúcida de tela cheia.
