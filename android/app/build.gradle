@@ -109,7 +109,7 @@ abstract class CargoNdkTask extends DefaultTask {
         execOps.exec {
             workingDir repoRoot.get().asFile
             commandLine args
-            environment "RUSTFLAGS", "-C link-arg=-Wl,-z,max-page-size=16384"
+            // Rustflags and 16 KB page-alignment are defined per target in .cargo/config.toml.
             // The Rust side must show exactly the versionName of the APK.
             environment "LUME_VERSION_NAME", versionName.get()
         }
