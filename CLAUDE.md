@@ -6,7 +6,7 @@ com uma camada fina de Java (`LumeActivity` e `LumeBridge`, só onde o Android e
 ## Onde está a verdade
 
 - `openspec/specs/`: o comportamento atual, por capacidade (home-screen, apps-screen, launcher-shell, wallpaper, theming, resource-efficiency...).
-- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`, `2026-10-20-escala-tipografica`, `2026-10-20-menu-de-contexto`, `2026-10-20-splash`.
+- `openspec/changes/archive/`: o histórico das changes (`2026-10-19-lume-launcher-v0-1-0`, `2026-10-20-dock-aurora-redesign`, `2026-10-20-v0-2-1`, `2026-10-20-escala-tipografica`, `2026-10-20-menu-de-contexto`, `2026-10-20-splash`, `2026-10-22-wallpapers-full-hd`.
 - `docs/handoff-dock-aurora.md`: decisões do v0.2.0, armadilhas já resolvidas, como rodar e testar.
 - `docs/device-notes.md`: medidas na TV de referência (memória, quadros, CPU, tempos).
 - `docs/theme-format.md`, `docs/wallpaper.md`, `docs/translations.md`: formato do tema, papel de parede e traduções.
@@ -19,8 +19,8 @@ Leia antes de criar ou alterar qualquer tela; valores em `themes/lume/theme.css`
 ## Estado
 
 v0.2.0, v0.2.1, a versão do build e a `escala-tipografica` (escala de texto de 6 níveis, barra superior, régua de layout para todas as
-telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. `seletor-wallpapers` (10 papéis em Full HD, seletor e descrição na tela Início, splash com tempo mínimo do logo, limites de APK 40 MB e PSS 64 MB) arquivada em `openspec/changes/archive/2026-10-21-seletor-wallpapers`, na branch `feat/seletor-wallpapers`. A tag `v0.3.0` sai depois do merge. Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
-Pendências conhecidas, que dependem do autor: assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
+telas, ícones Lucide com traço 1,75) mescladas na `main` por squash (2026-10-20, PR #4). `menu-de-contexto` (botão Menu, cartão claro, modo Mover no dock) mesclada na `main` (PR #5). `splash` arquivada em `openspec/changes/archive/2026-10-20-splash`, na branch `feat/splash`, com PR aberta para a `main`. `seletor-wallpapers` (10 papéis em Full HD, seletor e descrição na tela Início, splash com tempo mínimo do logo, limites de APK 40 MB e PSS 64 MB) arquivada em `openspec/changes/archive/2026-10-21-seletor-wallpapers`, na branch `feat/seletor-wallpapers`. A tag `v0.3.0` sai depois do merge. `wallpapers-full-hd` (6 papéis 4K em QOI nos `assets/`, redução na GPU, cache, favoritos redondos por padrão, README em 5 idiomas) arquivada em `openspec/changes/archive/2026-10-22-wallpapers-full-hd`, na branch `feat/wallpapers-full-hd` (PR #15). Remoto: `origin` (GitHub `douglaspands/lume-tv-launcher`).
+Pendências conhecidas, que dependem do autor: destino dos masters 4K dos papéis de parede (60 MB em `tools/wallpaper/masters/`, sem Git LFS; próxima change: verificar se `generate_4k_all_options.py`, `build_all_4k.py` e `build_opcao_d.py` os reproduzem byte a byte e, se sim, tirar os PNGs do repositório e gerá-los sob demanda, senão migrar para Git LFS ou aceitar o peso); assinatura do CLA (o job `cla` está em bypass com `continue-on-error`; falta a branch
 `cla-signatures` e a assinatura do autor; ao ligar, remover o bypass de `.github/workflows/cla.yml`), keystore de release, CI e release no GitHub, tag `v0.1.0`/`v0.2.0`,
 verificação em emulador Android TV (a máquina de desenvolvimento não tem emulador nem SDK de AVD: instalar o Android Studio ou `cmdline-tools` com
 imagem `system-images;android-28;android-tv;x86`, para validar o Android 9, tarefa 5.3 da `v0-2-1`, encerrada sem essa validação e deixada para uma spec futura de testes) e decisão sobre o orçamento do retorno a quente (a spec diz 300 ms; o sistema da TCL
@@ -73,11 +73,12 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Decisões fixas do autor
 
+- **Contraste da barra superior**: os papéis de parede não levam sombra no topo nem na base (o autor achou feia). O texto da barra pode ficar abaixo de 4,5:1 sobre os papéis mais claros e isso é decisão do autor, não pendência: dois testes de contraste estão com `#[ignore]` por isso. Só mude se o autor pedir.
 - **Construção 100% Rust.** Java só quando a funcionalidade não tem como ser feita sem consumir ou usar um recurso
   do Java (API do Android sem equivalente no NDK). Antes de escrever ou mudar qualquer Java, pergunte ao autor no chat,
   explicando por que o Rust não resolve; sem o sim dele, não entra Java.
-- Papel de parede: aurora gerada pelo projeto (`tools/wallpaper/aurora06.py`); nenhuma foto de terceiros.
-- Tela Início: só o dock (até 12 favoritos, Magnification). Sem carrossel nem seções.
+- Papel de parede: 6 papéis em 3840x2160 produzidos pelo autor com scripts procedurais do projeto (`tools/wallpaper/`, masters em `tools/wallpaper/masters/`); a Aurora é o padrão; nenhuma foto de terceiros.
+- Tela Início: só o dock (até 12 favoritos, Magnification), com favoritos redondos por padrão. Sem carrossel nem seções.
 - Abas: mover o foco para uma aba troca a tela sem OK, com fade de 180 ms. Sublinhado azul com o foco na barra, branco com o foco no conteúdo.
 - Cores por papel (`--primary` azul `#4DB3FF`, `--secondary`); todo contorno de foco é azul primário; o nome do app em foco fica branco.
 - Grade de Apps: 6 colunas, ordem alfabética pelo nome mostrado (muda com o idioma do sistema). O tile "Lume" é um app como os outros
@@ -100,6 +101,6 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Orçamentos (spec `resource-efficiency`)
 
-PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
+PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD; hoje 21,6 MB, com uma cópia de cada papel em `assets/`); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
 até 300 ms; o laço não pede quadros parado além do relógio. Última medida (v0.2.0): 17 a 20 MB e 12,2 MB de PSS, APK de 3,15 MB, 0 a 1% de
 quadros perdidos, abertura a frio de 373 ms.

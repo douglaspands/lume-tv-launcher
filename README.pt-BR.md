@@ -1,26 +1,27 @@
-# Lume
+# Lume - Android TV Launcher
 
 **Uma tela inicial rápida e leve para Android TV.** O Lume substitui o launcher que veio na sua TV por um launcher simples, feito para o controle remoto, que usa pouquíssima memória, deixando mais memória para os seus apps de streaming.
 
-[English](README.md) | Português
+[English](README.md) | Português (Brasil) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Русский](README.ru.md)
 
-> **Situação:** o Lume está em desenvolvimento. A versão atual é a **0.3.1**, já publicada na [página de Releases](https://github.com/douglaspands/lume-tv-launcher/releases). Os passos abaixo mostram como instalá-la.
+> **Situação:** o Lume está em desenvolvimento. Consulte a [página de **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) para ver a versão mais nova e baixá-la. Os passos abaixo mostram como instalá-la.
 
 <p align="center">
-  <img src="docs/screenshots/home-pt-BR.png" alt="Tela Início com o dock" width="49%">
-  <img src="docs/screenshots/apps-pt-BR.png" alt="Tela Apps" width="49%">
+  <img src="docs/screenshots/home-pt-BR.jpg" alt="Tela Início com o dock" width="49%">
+  <img src="docs/screenshots/apps-pt-BR.jpg" alt="Tela Apps" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings-pt-BR.png" alt="Configurações" width="49%">
-  <img src="docs/screenshots/editor-pt-BR.png" alt="Edição dos favoritos" width="49%">
+  <img src="docs/screenshots/settings-pt-BR.jpg" alt="Configurações" width="49%">
+  <img src="docs/screenshots/editor-pt-BR.jpg" alt="Edição dos favoritos" width="49%">
 </p>
 
 **O que você ganha**
 
-- Uma tela inicial com um dock flutuante para os seus apps favoritos: o ícone em foco cresce e os vizinhos abrem espaço.
+- Uma tela inicial com um dock flutuante para os seus apps favoritos: o ícone em foco cresce e os vizinhos abrem espaço. Os favoritos são redondos, ou quadrados se você preferir.
+- Seis papéis de parede para escolher (a Aurora boreal é o padrão), feitos para este projeto.
 - Uma tela "Apps" com tudo o que está instalado na TV.
 - Tudo funciona com o controle remoto comum (setas, OK, Voltar, Home).
-- Português (Brasil) e inglês, seguindo o idioma da TV.
+- Inglês, português (Brasil), espanhol, indonésio e russo, seguindo o idioma da TV.
 - Nenhum acesso à internet: o Lume nunca se conecta à rede e não pede permissões perigosas.
 
 **O que você precisa**
@@ -38,7 +39,7 @@ Você vai enviar o app do computador para a TV com uma ferramenta pequena chamad
 ### 1. Baixe o Lume
 
 1. Abra a [página **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) deste projeto no GitHub.
-2. Na versão mais nova, baixe o arquivo com nome parecido com **`lume-0.3.1.apk`**.
+2. Na versão mais nova, baixe o arquivo com nome parecido com **`lume-<version>.apk`**.
 3. Anote onde ele foi salvo (por exemplo, a pasta Downloads).
 
 ### 2. Instale o adb no computador
@@ -85,7 +86,7 @@ adb devices
 Você deve ver a sua TV com a palavra `device` ao lado. Agora instale o Lume (use o caminho real do arquivo que você baixou):
 
 ```
-adb install "C:\Users\Voce\Downloads\lume-0.3.1.apk"
+adb install "C:\Users\Voce\Downloads\lume-<version>.apk"
 ```
 
 Quando aparecer `Success`, o Lume está instalado.
@@ -159,10 +160,10 @@ Ele usa o mesmo código OpenGL ES 2.0 da TV (o renderer por software do Mesa bas
 
 ```
 cargo run -p lume-desktop -- --screenshot home home.png
-cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screenshot home foco.png
+cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screenshot home focus.png
 ```
 
-`--keys` aperta teclas antes (`up down left right ok back home`), `--locale` escolhe o idioma e `--pseudo-locale` alonga todos os textos em 40% para achar layouts que não cabem.
+`--keys` aperta teclas antes (`up down left right ok back home`), `--locale` escolhe o idioma e `--pseudo-locale` alonga todos os textos em 40% para achar layouts que não cabem. As imagens deste README foram feitas com `--favorites 8`, `LUME_NO_SYNTHETIC_ICONS=1` (os blocos mostram a cor e a letra) e, para o russo, `LUME_FALLBACK_FONT` apontando para uma fonte com letras cirílicas (na TV, o sistema as fornece).
 
 ### Build com container (recomendado)
 
@@ -188,7 +189,7 @@ Instale na TV ou no emulador com `adb install -r dist/lume-<version>-debug.apk`.
 **Assinar um release.** Sem chave, o release é assinado com a chave de debug e se chama `...-release-debugsigned.apk`: serve para você instalar, não para publicar. Para assinar com a sua chave, defina isto antes de rodar o script (os valores vão para o build como segredos e nunca ficam na imagem):
 
 ```
-export LUME_KEYSTORE=/caminho/para/lume.jks
+export LUME_KEYSTORE=/path/to/lume.jks
 export LUME_KEYSTORE_PASSWORD=...
 export LUME_KEY_ALIAS=...
 export LUME_KEY_PASSWORD=...
@@ -197,7 +198,7 @@ scripts/container-build.sh release    # dist/lume-<version>-release-debugsigned.
 
 Guarde o keystore fora do repositório e faça backup: a mesma chave precisa assinar todas as atualizações. A versão vem do build, não de um arquivo: a tag `v0.3.0` vira `0.3.0` (`LUME_VERSION_NAME=v0.3.0` faz o mesmo) e um build local usa o hash curto do commit (`4d8438b`, com `-dirty` se houver mudança não commitada em arquivo rastreado; `dev` sem git), então o arquivo se chama `dist/lume-4d8438b-release-debugsigned.apk`.
 
-**Conferir um APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` confere o tamanho (6 MB), as ABIs, o alinhamento de 16 KB das bibliotecas nativas e que o app não pede `INTERNET` nem `QUERY_ALL_PACKAGES`.
+**Conferir um APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` confere o tamanho (40 MB), as ABIs, o alinhamento de 16 KB das bibliotecas nativas, que cada papel de parede está uma vez em `assets/` e não dentro de uma biblioteca, e que o app não pede `INTERNET` nem `QUERY_ALL_PACKAGES`.
 
 ### Build sem container
 
@@ -237,7 +238,7 @@ As traduções são arquivos `strings.xml` padrão do Android em `android/app/sr
 
 ### Papel de parede
 
-O Lume desenha uma fotografia de aurora boreal atrás de todas as telas. Como ela é processada no build, como trocá-la e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
+O Lume desenha um entre seis papéis de parede atrás de todas as telas, todos feitos pelo autor do projeto como imagens de 3840x2160 e reduzidos para Full HD no build. Como são processados, como incluir ou trocar um e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contribuição, licença e marca
 

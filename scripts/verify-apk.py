@@ -9,6 +9,8 @@ Checks, using only the Python standard library:
   - the native libraries are exactly the expected ABIs;
   - every native library is stored uncompressed at a 16 KB boundary and its ELF segments are
     aligned to 16 KB (Android 15+ on 16 KB page devices);
+  - every wallpaper is in assets/wallpaper/ exactly once, stored, and none is inside a native library
+    (the wallpapers are read from the assets: a copy in each liblume.so would repeat them per ABI);
   - the manifest does not ask for QUERY_ALL_PACKAGES;
   - the manifest declares leanback as a feature and the version name, when given.
 
@@ -21,6 +23,7 @@ import sys
 import zipfile
 
 PAGE = 16 * 1024
+MAX_LIBRARY_MB = 5
 FORBIDDEN_PERMISSIONS = ["android.permission.QUERY_ALL_PACKAGES"]
 
 
@@ -93,6 +96,25 @@ def main() -> int:
                 problems.append(f"{name} has segments aligned to {sorted(set(alignments))}, below 16 KB")
             else:
                 print(f"{name}: stored, aligned (segments {sorted(set(hex(a) for a in alignments))})")
+
+        wallpapers = [i for i in apk.infolist() if i.filename.startswith("assets/wallpaper/")]
+        names = [i.filename for i in wallpapers]
+        print(f"wallpapers: {len(wallpapers)} in assets/wallpaper/")
+        if not wallpapers:
+            problems.append("no wallpaper in assets/wallpaper/")
+        for name in sorted({n for n in names if names.count(n) > 1}):
+            problems.append(f"{name} appears more than once in the APK")
+        for info in wallpapers:
+            if info.compress_type != zipfile.ZIP_STORED:
+                problems.append(f"{info.filename} is compressed (it is already QOI: store it)")
+        # QOI starts with "qoif": a copy inside a native library would repeat it for every ABI.
+        for name in sorted(libraries):
+            # A 1920x1080 QOI header: "qoif", width 1920, height 1080.
+            if b"qoif\x00\x00\x07\x80\x00\x00\x04\x38" in apk.read(name):
+                problems.append(f"{name} embeds a wallpaper image")
+            # An image in any other format (deflate, raw) would show up as a much bigger library.
+            if libraries[name].file_size > MAX_LIBRARY_MB * 1024 * 1024:
+                problems.append(f"{name} is {libraries[name].file_size / 1048576:.1f} MB, over {MAX_LIBRARY_MB} MB: it must not embed wallpapers")
 
         manifest = apk.read("AndroidManifest.xml")
         for permission in FORBIDDEN_PERMISSIONS:

@@ -38,7 +38,7 @@ impl HomeConfig {
             .collect();
         HomeConfig {
             favorites: installed.into_iter().take(FIRST_USE_FAVORITES).collect(),
-            round_favorites: false,
+            round_favorites: true,
             wallpaper: WallpaperId::Aurora,
         }
     }
@@ -115,7 +115,8 @@ impl HomeConfig {
             }
         }
         favorites.truncate(MAX_FAVORITES);
-        let round_favorites = kv.get("round_favorites") == Some("1");
+        // Round is the default: a file without the key (an older version) gets it too.
+        let round_favorites = kv.get("round_favorites").is_none_or(|value| value == "1");
         let wallpaper = kv
             .get("wallpaper")
             .and_then(WallpaperId::from_str)
@@ -357,7 +358,10 @@ mod tests {
         storage::save(&path, 1, &kv).unwrap();
         let config = HomeConfig::load(&path).unwrap();
         assert_eq!(config.favorites, ["c", "b", "a"]);
-        assert!(!config.round_favorites);
+        assert!(
+            config.round_favorites,
+            "a file without the key gets the default"
+        );
     }
 
     #[test]
@@ -388,13 +392,13 @@ mod tests {
         let config = HomeConfig {
             favorites: vec![NETFLIX.into()],
             round_favorites: false,
-            wallpaper: WallpaperId::MidnightOcean,
+            wallpaper: WallpaperId::MirrorLake,
         };
         let path = temp("wallpaper-roundtrip");
         config.save(&path).unwrap();
         assert_eq!(HomeConfig::load(&path), Some(config));
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("wallpaper=midnight_ocean"));
+        assert!(text.contains("wallpaper=mirror_lake"));
     }
 
     #[test]

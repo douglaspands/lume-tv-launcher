@@ -13,11 +13,11 @@ A tela Início SHALL exibir, sobre o papel de parede, a barra superior e, na par
 - **THEN** a tela Início mostra o papel de parede, a barra superior e, embaixo, o dock com os favoritos padrão
 
 ### Requirement: Dock de favoritos
-Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma barra translúcida de cantos arredondados, flutuante, centralizada horizontalmente e acima da borda inferior da área segura. Cada favorito SHALL aparecer como o ícone do app em formato quadrado de cantos arredondados (padrão) ou circular (quando "Favoritos redondos" está ligado), sobre a cor do app quando o ícone tem transparência. O dock SHALL mostrar todos os favoritos (até 12) lado a lado, sem rolagem horizontal, e SHALL ficar dentro da área segura. OK sobre um favorito SHALL abrir o app.
+Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma barra translúcida de cantos arredondados, flutuante, centralizada horizontalmente e acima da borda inferior da área segura. Cada favorito SHALL aparecer como o ícone do app em formato circular (padrão) ou quadrado de cantos arredondados (quando "Favoritos redondos" está desligado), sobre a cor do app quando o ícone tem transparência. O dock SHALL mostrar todos os favoritos (até 12) lado a lado, sem rolagem horizontal, e SHALL ficar dentro da área segura. OK sobre um favorito SHALL abrir o app.
 
 #### Scenario: Favoritos padrão no primeiro uso
 - **WHEN** o lume é aberto pela primeira vez com Netflix, YouTube e Spotify instalados
-- **THEN** o dock mostra os apps conhecidos instalados, na ordem Netflix, YouTube, Prime Video, Spotify, Disney+, Max, Globoplay, limitados a 5
+- **THEN** o dock mostra os apps conhecidos instalados, na ordem Netflix, YouTube, Prime Video, Spotify, Disney+, Max, Globoplay, limitados a 5, em formato circular
 
 #### Scenario: Doze favoritos
 - **WHEN** existem 12 favoritos
@@ -28,8 +28,9 @@ Os favoritos configurados SHALL ser exibidos na ordem configurada num dock: uma 
 - **THEN** o app daquele ícone é aberto
 
 #### Scenario: Favoritos em formato circular
-- **WHEN** a opção "Favoritos redondos" está ligada
-- **THEN** cada item do dock é desenhado como um círculo
+(O título do cenário é o da spec antiga, mantido para a validação; cobre os dois formatos.)
+- **WHEN** a opção "Favoritos redondos" está desligada
+- **THEN** cada item do dock é desenhado como um quadrado de cantos arredondados
 
 ### Requirement: Magnification do dock
 O item do dock em foco SHALL ser ampliado, com a base alinhada à base do dock, e os itens vizinhos SHALL ser ampliados em proporção menor, decrescente com a distância ao item focado, até voltar ao tamanho normal. A ampliação SHALL ser animada ao mover o foco. Itens ampliados MAY se sobrepor aos vizinhos sem deslocá-los. O dock SHALL NOT desenhar contorno ao redor do item focado.

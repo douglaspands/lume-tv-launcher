@@ -473,3 +473,41 @@ fn the_wallpaper_texture_is_created_when_first_drawn_and_freed_with_the_context(
     let Rig { backend, _gl } = rig;
     backend.destroy();
 }
+
+#[test]
+fn a_new_wallpaper_is_prepared_off_the_frame_and_only_the_last_choice_is_uploaded() {
+    use lume_core::wallpaper::WallpaperId;
+    let Some(mut rig) = rig() else { return };
+    rig.backend.set_async_wallpaper(true);
+
+    // With nothing to show yet, the first frame waits for the wallpaper: it is there at once.
+    rig.backend.ensure_wallpaper(WallpaperId::Aurora);
+    assert_eq!(rig.backend.current_wallpaper(), Some(WallpaperId::Aurora));
+
+    // Choosing others in a row: the current one stays until the last choice is ready.
+    for id in [
+        WallpaperId::MountainStars,
+        WallpaperId::MirrorLake,
+        WallpaperId::GlassFacade,
+    ] {
+        rig.backend.ensure_wallpaper(id);
+        assert_eq!(
+            rig.backend.current_wallpaper(),
+            Some(WallpaperId::Aurora),
+            "the frame does not wait for {}",
+            id.as_str()
+        );
+    }
+    let mut seen = Vec::new();
+    let started = std::time::Instant::now();
+    while rig.backend.current_wallpaper() != Some(WallpaperId::GlassFacade) {
+        assert!(started.elapsed().as_secs() < 10, "the wallpaper never came");
+        rig.backend.ensure_wallpaper(WallpaperId::GlassFacade);
+        seen.push(rig.backend.current_wallpaper());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    // The ones that were passed over were never uploaded.
+    assert!(seen
+        .iter()
+        .all(|id| *id == Some(WallpaperId::Aurora) || *id == Some(WallpaperId::GlassFacade)));
+}

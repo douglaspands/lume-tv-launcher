@@ -1,68 +1,97 @@
 # Wallpaper
 
-Every screen of lume is drawn over one wallpaper: a northern-lights aurora in the brand colors (the
-accent blue over the petrol background, with a few stars). The project makes it itself; no photo or
-art from anyone else is used. It is one fixed wallpaper in this version; there is no setting to
-change it.
+Every screen of lume is drawn over one wallpaper, chosen in Settings › Home screen. The catalog has 6
+wallpapers; the default is the Aurora, the brand's northern lights in the accent blue over the petrol background.
 
-## How the image is made
+| Id (`config.v1`) | Name | Master |
+|---|---|---|
+| `aurora` (default) | Aurora | `masters/aurora.png` |
+| `mountain_stars` | Starry Mountains | `masters/mountain_stars.png` |
+| `mirror_lake` | Mirror Lake | `masters/mirror_lake.png` |
+| `misty_forest` | Misty Forest | `masters/misty_forest.png` |
+| `glass_facade` | Glass Facade | `masters/glass_facade.png` |
+| `synthwave_grid` | Synthwave Grid | `masters/synthwave_grid.png` |
 
-`tools/wallpaper/aurora06.py` (plain Python 3, no packages) draws two layers of aurora curtains and writes,
-into `crates/lume-core/assets/wallpaper/`:
+## Origin and license
 
-- `aurora-1920x1080.rgb`: the smooth base, raw RGB, top row first. The edge of the curtains is softened to
-  about 3 of its own texels, so 1920x1080 enlarged to 1080p looks like a render made at 1080p
-  (average error under 1/255). The top and the lower half are already dark, for the top bar and the dock.
-- `aurora-stars.txt`: 420 stars (`x y brightness`, in 1920x1080 pixels, from a fixed random seed), all in
-  the upper 70% of the picture.
+All six images are made by the project's author with the procedural scripts in `tools/wallpaper/`
+(`generate_4k_all_options.py`, `build_all_4k.py`, `build_opcao_d.py`): equations and noise rendered at
+3840x2160, no photo or art from anyone else. They carry the same license as the project (GPL-3.0-or-later).
+Each master is a lossless 4:4:4 PNG (about 6 to 13 MB, 62 MB in all: check Git LFS with the author before committing).
 
-To change the look, edit the script and run it again from the repository root:
+## How the images are made
 
-```
-python3 tools/wallpaper/aurora06.py
-```
+`uv run --with pillow --with numpy tools/wallpaper/generate_wallpapers.py [--calibrate]` reads the masters and writes, into
+`crates/lume-core/assets/wallpaper/`:
 
-Running it without changes gives the same files byte for byte.
+- `<id>-1920x1080.qoi`: the image, lossless [QOI](https://qoiformat.org) (2.3 to 3.4 MB each, 18 MB in all).
+- `<id>-stars.txt`: vector stars (`x y brightness`); empty, because the stars are part of the masters.
+- `thumbnails-640x144.rgba`: the atlas of 128x72 previews for the editor (5 per row).
+
+The pipeline stays in floating point until the last step:
+
+1. **Contrast calibration at the master's size, only with `--calibrate`**. By default the images are not darkened (the author found the baked-in shadow at the top and bottom ugly), so the top bar and the dock can sit over bright parts of some wallpapers (Starry Mountains, Glass Facade, Synthwave Grid, Mirror Lake) and the 4.5:1 tests of the top bar and of the images (`all_wallpapers_dark_top_and_bottom_for_ui`, `the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home`) are `#[ignore]`d with that reason. The calibration is: dock protection in the bottom rows, a cap on the brightest pixel behind the
+   top bar (per row, smoothed without ever exceeding what the row needs, so a star never breaks the 4.5:1
+   contrast of the muted text), and the band averages brought under 34 (top) and 21 (bottom) of 255.
+2. **Reduction to 1920x1080 by averaging** (area filter; 3840x2160 is exactly 2:1).
+3. **Triangular dither of +-1 level** and quantization to 8 bits, seeded by the id: the same input gives the same file byte for byte.
+4. **QOI encoding** (`qoi_encode`, plain Python, deterministic).
+
+### Why QOI
+
+Measured on the host with the real images (`miniz_oxide` deflate of the raw RGB, `png` with Paeth, `qoi`):
+
+| Image | deflate | PNG | QOI |
+|---|---|---|---|
+| mirror_lake | 4.1 MB, 19.5 ms | 3.5 MB, 19.2 ms | 3.3 MB, 8.3 ms |
+| aurora | 2.3 MB, 12.3 ms | 1.7 MB, 13.0 ms | 2.3 MB, 5.4 ms |
+| synthwave_grid | 3.1 MB, 14.5 ms | 2.8 MB, 16.6 ms | 2.9 MB, 7.1 ms |
+
+QOI decodes about 2.3x faster than the other two and is the smallest or close to it; the whole catalog is 18 MB, far under
+the APK limit. Lossy formats are out: they decode slower and erase the dither. The decode times on the TVs are in `docs/device-notes.md`.
+
+The generator refuses a master smaller than 1920x1080 and a **fake Full HD** (a smaller image enlarged): it
+reduces the 1080p image to 1280x720 and back with Lanczos and measures the mean luminance error. An
+enlarged 720p image comes back almost unchanged. The limit is `MIN_DETAIL = 0.19` (0 to 255 scale). Measured: the
+old 720p masters, enlarged, scored 0.07 to 0.16; the Aurora, which is smooth by nature, scores 0.22; the other
+masters 1.8 to 3.1. The gap around the Aurora is narrow: a new very smooth master may need a lower limit.
 
 ## How it gets on the screen
 
-1. `crates/lume-core/build.rs` embeds both files (`include_bytes!` and a list of stars).
-2. At runtime the renderer uploads the base (675 KB) as an opaque RGB texture (linear filter, clamped to
-   the edge) the first time a frame draws it, and frees it with the rest of the graphics memory when lume
-   goes to the background.
-3. Every frame starts with `Painter::wallpaper`: one quad of that texture over the whole visible area, cropped
-   to cover it, then the stars as points of 1 or 2 pixels of the render buffer. Stars are not part of the
-   enlarged texture, so they stay as sharp as the interface (on a 4K screen lume renders at 1080p).
-4. On screens that are mostly text (Apps, Settings, About, editor) the wallpaper is drawn already darkened by about 78%
-   towards the theme's background color (`Painter::wallpaper(true)`), so every text keeps at least 4.5:1 of contrast
-   over the brightest part of the aurora. There is no second layer over the screen: the image is drawn at 22% opacity
-   over the `--bg` the frame is cleared to, and so are the stars. (A full-screen translucent layer cost more than half
-   of the frames of the Apps grid on the TV.) Home shows the wallpaper as it is.
+1. The APK carries one copy of each `.qoi`, stored (not compressed again) in `assets/wallpaper/`: `android/app/build.gradle`
+   stages them (`StageWallpapersTask`) and `scripts/verify-apk.py` fails when one is missing, repeated, compressed, or
+   embedded in a native library. `build.rs` embeds only the star lists and the thumbnail atlas.
+2. `lume_core::wallpaper` gets the bytes from the platform: on Android `lume-app` reads the asset with the NDK's
+   `AAssetManager` (no Java); the desktop build reads `crates/lume-core/assets/wallpaper/`.
+3. The first frame that draws it decodes the image and uploads it as an opaque RGB texture (linear filter, clamped to the
+   edge); the texture is freed with the rest of the graphics memory when lume goes to the background. The splash preloads it.
+4. **Render buffer smaller than 1920x1080 (a 720p TV)**: the image is drawn once into a framebuffer of the exact size the
+   wallpaper covers in the buffer, with an area filter (four linear taps over the footprint of each pixel) and the dither made
+   again at that size; the source texture is then deleted. Each frame samples that texture one texel per pixel, which avoids
+   the moire and the color bands that the GPU's linear minification of a 1.5x reduction gave. If the device has no renderable
+   texture, the image is used as it is.
+5. Every frame starts with `Painter::wallpaper`: one quad of that texture over the whole visible area, cropped to cover it.
+6. On screens that are mostly text (Apps, Settings, About, editor) the wallpaper is drawn already darkened by about 78%
+   towards the theme's background color (`Painter::wallpaper(true)`), so every text keeps at least 4.5:1 of contrast.
+   There is no second layer over the screen: the image is drawn at 22% opacity over the `--bg` the frame is cleared to.
+   (A full-screen translucent layer cost more than half of the frames of the Apps grid on the TV.) Home shows it as it is.
 
 ## Checks
 
-- `cargo test -p lume-desktop --test wallpaper`: the frame rendered at 1920x1080 differs from
-  `mockup/wallpaper-aurora-lume@1080p.png` by at most 2/255 on average, and the stars are sharp points at 720p and 1080p.
-- `cargo test -p lume-core wallpaper` and `cargo test -p lume-desktop --test contrast`: the contrast of the
-  texts over the wallpaper stays at 4.5:1 or more. A change to the image or to the 78% that breaks it fails here.
+- `cargo test -p lume-core wallpaper` and `cargo test -p lume-desktop --test contrast`: size 1920x1080 and the
+  contrast of the texts over every wallpaper stay at 4.5:1 or more.
+- `cargo test -p lume-desktop --test wallpaper`: the frame at 1920x1080 differs from the catalog image by at most 1/255 on average;
+  at 1280x720 it differs from a Lanczos-3 reduction by at most 2/255, and thin lines (synthwave grid, glass facade) have at most
+  10% more fine-detail energy than that reduction; the dither breaks the bands without changing the average color, and no row has
+  a run of more than 24 identical pixels.
+- `cargo test -p lume-core cover`: the covered size reaches the whole buffer in any proportion.
+- `uv run scripts/verify-apk.py dist/<apk>`: one stored copy of each wallpaper in `assets/`, none in a library, 40 MB limit.
 
 ## Where to change it
 
-`lume_core::wallpaper::current()` is the only place the renderer asks for the wallpaper. To use another
-image, replace the two asset files (or change the script) and run `cargo test --workspace`.
+`lume_core::wallpaper::current()` is the default; `WallpaperId` (in `crates/lume-core/src/wallpaper/mod.rs`) is the catalog.
+To add a wallpaper: put the master in `tools/wallpaper/masters/`, add its id to `CATALOG` in the generator and to
+`build.rs`, add the variant to `WallpaperId`, a `wallpaper_<id>` string to every `values*/strings.xml`
+(`docs/translations.md`), run the generator and `cargo test --workspace`.
 
 To look at the result: `cargo run -p lume-desktop -- --screenshot home home.png`.
-
-
-## Quality on HD and 4K screens (catalog of 10 wallpapers)
-
-Every wallpaper is stored at 1920x1080 (`aurora06.WIDTH`/`HEIGHT`), the TV's own resolution: the Aurora is
-generated at that size and the 9 masters (1280x720 JPEG) are enlarged with Lanczos when generated, which is
-sharper than letting the GPU enlarge a small image. A 4K screen enlarges it 2x (lume's buffer is 1080p). Generate them with
-`uv run --with pillow tools/wallpaper/generate_wallpapers.py`. The generator:
-
-- adds triangular dither (+-1 level, deterministic) to the Aurora and wherever the calibration darkens
-  pixels, so dark gradients do not band on a large panel;
-- darkens the top rows by the brightest pixel behind the top bar, not by the average, so the muted
-  text keeps 4.5:1 (checked by the tests of `lume-core`);
-- the masters carry no more detail than 1280x720; for real extra detail, replace them with Full HD ones.

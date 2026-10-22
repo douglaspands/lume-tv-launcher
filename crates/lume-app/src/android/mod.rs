@@ -21,12 +21,35 @@ use lume_core::theme::{vars, Color};
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 /// Set by Java when the Home button is pressed while lume is already open.
 static HOME_PRESSED: AtomicBool = AtomicBool::new(false);
 static WAKER: Mutex<Option<AndroidAppWaker>> = Mutex::new(None);
+/// Set by the wallpaper's worker thread when a wallpaper is ready: the loop draws a frame to swap it in.
+static WALLPAPER_READY: AtomicBool = AtomicBool::new(false);
+
+fn wallpaper_ready() {
+    WALLPAPER_READY.store(true, Ordering::SeqCst);
+    if let Ok(guard) = WAKER.lock() {
+        if let Some(waker) = guard.as_ref() {
+            waker.wake();
+        }
+    }
+}
+
+/// The app, for reading the wallpapers from the APK's assets.
+static APP: OnceLock<AndroidApp> = OnceLock::new();
+
+/// Reads `assets/wallpaper/<name>` from the APK (the NDK's `AAssetManager`; no Java).
+fn read_wallpaper_asset(name: &str) -> Option<Vec<u8>> {
+    let path = std::ffi::CString::new(format!("wallpaper/{name}")).ok()?;
+    let mut asset = APP.get()?.asset_manager().open(&path)?;
+    let mut bytes = Vec::with_capacity(asset.length());
+    std::io::Read::read_to_end(&mut asset, &mut bytes).ok()?;
+    Some(bytes)
+}
 
 /// Called by `LumeActivity.onNewIntent` (Java thread) to say Home was pressed.
 #[no_mangle]
@@ -125,11 +148,18 @@ fn android_main(app: AndroidApp) {
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
     log::info!("lume {} starting", lume_version::VERSION);
     *WAKER.lock().expect("waker lock") = Some(app.create_waker());
+    let _ = APP.set(app.clone());
+    lume_core::wallpaper::set_asset_reader(read_wallpaper_asset);
+    lume_core::wallpaper::set_ready_notifier(wallpaper_ready);
 
     let Some(files) = app.internal_data_path() else {
         log::error!("no internal data directory");
         return;
     };
+    // The app's cache directory (next to `files/`): the decoded wallpaper is kept there between wake-ups.
+    if let Some(cache) = files.parent().map(|parent| parent.join("cache")) {
+        lume_core::wallpaper::set_cache_dir(cache);
+    }
     let bridge = Bridge::new(&app);
     let package = bridge.package_name();
     let mut shell = Shell::start(
@@ -168,6 +198,15 @@ impl Runtime {
 
     fn run(&mut self) {
         while self.running {
+            // A wallpaper going up to the GPU slice by slice needs a frame for each slice: asking here, before
+            // the timeout is computed, keeps the loop from going to sleep between them.
+            if self
+                .graphics
+                .as_mut()
+                .is_some_and(|g| g.backend().wallpaper_uploading())
+            {
+                self.shell.invalidate();
+            }
             let busy = self.shell.is_busy(self.now_ms());
             let timeout = if self.icons_pending && !busy {
                 Some(Duration::ZERO)
@@ -184,6 +223,9 @@ impl Runtime {
             let app = self.app.clone();
             app.poll_events(timeout, |event| self.on_event(event));
             self.process_input();
+            if WALLPAPER_READY.swap(false, Ordering::SeqCst) {
+                self.shell.invalidate();
+            }
             if HOME_PRESSED.swap(false, Ordering::SeqCst) {
                 self.send_key(Key::Home);
             }
@@ -259,6 +301,10 @@ impl Runtime {
         match Graphics::new(window.ptr().as_ptr().cast()) {
             Ok(graphics) => {
                 self.graphics = Some(graphics);
+                if let Some(graphics) = self.graphics.as_mut() {
+                    graphics.backend().set_render_size(width, height);
+                    graphics.backend().set_async_wallpaper(true);
+                }
                 self.first_frame_from = Some(Instant::now());
                 self.ready_from = self.first_frame_from;
                 self.icon_times = IconTimes {
@@ -284,6 +330,9 @@ impl Runtime {
             height as i32,
             Some(ndk::hardware_buffer_format::HardwareBufferFormat::R8G8B8A8_UNORM),
         );
+        if let Some(graphics) = self.graphics.as_mut() {
+            graphics.backend().set_render_size(width, height);
+        }
         self.shell.wake(width, height);
     }
 
@@ -422,7 +471,7 @@ impl Runtime {
             if self.shell.app().in_splash() && !graphics.backend().has_wallpaper() {
                 graphics
                     .backend()
-                    .ensure_wallpaper(self.shell.app().config.wallpaper);
+                    .poll_wallpaper(self.shell.app().config.wallpaper);
             }
         }
     }
