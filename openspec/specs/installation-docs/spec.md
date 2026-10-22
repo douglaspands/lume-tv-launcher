@@ -1,7 +1,7 @@
 # installation-docs Specification
 
 ## Purpose
-TBD - created by archiving change masters-no-lfs. Update Purpose after archive.
+Define o que os READMEs (em 5 idiomas) trazem para instalar o Lume na TV: requisitos, contexto sobre o adb, as duas opções de instalação (assistente de IA e manual) e a paridade entre idiomas.
 
 ## Requirements
 

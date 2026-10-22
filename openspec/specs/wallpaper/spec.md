@@ -1,7 +1,7 @@
 # wallpaper Specification
 
 ## Purpose
-Define o papel de parede do lume: uma imagem de aurora boreal nas cores da marca, única nesta versão, desenhada atrás de todas as telas, sem depender de imagens de terceiros, nítida em qualquer resolução de TV e preparada para uma futura opção de troca.
+Define os papéis de parede do lume: o catálogo de imagens desenhado atrás de todas as telas, com a aurora boreal nas cores da marca como padrão, nítido em qualquer resolução de TV, com origem e licença registradas por imagem (hoje Unsplash License, de terceiros) e masters guardados em Git LFS.
 
 ## Requirements
 
