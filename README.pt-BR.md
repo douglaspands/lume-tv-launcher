@@ -36,13 +36,45 @@
 
 Você vai enviar o app do computador para a TV com uma ferramenta pequena chamada **adb**. Só precisa fazer isso uma vez.
 
-### 1. Baixe o Lume
+### O que você precisa
 
-1. Abra a [página **Releases**](https://github.com/douglaspands/lume-tv-launcher/releases) deste projeto no GitHub.
-2. Na versão mais nova, baixe o arquivo com nome parecido com **`lume-<version>.apk`**.
+- Uma TV com **Android TV 9 ou mais novo**, na **mesma rede do computador** (Wi-Fi ou cabo).
+- O **adb** no computador (a Opção 2 mostra como obtê-lo).
+- A **depuração USB** (ou **depuração de rede**) ativada nas opções do desenvolvedor da TV.
+- O **APK** do Lume, no repositório do projeto: <https://github.com/douglaspands/lume-tv-launcher>.
+
+### O que é o adb?
+
+O **adb** (Android Debug Bridge) é uma ferramenta gratuita de linha de comando do Google. Ele conversa com a TV pela rede e instala apps nela a partir do computador. Você precisa dele porque o Lume não está na loja de apps da TV, então ele tem que ser enviado de fora.
+
+### Opção 1: com um assistente de IA
+
+Se você usa um assistente de IA capaz de rodar comandos no seu computador (por exemplo, um agente de linha de comando), cole este prompt e responda às perguntas dele. Ele pede o endereço IP da TV e a sua confirmação antes de mudar qualquer coisa.
+
+```text
+Quero instalar o launcher Lume na minha Android TV usando o adb. Faça isso por mim, passo a passo, e responda em português do Brasil.
+
+1. Verifique se o adb está instalado (`adb version`). Se não estiver, explique como instalar o SDK Platform-Tools do Google no meu sistema e espere por mim.
+2. Baixe o APK mais recente do Lume de https://github.com/douglaspands/lume-tv-launcher (veja a página Releases) para uma pasta e me diga o caminho.
+3. Pergunte o endereço IP da TV (Configurações > Rede e Internet) e peça que eu confirme que a depuração USB (ou de rede) está ativada nas opções do desenvolvedor. Não adivinhe o endereço.
+4. Rode `adb connect <ip>:5555` e depois `adb devices`. Lembre-me de aceitar o aviso "Permitir depuração USB?" na TV (Sempre permitir) e rode os dois comandos de novo até a minha TV aparecer como `device`.
+5. Rode `adb install <caminho do APK>` e confirme que apareceu `Success`.
+6. Rode `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity` para fazer do Lume a tela inicial.
+
+Não rode nenhum outro comando que altere a TV (como `pm disable-user`) sem eu pedir, e pergunte antes de rodar qualquer coisa que não esteja na lista acima.
+```
+
+### Opção 2: manualmente
+
+Faça você mesmo os seis passos abaixo.
+
+#### 1. Baixe o Lume
+
+1. Abra a página do projeto no GitHub: <https://github.com/douglaspands/lume-tv-launcher>.
+2. Em *Releases*, baixe o arquivo **`.apk`** do Lume.
 3. Anote onde ele foi salvo (por exemplo, a pasta Downloads).
 
-### 2. Instale o adb no computador
+#### 2. Instale o adb no computador
 
 1. Baixe o **SDK Platform-Tools** do Google para o seu sistema em <https://developer.android.com/tools/releases/platform-tools>.
 2. Descompacte numa pasta fácil, por exemplo `C:\platform-tools` no Windows ou `~/platform-tools` no macOS/Linux.
@@ -55,7 +87,7 @@ Para conferir, digite `adb version` (no Windows) ou `./adb version` (no macOS/Li
 
 > No macOS e no Linux, coloque `./` antes de cada comando `adb` abaixo (por exemplo, `./adb devices`).
 
-### 3. Ative a depuração na TV
+#### 3. Ative a depuração na TV
 
 1. Na TV, abra **Configurações → Preferências do dispositivo → Sobre**.
 2. Selecione **Compilação** (ou *Build do Android TV OS*) e pressione OK **7 vezes**, até aparecer que você é um desenvolvedor.
@@ -64,12 +96,12 @@ Para conferir, digite `adb version` (no Windows) ou `./adb version` (no macOS/Li
 
 Os nomes dos menus mudam um pouco entre as marcas de TV.
 
-### 4. Descubra o endereço da TV
+#### 4. Descubra o endereço da TV
 
 Na TV, abra **Configurações → Rede e Internet**, selecione a sua conexão e anote o **endereço IP**, algo como `192.168.1.50`.
 (Algumas TVs também mostram o endereço nas *Opções do desenvolvedor*, perto da chave de depuração de rede.)
 
-### 5. Conecte e instale
+#### 5. Conecte e instale
 
 No terminal aberto no passo 2, digite (troque o endereço pelo seu):
 
@@ -86,12 +118,12 @@ adb devices
 Você deve ver a sua TV com a palavra `device` ao lado. Agora instale o Lume (use o caminho real do arquivo que você baixou):
 
 ```
-adb install "C:\Users\Voce\Downloads\lume-<version>.apk"
+adb install "C:\Users\Voce\Downloads\lume.apk"
 ```
 
 Quando aparecer `Success`, o Lume está instalado.
 
-### 6. Faça do Lume a sua tela inicial
+#### 6. Faça do Lume a sua tela inicial
 
 1. Aperte o botão **Home** do controle. O Android pode perguntar qual app usar como tela inicial: escolha **Lume** e **Sempre**.
 2. Se nada foi perguntado, ou se o Home ainda abre o launcher antigo, rode:
@@ -238,7 +270,7 @@ As traduções são arquivos `strings.xml` padrão do Android em `android/app/sr
 
 ### Papel de parede
 
-O Lume desenha um entre seis papéis de parede atrás de todas as telas, todos feitos pelo autor do projeto como imagens de 3840x2160 e reduzidos para Full HD no build. Como são processados, como incluir ou trocar um e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
+O Lume desenha um entre seis papéis de parede atrás de todas as telas, todos imagens 3840x2160 (Unsplash License) e reduzidos para Full HD no build. Como são processados, como incluir ou trocar um e onde ficam a origem e a licença: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contribuição, licença e marca
 
