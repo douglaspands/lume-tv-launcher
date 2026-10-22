@@ -39,38 +39,54 @@ pub(super) fn view_bottom(p: &Painter) -> f32 {
 
 impl LumeApp {
     pub(super) fn grid_cells(&self) -> Vec<Cell> {
-        let mut cells: Vec<Cell> = self
-            .catalog
-            .apps()
-            .iter()
-            .enumerate()
-            .map(|(i, app)| Cell {
-                id: ids::GRID_BASE + i as u32,
-                package: Some(app.package.clone()),
-                rect: Rect::default(),
-                label: app.label.clone(),
-                color: app.color,
-            })
-            .collect();
-        // lume's own entry, with its logo, opening lume's Settings screen.
-        cells.push(Cell {
-            id: ids::GRID_SETTINGS,
-            package: None,
-            rect: Rect::default(),
-            label: "Lume".into(),
-            color: vars::PRIMARY,
-        });
-        // lume is one more app of the grid: it takes its place in the alphabetical order.
-        cells.sort_by_cached_key(|c| crate::catalog::normalize::sort_key(&c.label));
-        for (index, cell) in cells.iter_mut().enumerate() {
+        let lume_label = "Lume";
+        let lume_key = crate::catalog::normalize::sort_key(lume_label);
+        let apps = self.catalog.apps();
+        let insert_at =
+            apps.partition_point(|a| crate::catalog::normalize::sort_key(&a.label) <= lume_key);
+
+        let total = apps.len() + 1;
+        let mut cells = Vec::with_capacity(total);
+
+        let tile_rect = |index: usize| {
             let (row, column) = (index / COLUMNS, index % COLUMNS);
-            cell.rect = Rect::new(
+            Rect::new(
                 topbar::MARGIN + column as f32 * (TILE_WIDTH + GAP),
                 GRID_TOP + row as f32 * ROW_PITCH,
                 TILE_WIDTH,
                 TILE_HEIGHT,
-            );
+            )
+        };
+
+        for (i, app) in apps[..insert_at].iter().enumerate() {
+            cells.push(Cell {
+                id: ids::GRID_BASE + i as u32,
+                package: Some(app.package.clone()),
+                rect: tile_rect(i),
+                label: app.label.clone(),
+                color: app.color,
+            });
         }
+
+        cells.push(Cell {
+            id: ids::GRID_SETTINGS,
+            package: None,
+            rect: tile_rect(insert_at),
+            label: lume_label.into(),
+            color: vars::PRIMARY,
+        });
+
+        for (offset, app) in apps[insert_at..].iter().enumerate() {
+            let i = insert_at + 1 + offset;
+            cells.push(Cell {
+                id: ids::GRID_BASE + (insert_at + offset) as u32,
+                package: Some(app.package.clone()),
+                rect: tile_rect(i),
+                label: app.label.clone(),
+                color: app.color,
+            });
+        }
+
         cells
     }
 
@@ -136,16 +152,7 @@ impl LumeApp {
             visible.w,
             visible.bottom() - CLIP_TOP,
         ));
-        let title_style = p.style(&THEME.section_title, StateFlags::NONE);
-        let title = self.translator.get(StringId::AppsTitle);
-        p.text.draw(
-            p.list,
-            &title,
-            topbar::MARGIN,
-            TITLE_BASELINE - scroll_y,
-            &Painter::text_style(&title_style),
-            title_style.color,
-        );
+        let view_bottom = visible.bottom();
         let tiles: Vec<_> = cells
             .iter()
             .map(|cell| {
@@ -154,8 +161,12 @@ impl LumeApp {
                 style.background = Some(Paint::Solid(cell.color));
                 (cell, rect, style)
             })
+            .filter(|(_, rect, _)| {
+                rect.bottom() + 40.0 >= CLIP_TOP - 24.0 && rect.y <= view_bottom + 24.0
+            })
             .collect();
-        // Boxes, then images, then text: one draw call for each kind (see `draw_tile_image`).
+
+        // 1st pass: Boxes and logo mark (all Rects!)
         for (cell, rect, style) in &tiles {
             if self.tile_has_image(cell.package.as_deref(), false) {
                 // The image pass draws the tile color with the image, under one edge, and the
@@ -169,11 +180,6 @@ impl LumeApp {
             } else {
                 p.draw_box(*rect, style);
             }
-        }
-        for (cell, rect, style) in &tiles {
-            self.draw_tile_image(p, cell.package.as_deref(), *rect, style, false);
-        }
-        for (cell, rect, style) in &tiles {
             if cell.package.is_none() {
                 // lume's own tile: the whole tile is the logo color, with the L centered. The mark's
                 // square has the tile's color, so only the L shows and the tile stays a rectangle.
@@ -186,7 +192,28 @@ impl LumeApp {
                     side,
                 );
                 crate::logo::draw_mark(p.list, mark, vars::PRIMARY, vars::BG);
-            } else {
+            }
+        }
+
+        // 2nd pass: Images
+        for (cell, rect, style) in &tiles {
+            self.draw_tile_image(p, cell.package.as_deref(), *rect, style, false);
+        }
+
+        // 3rd pass: Title and text labels
+        let title_style = p.style(&THEME.section_title, StateFlags::NONE);
+        let title = self.translator.get(StringId::AppsTitle);
+        p.text.draw(
+            p.list,
+            &title,
+            topbar::MARGIN,
+            TITLE_BASELINE - scroll_y,
+            &Painter::text_style(&title_style),
+            title_style.color,
+        );
+
+        for (cell, rect, style) in &tiles {
+            if cell.package.is_some() {
                 self.draw_tile_name(p, cell.package.as_deref(), &cell.label, *rect, style, false);
             }
             let label_style = p.focus_style(&THEME.tile_label, self.focus_progress(cell.id));
@@ -293,5 +320,92 @@ mod tests {
     #[test]
     fn a_row_keeps_the_same_strip_for_the_name_as_before() {
         assert_eq!(ROW_PITCH, 148.0);
+    }
+
+    #[test]
+    fn apps_grid_does_not_split_text_batch_around_lume_tile() {
+        use crate::app::Key;
+        use crate::catalog::{Catalog, Discovered};
+        use crate::clock::WallClock;
+        use crate::display::Display;
+        use crate::home::config::HomeConfig;
+        use crate::i18n::Translator;
+        use crate::render::{DisplayList, Frame, Program};
+        use crate::text::TextEngine;
+        use crate::usage::UsageHistory;
+
+        let entries = vec![
+            Discovered {
+                package: "com.apple.atv".into(),
+                label: "Apple TV".into(),
+                activity: "com.apple.atv.MainActivity".into(),
+                leanback: true,
+                system: false,
+                icon: None,
+            },
+            Discovered {
+                package: "com.google.android.youtube.tv".into(),
+                label: "YouTube".into(),
+                activity: "com.google.android.youtube.tv.MainActivity".into(),
+                leanback: true,
+                system: false,
+                icon: None,
+            },
+        ];
+        let catalog = Catalog::from_discovered(&entries, "app.lume.tv");
+        let usage = UsageHistory::new();
+        let config = HomeConfig::first_use(&catalog);
+        let clock = WallClock {
+            unix_secs: 1_700_000_000,
+            utc_offset_secs: 0,
+            is_24h: true,
+        };
+        let mut app = LumeApp::new(catalog, usage, config, Translator::new(&["pt-BR"]), clock);
+        let display = Display::new(1280, 720);
+        let mut text = TextEngine::new(display.scale);
+        let mut now = 0;
+        let draw_frame = |app: &mut LumeApp, text: &mut TextEngine, now_ms: u64| {
+            let mut list = DisplayList::new();
+            for _ in 0..4 {
+                list.clear();
+                text.begin_frame();
+                let mut painter = Painter {
+                    list: &mut list,
+                    text,
+                    display,
+                };
+                app.draw(&mut painter, now_ms);
+                if !text.end_frame() {
+                    break;
+                }
+            }
+            list
+        };
+
+        // Advance through splash
+        while app.in_splash() {
+            draw_frame(&mut app, &mut text, now);
+            now += 50;
+        }
+        // Past the splash reveal
+        now += 600;
+        draw_frame(&mut app, &mut text, now);
+
+        app.handle_key(Key::Up, now);
+        now += 100;
+        app.handle_key(Key::Right, now);
+        now += 100;
+
+        let list = draw_frame(&mut app, &mut text, now);
+        let frame = Frame::build(&list);
+        let text_batches_in_grid = frame
+            .batches
+            .iter()
+            .filter(|b| b.program == Program::Text && b.clip.is_some())
+            .count();
+        assert!(
+            text_batches_in_grid <= 1,
+            "expected at most 1 text batch in grid clip, found {text_batches_in_grid}"
+        );
     }
 }

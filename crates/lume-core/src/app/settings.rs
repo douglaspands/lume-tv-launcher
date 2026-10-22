@@ -258,17 +258,22 @@ impl LumeApp {
                 visible.bottom() - TV_VIEW_TOP,
             ));
             let mut y = TV_TEXT_TOP - scroll;
+            let view_bottom = visible.bottom();
             for section in &SECTIONS {
                 let rect = Rect::new(LEFT, y, WIDTH, TV_HEADING_HEIGHT);
-                p.text(&t.get(section.title), rect, Align::Start, &heading);
+                if y + TV_HEADING_HEIGHT >= TV_VIEW_TOP && y <= view_bottom {
+                    p.text(&t.get(section.title), rect, Align::Start, &heading);
+                }
                 y += TV_HEADING_HEIGHT;
                 for (field, name) in section.lines {
                     let name_rect = Rect::new(LEFT, y, TV_VALUE_X - LEFT - 32.0, TV_ROW_HEIGHT);
-                    p.text(&t.get(*name), name_rect, Align::Start, &label);
                     let value_rect =
                         Rect::new(TV_VALUE_X, y, LEFT + WIDTH - TV_VALUE_X, TV_ROW_HEIGHT);
-                    let value = info.display(*field, &t);
-                    p.text(&value, value_rect, Align::Start, &value_style);
+                    if y + TV_ROW_HEIGHT >= TV_VIEW_TOP && y <= view_bottom {
+                        p.text(&t.get(*name), name_rect, Align::Start, &label);
+                        let value = info.display(*field, &t);
+                        p.text(&value, value_rect, Align::Start, &value_style);
+                    }
                     y += TV_ROW_HEIGHT;
                 }
                 y += TV_SECTION_GAP;
@@ -299,27 +304,33 @@ impl LumeApp {
         let visible = p.display.visible_rect();
 
         // Build the text, then limit the scrolling to its length.
-        let lines = licenses::lines();
+        let lines = licenses::cached_lines();
         let heading = p.style(&THEME.about_heading, StateFlags::NONE);
         let body = p.style(&THEME.about_body, StateFlags::NONE);
         let license = p.style(&THEME.about_license, StateFlags::NONE);
-        let mut blocks: Vec<(String, &ComputedStyle)> = vec![
+        let mut blocks: Vec<(std::borrow::Cow<'static, str>, &ComputedStyle)> = vec![
             (
                 t.format(
                     StringId::AboutVersion,
                     &[Arg::Str(&lume_version::display())],
-                ),
+                )
+                .into(),
                 &heading,
             ),
-            (t.get(StringId::AboutLicense).into_owned(), &body),
+            (t.get(StringId::AboutLicense), &body),
             (
-                t.format(StringId::AboutSource, &[Arg::Str(SOURCE_URL)]),
+                t.format(StringId::AboutSource, &[Arg::Str(SOURCE_URL)])
+                    .into(),
                 &body,
             ),
-            (String::new(), &license),
-            (t.get(StringId::AboutThirdParty).into_owned(), &heading),
+            (std::borrow::Cow::Borrowed(""), &license),
+            (t.get(StringId::AboutThirdParty), &heading),
         ];
-        blocks.extend(lines.into_iter().map(|line| (line, &license)));
+        blocks.extend(
+            lines
+                .iter()
+                .map(|line| (std::borrow::Cow::Borrowed(line.as_str()), &license)),
+        );
         let heights: Vec<f32> = blocks
             .iter()
             .map(|(_, style)| line_height(style.font_size))
@@ -336,10 +347,13 @@ impl LumeApp {
             visible.w,
             visible.bottom() - ABOUT_VIEW_TOP,
         ));
+        let view_bottom = visible.bottom();
         let mut y = ABOUT_TEXT_TOP - scroll;
         for ((text, style), height) in blocks.iter().zip(&heights) {
             let rect = Rect::new(LEFT, y, WIDTH, *height);
-            p.text(text, rect, Align::Start, style);
+            if y + *height >= ABOUT_VIEW_TOP && y <= view_bottom && !text.is_empty() {
+                p.text(text, rect, Align::Start, style);
+            }
             y += height;
         }
         p.list.pop_clip();

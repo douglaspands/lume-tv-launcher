@@ -159,7 +159,10 @@ impl LumeApp {
         layout
             .rows
             .push(Row::new(vec![Focusable::new(RESTORE, restore)]).with_entry_down(RESTORE));
-        if draw && !self.editor.confirm {
+        let view_height = p.display.visible_rect().bottom().max(720.0);
+        let restore_scrolled = restore.translate(0.0, -scroll_y);
+        let is_visible = |r: Rect| r.bottom() >= -32.0 && r.y <= view_height + 32.0;
+        if draw && !self.editor.confirm && is_visible(restore_scrolled) {
             p.list.fill(
                 Rect::new(LEFT, y - 12.0 - scroll_y, WIDTH, 2.0),
                 1.0,
@@ -167,7 +170,7 @@ impl LumeApp {
             );
             self.draw_button(
                 p,
-                restore.translate(0.0, -scroll_y),
+                restore_scrolled,
                 &restore_label,
                 RESTORE,
                 ButtonKind::Secondary,
@@ -243,7 +246,10 @@ impl LumeApp {
             + PANEL_PADDING_Y;
         let panel = Rect::new(LEFT, top, WIDTH, panel_bottom - top);
 
-        if draw {
+        let view_height = p.display.visible_rect().bottom().max(720.0);
+        let is_visible = |r: Rect| r.bottom() >= -32.0 && r.y <= view_height + 32.0;
+
+        if draw && is_visible(panel.translate(0.0, -scroll_y)) {
             let style = p.style(&THEME.panel, StateFlags::NONE);
             p.draw_box(panel.translate(0.0, -scroll_y), &style);
             let heading = t.get(StringId::EditorFavoritesOrder).to_uppercase();
@@ -313,14 +319,15 @@ impl LumeApp {
                         Focusable::new(button_ids[b], rects[b])
                     });
                 }
-                if draw {
+                let card_scrolled = Rect::new(x, card_y - scroll_y, CARD_WIDTH, card_height);
+                if draw && is_visible(card_scrolled) {
                     let (label, color) = match self.catalog.get(package) {
                         Some(app) => (app.label.clone(), app.color),
                         None => (package.clone(), vars::TILE_DEFAULT),
                     };
                     self.draw_card(
                         p,
-                        Rect::new(x, card_y - scroll_y, CARD_WIDTH, card_height),
+                        card_scrolled,
                         index + 1,
                         &label,
                         color,
@@ -354,12 +361,13 @@ impl LumeApp {
             if !full {
                 chip_rows[pos.line].push(Focusable::new(id, rect));
             }
-            if draw {
+            let chip_scrolled = rect.translate(0.0, -scroll_y);
+            if draw && is_visible(chip_scrolled) {
                 let progress = self.focus_progress(id);
-                self.draw_add_chip(p, rect.translate(0.0, -scroll_y), label, progress, full);
+                self.draw_add_chip(p, chip_scrolled, label, progress, full);
             }
         }
-        if full && draw {
+        if full && draw && is_visible(panel.translate(0.0, -scroll_y)) {
             let message = t.plural(
                 PluralId::EditorLimitReached,
                 MAX_FAVORITES as i64,
@@ -432,25 +440,30 @@ impl LumeApp {
         self.editor.target_wallpaper_scroll_x =
             self.editor.target_wallpaper_scroll_x.clamp(0.0, max_scroll);
 
-        let current_scroll = self.anim.get(
-            Anim::WallpaperScrollX,
-            self.editor.wallpaper_scroll_x,
-            self.now_ms,
-        );
-        if (current_scroll - self.editor.target_wallpaper_scroll_x).abs() > 0.5 {
-            self.anim.animate_to(
+        if draw {
+            let current_scroll = self.anim.get(
                 Anim::WallpaperScrollX,
-                current_scroll,
-                self.editor.target_wallpaper_scroll_x,
+                self.editor.wallpaper_scroll_x,
                 self.now_ms,
-                Some(vars::FOCUS_TIME),
             );
-            self.editor.wallpaper_scroll_x = current_scroll;
-        } else {
-            self.editor.wallpaper_scroll_x = self.editor.target_wallpaper_scroll_x;
+            if (current_scroll - self.editor.target_wallpaper_scroll_x).abs() > 0.5 {
+                self.anim.animate_to(
+                    Anim::WallpaperScrollX,
+                    current_scroll,
+                    self.editor.target_wallpaper_scroll_x,
+                    self.now_ms,
+                    Some(vars::FOCUS_TIME),
+                );
+                self.editor.wallpaper_scroll_x = current_scroll;
+            } else {
+                self.editor.wallpaper_scroll_x = self.editor.target_wallpaper_scroll_x;
+            }
         }
 
-        if draw && !self.editor.confirm {
+        let view_height = p.display.visible_rect().bottom().max(720.0);
+        let is_visible = |r: Rect| r.bottom() >= -32.0 && r.y <= view_height + 32.0;
+
+        if draw && !self.editor.confirm && is_visible(panel.translate(0.0, -scroll_y)) {
             let style = p.style(&THEME.panel, StateFlags::NONE);
             p.draw_box(panel.translate(0.0, -scroll_y), &style);
 
