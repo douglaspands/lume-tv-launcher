@@ -488,3 +488,37 @@ APK `1d64123-dirty` com o change, 1280x720, Android 11, `low_ram`; instalado lim
 - CPU médio de navegação: ~2,7 a 2,9% de um núcleo na janela de 68 s (cerca de 0,7% da capacidade dos 4 núcleos); o laço não
   pede quadros parado, como pede a spec. PSS a 70% do limite de 64 MB.
 
+
+## Papéis de parede em Full HD: QOI, assets, redução na GPU e cache (2026-10-21)
+
+Medidas com `change wallpapers-full-hd`, nas duas TVs de teste (TCL e AIWA, ambas com Android 11), pelos logs do próprio Lume
+(`first frame`, `interface ready`, `wallpaper ... decoded / from the cache`) e por `dumpsys SurfaceFlinger --latency`. O `TotalTime`
+do `am start -W` não serve (ver acima).
+
+### Base (build da `main`, deflate dentro do `liblume.so`, APK de 36,8 MB)
+
+| Medida | TCL | AIWA |
+|---|---|---|
+| Primeiro quadro depois da janela, a frio | 89 a 95 ms | 108 a 129 ms |
+| Interface pronta (fim do splash) | ~1290 ms | ~1310 ms |
+| PSS em primeiro plano / em segundo | 16,8 / 19,4 MB | 51,2 / 44,1 MB |
+| Troca de papel de parede no editor | um quadro bloqueado pela decodificação | idem |
+
+### Depois (QOI em `assets/`, decodificação em thread, envio em fatias, cache, APK de 21,6 MB)
+
+| Medida | TCL | AIWA |
+|---|---|---|
+| Primeiro quadro depois da janela, a frio | 89 a 98 ms | 103 a 136 ms |
+| Interface pronta | 1287 a 1302 ms | 1296 a 1332 ms |
+| PSS em primeiro plano / em segundo | 14,7 / 16,9 MB | 48,7 / 46,3 MB |
+| Decodificação QOI (thread) | 135 a 200 ms | 124 a 154 ms |
+| Leitura do cache (imagem decodificada, 6,2 MB) | 28 a 30 ms | 21 a 62 ms (mediana 24) |
+| Troca no editor, quadros | 28 quadros de 33 ms (o editor já corre a 33 ms nesta TV, igual à base) | 28 quadros, nenhum acima de 18 ms |
+| Buffer de renderização | 1920x1080 | 1280x720 (a imagem é reduzida na GPU uma vez) |
+
+- O formato foi escolhido na máquina de desenvolvimento (QOI decodifica 2,3 vezes mais rápido que deflate ou PNG e o catálogo cabe com
+  folga: 18 MB); as medidas das TVs acima confirmam a decodificação em 124 a 200 ms por imagem, escondida pelo splash e pela thread.
+- O cache vale a pena: a leitura é de 5 a 6 vezes mais rápida que decodificar.
+- A TCL desenha o editor a 33 ms por quadro mesmo só movendo o foco, também no build da base: não vem da mudança.
+- A AIWA (`low_ram`) já passava de 20 MB em segundo plano na base (41 a 44 MB); fica fora do orçamento de 20 MB, que vale para a TCL.
+- Retorno a quente: sem mudança além da medida (um novo quadro depois da janela em 87 a 103 ms na AIWA e 87 a 92 ms na TCL).

@@ -76,8 +76,8 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 - **Construção 100% Rust.** Java só quando a funcionalidade não tem como ser feita sem consumir ou usar um recurso
   do Java (API do Android sem equivalente no NDK). Antes de escrever ou mudar qualquer Java, pergunte ao autor no chat,
   explicando por que o Rust não resolve; sem o sim dele, não entra Java.
-- Papel de parede: aurora gerada pelo projeto (`tools/wallpaper/aurora06.py`); nenhuma foto de terceiros.
-- Tela Início: só o dock (até 12 favoritos, Magnification). Sem carrossel nem seções.
+- Papel de parede: 6 papéis em 3840x2160 produzidos pelo autor com scripts procedurais do projeto (`tools/wallpaper/`, masters em `tools/wallpaper/masters/`); a Aurora é o padrão; nenhuma foto de terceiros.
+- Tela Início: só o dock (até 12 favoritos, Magnification), com favoritos redondos por padrão. Sem carrossel nem seções.
 - Abas: mover o foco para uma aba troca a tela sem OK, com fade de 180 ms. Sublinhado azul com o foco na barra, branco com o foco no conteúdo.
 - Cores por papel (`--primary` azul `#4DB3FF`, `--secondary`); todo contorno de foco é azul primário; o nome do app em foco fica branco.
 - Grade de Apps: 6 colunas, ordem alfabética pelo nome mostrado (muda com o idioma do sistema). O tile "Lume" é um app como os outros
@@ -100,6 +100,6 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Orçamentos (spec `resource-efficiency`)
 
-PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
+PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD; hoje 21,6 MB, com uma cópia de cada papel em `assets/`); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
 até 300 ms; o laço não pede quadros parado além do relógio. Última medida (v0.2.0): 17 a 20 MB e 12,2 MB de PSS, APK de 3,15 MB, 0 a 1% de
 quadros perdidos, abertura a frio de 373 ms.
