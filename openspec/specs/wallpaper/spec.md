@@ -1,7 +1,7 @@
 # wallpaper Specification
 
 ## Purpose
-Define o papel de parede do lume: uma imagem de aurora boreal nas cores da marca, única nesta versão, desenhada atrás de todas as telas, sem depender de imagens de terceiros, nítida em qualquer resolução de TV e preparada para uma futura opção de troca.
+Define os papéis de parede do lume: o catálogo de imagens desenhado atrás de todas as telas, com a aurora boreal nas cores da marca como padrão, nítido em qualquer resolução de TV, com origem e licença registradas por imagem (hoje Unsplash License, de terceiros) e masters guardados em Git LFS.
 
 ## Requirements
 
@@ -134,11 +134,15 @@ Cada papel de parede do catálogo SHALL vir de um master com detalhe nativo de p
 - **THEN** a imagem do catálogo sai em 1920x1080, reduzida por média, com o dither aplicado só no fim
 
 ### Requirement: Origem das imagens
-Cada imagem do catálogo SHALL ser gerada pelo projeto ou produzida pelo autor (os masters atuais saem dos scripts procedurais do autor em `tools/wallpaper/`), sem foto ou arte de terceiros, e SHALL ter a origem e a licença registradas na documentação do papel de parede.
+Cada imagem do catálogo SHALL ter a origem (quem a produziu ou de onde veio) e a licença registradas, por imagem, na documentação do papel de parede, e SHALL poder ser redistribuída sob os termos do projeto. O projeto SHALL NOT afirmar que uma imagem é gerada pelos scripts em `tools/wallpaper/` se esses scripts não a reproduzem.
 
 #### Scenario: Imagem nova no catálogo
 - **WHEN** um master novo entra no catálogo
-- **THEN** a documentação do papel de parede registra quem o produziu, como e sob qual licença
+- **THEN** a documentação do papel de parede registra quem o produziu ou de onde veio, como e sob qual licença
+
+#### Scenario: Imagem de terceiros
+- **WHEN** uma imagem do catálogo veio de uma fonte externa
+- **THEN** a documentação registra o autor, o endereço de origem e a licença dessa imagem, e a licença permite a redistribuição
 
 ### Requirement: Papel de parede pronto ao acordar
 O lume SHALL guardar em cache, no armazenamento do app, a imagem já decodificada do papel de parede ativo (RGB cru em 1920x1080), de modo que, ao acordar, só leia o cache e a envie à GPU, sem decodificar de novo; a redução para um buffer menor, que custa poucos milissegundos de GPU, continua a ser feita a cada carga. O cache SHALL ser refeito quando o papel de parede, a versão da imagem ou o tamanho do buffer mudam, e a falta dele SHALL NOT impedir o papel de parede de aparecer.
@@ -154,3 +158,14 @@ O lume SHALL guardar em cache, no armazenamento do app, a imagem já decodificad
 #### Scenario: Cache apagado pelo sistema
 - **WHEN** o Android apagou o cache do app e o lume acorda
 - **THEN** o papel de parede é preparado a partir do APK e aparece no primeiro quadro completo, como sem cache
+
+### Requirement: Masters em Git LFS
+Os masters em `tools/wallpaper/masters/` SHALL ser guardados com Git LFS (`.gitattributes` rastreando `tools/wallpaper/masters/*.png`), e nenhum passo de build, de teste ou de CI SHALL depender do conteúdo deles: o APK usa só os arquivos em `assets/`.
+
+#### Scenario: Checkout sem LFS
+- **WHEN** o repositório é clonado ou o CI faz checkout sem baixar objetos LFS
+- **THEN** os masters aparecem como ponteiros e `cargo test --workspace` e o build do APK funcionam sem alteração
+
+#### Scenario: Master novo
+- **WHEN** um PNG novo é adicionado em `tools/wallpaper/masters/`
+- **THEN** o Git o guarda como objeto LFS, e não como blob no histórico
