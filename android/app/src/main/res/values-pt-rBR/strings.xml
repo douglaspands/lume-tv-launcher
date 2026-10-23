@@ -17,6 +17,7 @@
     <!-- Configurações do Lume -->
     <string name="settings_title">Configurações</string>
     <string name="settings_home_screen">Tela Início</string>
+    <string name="settings_key_mapping">Mapeamento de controle</string>
     <string name="settings_tv_info">Informações da TV</string>
     <string name="settings_about">Sobre o Lume</string>
 
@@ -106,6 +107,76 @@
     <string name="menu_app_info">Informações do app</string>
     <string name="menu_uninstall">Desinstalar</string>
 
+    <!-- Mapeamento de controle -->
+    <string name="keymap_title">Mapeamento de controle</string>
+    <string name="keymap_subtitle">Personalize botões do controle para comandos do Lume, ajustes da TV e apps.</string>
+    <string name="keymap_section_commands">Comandos do Lume</string>
+    <string name="keymap_section_settings">Atalhos de configurações</string>
+    <string name="keymap_section_apps">Atalhos de aplicativos</string>
+    <string name="command_menu">Menu de contexto</string>
+    <string name="command_inputs">Entradas da TV</string>
+    <string name="setting_sleep">Timer / Sleep e Energia da TV</string>
+    <string name="setting_picture">Imagem e Tela da TV</string>
+    <string name="setting_sound">Som e Áudio da TV</string>
+    <string name="setting_wifi">Rede e Wi-Fi</string>
+    <string name="setting_bluetooth">Bluetooth e Controles</string>
+    <string name="setting_apps">Aplicativos do Sistema</string>
+    <string name="setting_android">Configurações do Android</string>
+    <string name="setting_lume_settings">Configurações do Lume</string>
+    <string name="setting_lume_editor">Editar Tela Início</string>
+    <string name="setting_lume_tvinfo">Informações da TV</string>
+    <string name="setting_storage">Armazenamento</string>
+    <string name="setting_language">Idioma</string>
+    <string name="setting_datetime">Data e hora</string>
+    <string name="setting_keyboard">Teclado</string>
+    <string name="setting_captions">Legendas</string>
+    <string name="setting_location">Localização</string>
+    <string name="setting_security">Segurança e restrições</string>
+    <string name="setting_developer">Opções do desenvolvedor</string>
+    <string name="setting_home_app">App de início padrão</string>
+    <string name="setting_about">Sobre a TV</string>
+    <string name="keymap_add_key">Adicionar tecla</string>
+    <string name="keymap_add_setting">Adicionar atalho</string>
+    <string name="keymap_add_app">Adicionar aplicativo</string>
+    <string name="keymap_restore_action">Restaurar padrão</string>
+    <string name="keymap_remove_action">Remover atalho</string>
+    <string name="keymap_restore_defaults">Restaurar padrão de fábrica</string>
+    <string name="keymap_listening_title">Pressione uma tecla</string>
+    <string name="keymap_listening_hint">Voltar para cancelar</string>
+    <string name="keymap_reserved_key_warning">Tecla reservada. Escolha outra, ou Voltar para cancelar.</string>
+    <string name="keymap_listening_for">Para: %1$s</string>
+    <string name="keymap_remove_key">Remover %1$s</string>
+    <string name="keymap_already_default">Já está no padrão</string>
+    <string name="keymap_pick_app_title">Escolher aplicativo</string>
+    <string name="keymap_pick_app_subtitle">Escolha o app que a tecla vai abrir</string>
+    <string name="keymap_pick_setting_title">Escolher atalho</string>
+    <string name="keymap_pick_setting_subtitle">Escolha a tela que a tecla vai abrir</string>
+    <string name="keymap_dialog_restore_title">Restaurar o padrão de fábrica?</string>
+    <string name="keymap_dialog_restore_body">Todas as teclas personalizadas, atalhos de configurações e de aplicativos voltarão ao padrão de fábrica.</string>
+    <string name="key_menu">Menu</string>
+    <string name="key_favorite">Favorito</string>
+    <string name="key_input">Entrada</string>
+    <string name="key_guide">Guia</string>
+    <string name="key_info">Info</string>
+    <string name="key_captions">Legenda</string>
+    <string name="key_tv">TV</string>
+    <string name="key_red">Vermelho</string>
+    <string name="key_green">Verde</string>
+    <string name="key_yellow">Amarelo</string>
+    <string name="key_blue">Azul</string>
+    <string name="key_channel_up">Canal +</string>
+    <string name="key_channel_down">Canal -</string>
+    <string name="key_volume_up">Volume +</string>
+    <string name="key_volume_down">Volume -</string>
+    <string name="key_volume_mute">Mudo</string>
+    <string name="key_play_pause">Play/Pause</string>
+    <string name="key_stop">Parar</string>
+    <string name="key_fast_forward">Avançar</string>
+    <string name="key_rewind">Retroceder</string>
+    <string name="key_settings">Configurações</string>
+    <string name="key_fallback">Tecla %1$d</string>
+
     <!-- Mensagens -->
     <string name="toast_app_not_found">App não encontrado</string>
+    <string name="toast_key_mapped">Tecla atribuída</string>
 </resources>

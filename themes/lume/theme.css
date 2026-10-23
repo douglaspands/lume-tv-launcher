@@ -61,6 +61,9 @@
   --menu-surface: #F2F5F7;
   --menu-text: #1B2630;
   --menu-text-muted: #5E6A75;
+  /* Danger on the light card (the reserved-key warning, the "Restore" button): 5.97:1 on --menu-surface.
+     --danger-fg is only for dark surfaces. */
+  --menu-danger: #B3261E;
 
   /* Splash: the logo fades in centered on --bg (the color of the system's starting window) while
      the screen behind it gets ready, then the reveal. The status band under it is kept empty for
@@ -342,6 +345,41 @@
   font-weight: 500;
 }
 
+/* The buttons of a dialog drawn on the light card: an outline and dark text until they have the
+   focus, then the primary fill with no ring (like .menu-item). The danger one confirms what cannot
+   be undone. */
+.menu-button {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: var(--radius);
+  outline: 2px solid var(--menu-text-muted);
+  color: var(--menu-text);
+  font-size: var(--font-label);
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.menu-button:focus {
+  background: var(--primary);
+  outline: none;
+  color: var(--on-primary);
+}
+
+.menu-button-danger {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: var(--radius);
+  outline: 2px solid var(--menu-danger);
+  color: var(--menu-danger);
+  font-size: var(--font-label);
+  font-weight: 700;
+  transition: var(--focus-time);
+}
+.menu-button-danger:focus {
+  background: var(--primary);
+  outline: none;
+  color: var(--on-primary);
+}
+
 .breadcrumb {
   color: var(--text-muted);
   font-size: var(--font-label);
@@ -408,6 +446,17 @@
   background: var(--surface-focus);
   outline: var(--focus-ring);
   outline-offset: 0px;
+}
+
+.keycap {
+  height: 40px;
+  padding: 0 16px;
+  gap: 8px;
+  border-radius: 20px;
+  background: var(--control);
+  color: var(--text);
+  font-size: var(--font-label);
+  font-weight: 700;
 }
 
 .panel {

@@ -385,28 +385,31 @@ impl Runtime {
     }
 
     fn process_input(&mut self) {
-        let mut pressed = Vec::new();
+        let mut pressed_codes = Vec::new();
         match self.app.input_events_iter() {
             Ok(mut iter) => loop {
                 let more = iter.next(|event| match event {
                     InputEvent::KeyEvent(key) => {
                         let code: u32 = key.key_code().into();
-                        match self.shell.app().keys.from_android(code as i32) {
-                            Some(mapped) => {
-                                if key.action() == KeyAction::Down {
-                                    pressed.push(mapped);
-                                }
-                                InputStatus::Handled
+                        let code = code as i32;
+                        let app = self.shell.app();
+                        // The keys lume does not use (volume, power...) stay for the system, and
+                        // so they do not disappear; while a key is being recorded, all are lume's.
+                        let used = app.is_listening_key()
+                            || app.keys.action_for(code).is_some()
+                            || lume_core::keys::from_android(code).is_some();
+                        if !used {
+                            // Which code a remote sends for a button lume does not use, for
+                            // mapping remotes that differ (see docs/device-notes.md).
+                            if key.action() == KeyAction::Down {
+                                log::info!("key {code} not used");
                             }
-                            None => {
-                                // Which code a remote sends for a button lume does not use, for
-                                // mapping remotes that differ (see docs/device-notes.md).
-                                if key.action() == KeyAction::Down {
-                                    log::info!("key {code} not used");
-                                }
-                                InputStatus::Unhandled
-                            }
+                            return InputStatus::Unhandled;
                         }
+                        if key.action() == KeyAction::Down {
+                            pressed_codes.push(code);
+                        }
+                        InputStatus::Handled
                     }
                     _ => InputStatus::Unhandled,
                 });
@@ -416,8 +419,15 @@ impl Runtime {
             },
             Err(e) => log::warn!("no input events: {e:?}"),
         }
-        for key in pressed {
-            self.send_key(key);
+        for code in pressed_codes {
+            self.send_keycode(code);
+        }
+    }
+
+    fn send_keycode(&mut self, code: i32) {
+        let now = self.now_ms();
+        for effect in self.shell.raw_key(code, now) {
+            self.run_effect(effect);
         }
     }
 
@@ -442,6 +452,11 @@ impl Runtime {
             Effect::OpenAndroidSettings => {
                 if !self.bridge.open_android_settings() {
                     log::warn!("the Android settings could not be opened");
+                }
+            }
+            Effect::OpenTvSetting { setting } => {
+                if !self.bridge.open_setting(setting.as_str()) {
+                    log::warn!("the TV setting {setting:?} could not be opened");
                 }
             }
             Effect::OpenInputs => {

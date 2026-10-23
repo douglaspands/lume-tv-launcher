@@ -33,6 +33,7 @@ fn compile_keys(manifest: &std::path::Path) {
     let mut back = vec![4, 111, 97];
     let mut home = vec![3];
     let mut menu = vec![82, 174];
+    let mut inputs = vec![178];
 
     if let Ok(raw) = std::env::var("LUME_KEYS_FILE") {
         let raw = raw.trim();
@@ -64,7 +65,9 @@ fn compile_keys(manifest: &std::path::Path) {
             }
 
             let mut complete = false;
-            let allowed_keys = ["up", "down", "left", "right", "ok", "back", "home", "menu"];
+            let allowed_keys = [
+                "up", "down", "left", "right", "ok", "back", "home", "menu", "inputs",
+            ];
 
             for (index, line) in lines.enumerate() {
                 let line_num = index + 2;
@@ -115,6 +118,7 @@ fn compile_keys(manifest: &std::path::Path) {
                         "back" => back = codes,
                         "home" => home = codes,
                         "menu" => menu = codes,
+                        "inputs" => inputs = codes,
                         _ => unreachable!(),
                     }
                 }
@@ -138,6 +142,7 @@ fn compile_keys(manifest: &std::path::Path) {
     writeln!(code, "pub const DEFAULT_BACK: &[i32] = &{:?};", back).unwrap();
     writeln!(code, "pub const DEFAULT_HOME: &[i32] = &{:?};", home).unwrap();
     writeln!(code, "pub const DEFAULT_MENU: &[i32] = &{:?};", menu).unwrap();
+    writeln!(code, "pub const DEFAULT_INPUTS: &[i32] = &{:?};", inputs).unwrap();
 
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("keys_generated.rs");
     std::fs::write(out, code).expect("cannot write keys_generated.rs");

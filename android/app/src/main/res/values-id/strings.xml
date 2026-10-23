@@ -17,6 +17,7 @@
     <!-- Pengaturan Lume -->
     <string name="settings_title">Pengaturan</string>
     <string name="settings_home_screen">Layar beranda</string>
+    <string name="settings_key_mapping">Pemetaan remote</string>
     <string name="settings_tv_info">Informasi TV</string>
     <string name="settings_about">Tentang Lume</string>
 
@@ -105,6 +106,76 @@
     <string name="menu_app_info">Info aplikasi</string>
     <string name="menu_uninstall">Copot pemasangan</string>
 
+    <!-- Pemetaan remote control -->
+    <string name="keymap_title">Pemetaan remote control</string>
+    <string name="keymap_subtitle">Sesuaikan tombol remote untuk perintah Lume, pengaturan TV, dan aplikasi.</string>
+    <string name="keymap_section_commands">Perintah Lume</string>
+    <string name="keymap_section_settings">Pintasan pengaturan</string>
+    <string name="keymap_section_apps">Pintasan aplikasi</string>
+    <string name="command_menu">Menu konteks</string>
+    <string name="command_inputs">Input TV</string>
+    <string name="setting_sleep">Timer Tidur &amp; Daya TV</string>
+    <string name="setting_picture">Gambar &amp; Tampilan TV</string>
+    <string name="setting_sound">Suara &amp; Audio TV</string>
+    <string name="setting_wifi">Jaringan &amp; Wi-Fi</string>
+    <string name="setting_bluetooth">Bluetooth &amp; Remote</string>
+    <string name="setting_apps">Aplikasi Sistem</string>
+    <string name="setting_android">Pengaturan Android</string>
+    <string name="setting_lume_settings">Pengaturan Lume</string>
+    <string name="setting_lume_editor">Edit Layar Beranda</string>
+    <string name="setting_lume_tvinfo">Informasi TV</string>
+    <string name="setting_storage">Penyimpanan</string>
+    <string name="setting_language">Bahasa</string>
+    <string name="setting_datetime">Tanggal &amp; Waktu</string>
+    <string name="setting_keyboard">Keyboard</string>
+    <string name="setting_captions">Teks</string>
+    <string name="setting_location">Lokasi</string>
+    <string name="setting_security">Keamanan &amp; Pembatasan</string>
+    <string name="setting_developer">Opsi Pengembang</string>
+    <string name="setting_home_app">Aplikasi Beranda Default</string>
+    <string name="setting_about">Tentang TV</string>
+    <string name="keymap_add_key">Tambah tombol</string>
+    <string name="keymap_add_setting">Tambah pintasan</string>
+    <string name="keymap_add_app">Tambah aplikasi</string>
+    <string name="keymap_restore_action">Pulihkan default</string>
+    <string name="keymap_remove_action">Hapus pintasan</string>
+    <string name="keymap_restore_defaults">Pulihkan default pabrik</string>
+    <string name="keymap_listening_title">Tekan sebuah tombol</string>
+    <string name="keymap_listening_hint">Kembali untuk batal</string>
+    <string name="keymap_reserved_key_warning">Tombol dicadangkan. Pilih lain atau Kembali.</string>
+    <string name="keymap_listening_for">Untuk: %1$s</string>
+    <string name="keymap_remove_key">Hapus %1$s</string>
+    <string name="keymap_already_default">Sudah default</string>
+    <string name="keymap_pick_app_title">Pilih aplikasi</string>
+    <string name="keymap_pick_app_subtitle">Pilih aplikasi yang akan dibuka tombol</string>
+    <string name="keymap_pick_setting_title">Pilih pintasan</string>
+    <string name="keymap_pick_setting_subtitle">Pilih layar yang akan dibuka tombol</string>
+    <string name="keymap_dialog_restore_title">Pulihkan default pabrik?</string>
+    <string name="keymap_dialog_restore_body">Semua tombol kustom, pintasan pengaturan, dan pintasan aplikasi akan direset ke default pabrik.</string>
+    <string name="key_menu">Menu</string>
+    <string name="key_favorite">Favorit</string>
+    <string name="key_input">Input</string>
+    <string name="key_guide">Panduan</string>
+    <string name="key_info">Info</string>
+    <string name="key_captions">Teks terjemahan</string>
+    <string name="key_tv">TV</string>
+    <string name="key_red">Merah</string>
+    <string name="key_green">Hijau</string>
+    <string name="key_yellow">Kuning</string>
+    <string name="key_blue">Biru</string>
+    <string name="key_channel_up">Saluran +</string>
+    <string name="key_channel_down">Saluran -</string>
+    <string name="key_volume_up">Volume +</string>
+    <string name="key_volume_down">Volume -</string>
+    <string name="key_volume_mute">Hening</string>
+    <string name="key_play_pause">Putar/Jeda</string>
+    <string name="key_stop">Berhenti</string>
+    <string name="key_fast_forward">Maju cepat</string>
+    <string name="key_rewind">Putar balik</string>
+    <string name="key_settings">Pengaturan</string>
+    <string name="key_fallback">Tombol %1$d</string>
+
     <!-- Pesan -->
     <string name="toast_app_not_found">Aplikasi tidak ditemukan</string>
+    <string name="toast_key_mapped">Tombol ditetapkan</string>
 </resources>

@@ -67,6 +67,32 @@ impl Default for Setup {
     }
 }
 
+/// Some shortcuts for the key mapping screen: settings with one or two keys, a key without a name
+/// and apps, so the screen is seen with rows and keycaps of different widths.
+pub fn map_some_keys(app: &mut LumeApp) {
+    use lume_core::keys::{KeyTarget, SettingShortcut};
+    let settings = [
+        (SettingShortcut::Sleep, vec![183]),
+        (SettingShortcut::Picture, vec![184, 165]),
+        (SettingShortcut::Wifi, vec![999]),
+    ];
+    for (setting, codes) in settings {
+        for code in codes {
+            app.keys.add_code(&KeyTarget::Setting(setting), code);
+        }
+    }
+    let packages: Vec<_> = app
+        .catalog
+        .apps()
+        .iter()
+        .take(2)
+        .map(|a| a.package.clone())
+        .collect();
+    for (package, code) in packages.into_iter().zip([185, 186]) {
+        app.keys.add_code(&KeyTarget::App(package), code);
+    }
+}
+
 /// A launcher with the mockup apps, as it looks on a first run.
 pub fn app_with(setup: &Setup) -> LumeApp {
     let catalog = Catalog::from_discovered(&mockup_apps(), "app.lume.tv");

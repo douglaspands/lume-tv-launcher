@@ -196,6 +196,10 @@ impl Bridge {
         self.call("open-inputs", "").as_deref() == Some("ok")
     }
 
+    pub fn open_setting(&self, name: &str) -> bool {
+        self.call("open-setting", name).as_deref() == Some("ok")
+    }
+
     /// Opens the app's page in the Android settings.
     pub fn open_app_info(&self, package: &str) -> bool {
         self.call("app-info", package).as_deref() == Some("ok")

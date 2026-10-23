@@ -158,7 +158,7 @@ Ao trocar de aba (Início e Apps), o conteúdo da aba nova SHALL aparecer com um
 - **THEN** a tela volta a pedir quadros só para o relógio
 
 ### Requirement: Tela de Configurações do Lume
-A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de Apps, com os itens "Tela Início" (abre o modo edição) e "Sobre o Lume". Ela SHALL NOT ter item para as configurações do Android, nem ser aberta pela engrenagem. A tela SHALL exibir, à direita dos itens, o painel de estatísticas da TV (capacidade `device-stats`). A tela SHALL exibir o caminho "Configurações" e, no canto inferior direito, a versão do build instalado (capacidade `platform-compatibility`, requisito "Versão do build"). Uma versão de release SHALL aparecer com "v" na frente (ex.: "Versão v0.3.0"); uma versão de build local ou `dev` SHALL aparecer como é (ex.: "Versão 4d8438b-dirty"). As telas abaixo dela SHALL exibir o caminho de navegação a partir de "Configurações" (ex.: "Configurações › Tela Início"). Voltar SHALL retraçar o caminho de entrada, um passo por vez: da tela de edição para a tela "Configurações" (com o foco em "Tela Início") e dela para o tile "Lume" da aba Apps. Voltar da tela SHALL devolver o foco ao tile "Lume" na aba Apps.
+A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de Apps, com os itens "Tela Início", "Mapeamento de controle", "Informações da TV" e "Sobre o Lume", sem item do Android e com o painel de estatísticas à direita (`device-stats`), caminho "Configurações" no topo e versão instalada (`platform-compatibility`) no canto inferior direito. Voltar SHALL retraçar o caminho de entrada passo a passo até o tile "Lume".
 
 #### Scenario: Abrir pelo tile
 - **WHEN** o foco está no tile "Lume" da grade de Apps e o usuário pressiona OK
@@ -182,7 +182,7 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 
 #### Scenario: Sem item do Android
 - **WHEN** a tela "Configurações" do Lume é exibida
-- **THEN** ela lista apenas "Tela Início" e "Sobre o Lume"
+- **THEN** ela lista apenas "Tela Início", "Mapeamento de controle", "Informações da TV" e "Sobre o Lume"
 
 #### Scenario: Voltar ao tile
 - **WHEN** o usuário pressiona Voltar na tela "Configurações" do Lume
@@ -192,9 +192,13 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 - **WHEN** o usuário seleciona "Tela Início" em Configurações
 - **THEN** o modo edição é aberto com o caminho "Configurações › Tela Início" e o título "Tela Início"
 
+#### Scenario: Ir para o Mapeamento de controle
+- **WHEN** o usuário seleciona "Mapeamento de controle" em Configurações
+- **THEN** a tela de mapeamento é aberta com o caminho "Configurações › Mapeamento de controle" e o título "Mapeamento de controle"
+
 #### Scenario: Voltar passo a passo
-- **WHEN** o usuário está no modo edição aberto pelas Configurações e pressiona Voltar duas vezes
-- **THEN** a primeira volta à tela "Configurações" com o foco em "Tela Início", e a segunda à aba Apps com o foco no tile "Lume"
+- **WHEN** o usuário está no modo edição ou no mapeamento de controle aberto pelas Configurações e pressiona Voltar duas vezes
+- **THEN** a primeira volta à tela "Configurações" com o foco no item de origem ("Tela Início" ou "Mapeamento de controle"), e a segunda à aba Apps com o foco no tile "Lume"
 
 #### Scenario: Tela Sobre
 - **WHEN** o usuário escolhe "Sobre o Lume"
@@ -247,15 +251,19 @@ O objetivo do splash é a experiência do usuário: a abertura do Lume e a passa
 - **THEN** o splash acaba na hora e o foco se move para a direita na interface
 
 ### Requirement: Mapeamento centralizado e persistente de teclas
-O Lume SHALL centralizar as teclas lógicas, constantes `KEYCODE_*` e padrões `DEFAULT_*` em `lume_core::keys`, persistindo o mapeamento ativo em `files/keys.v1`. Em `Shell::start`, se `keys.v1` não existir, o Lume SHALL gravar `KeyMap::default()`; se existir e for válido, SHALL carregá-lo sem regravar. Chaves vazias SHALL desabilitar a tecla, e arquivos ou linhas corrompidas SHALL ser autocurados e regravados em disco.
+O Lume SHALL centralizar as teclas lógicas, constantes `KEYCODE_*`, padrões `DEFAULT_*` e atalhos (`cfg.<alvo>` e `app.<pacote>`) em `lume_core::keys`, persistindo o mapeamento ativo em `files/keys.v1`. Em `Shell::start`, se `keys.v1` não existir, o Lume SHALL gravar `KeyMap::default()`; se existir e for válido, SHALL carregá-lo sem regravar. Chaves vazias SHALL desabilitar a tecla customizável, e arquivos corrompidos SHALL ser autocurados.
 
 #### Scenario: Primeiro uso cria o arquivo de mapeamento
 - **WHEN** o Lume é iniciado pela primeira vez e `files/keys.v1` não existe
-- **THEN** o Lume carrega as constantes padrão embutidas na compilação e grava `files/keys.v1` nos dados do app com todas as 8 teclas
+- **THEN** o Lume carrega as constantes padrão embutidas na compilação e grava `files/keys.v1` nos dados do app com todas as teclas padrão
 
 #### Scenario: Uso do mapeamento salvo nos dados do app
 - **WHEN** `files/keys.v1` existe com um código customizado (por exemplo, `menu=165`) e o Lume é iniciado
 - **THEN** o Lume passa a reconhecer o código `165` como a tecla Menu sem reescrever `files/keys.v1`
+
+#### Scenario: Persistência de atalhos de configurações e aplicativos
+- **WHEN** o usuário associa a tecla `174` ao atalho de configuração `sleep` e a tecla `183` ao aplicativo `com.google.android.youtube.tv`
+- **THEN** `files/keys.v1` persiste `cfg.sleep=174` e `app.com.google.android.youtube.tv=183` e recarrega esses atalhos no próximo início
 
 #### Scenario: Uma tecla acionada por múltiplas teclas do controle remoto
 - **WHEN** `files/keys.v1` associa múltiplos códigos a uma mesma tecla (por exemplo, `menu=82,174,165` ou `ok=23,66,160,96`)

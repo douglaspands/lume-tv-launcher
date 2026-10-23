@@ -17,6 +17,7 @@
     <!-- Настройки Lume -->
     <string name="settings_title">Настройки</string>
     <string name="settings_home_screen">Главный экран</string>
+    <string name="settings_key_mapping">Настройка пульта</string>
     <string name="settings_tv_info">Информация о ТВ</string>
     <string name="settings_about">О Lume</string>
 
@@ -108,6 +109,76 @@
     <string name="menu_app_info">О приложении</string>
     <string name="menu_uninstall">Удалить</string>
 
+    <!-- Настройка пульта -->
+    <string name="keymap_title">Настройка пульта</string>
+    <string name="keymap_subtitle">Настройте кнопки пульта для команд Lume, настроек ТВ и приложений.</string>
+    <string name="keymap_section_commands">Команды Lume</string>
+    <string name="keymap_section_settings">Ярлыки настроек</string>
+    <string name="keymap_section_apps">Ярлыки приложений</string>
+    <string name="command_menu">Контекстное меню</string>
+    <string name="command_inputs">Входы ТВ</string>
+    <string name="setting_sleep">Таймер сна и питание ТВ</string>
+    <string name="setting_picture">Изображение и экран ТВ</string>
+    <string name="setting_sound">Звук и аудио ТВ</string>
+    <string name="setting_wifi">Сеть и Wi-Fi</string>
+    <string name="setting_bluetooth">Bluetooth и пульты</string>
+    <string name="setting_apps">Приложения системы</string>
+    <string name="setting_android">Настройки Android</string>
+    <string name="setting_lume_settings">Настройки Lume</string>
+    <string name="setting_lume_editor">Редактировать главный экран</string>
+    <string name="setting_lume_tvinfo">Информация о ТВ</string>
+    <string name="setting_storage">Хранилище</string>
+    <string name="setting_language">Язык</string>
+    <string name="setting_datetime">Дата и время</string>
+    <string name="setting_keyboard">Клавиатура</string>
+    <string name="setting_captions">Субтитры</string>
+    <string name="setting_location">Местоположение</string>
+    <string name="setting_security">Безопасность</string>
+    <string name="setting_developer">Для разработчиков</string>
+    <string name="setting_home_app">Приложение главного экрана</string>
+    <string name="setting_about">О телевизоре</string>
+    <string name="keymap_add_key">Добавить кнопку</string>
+    <string name="keymap_add_setting">Добавить ярлык</string>
+    <string name="keymap_add_app">Добавить приложение</string>
+    <string name="keymap_restore_action">Сбросить по умолчанию</string>
+    <string name="keymap_remove_action">Удалить ярлык</string>
+    <string name="keymap_restore_defaults">Сброс к заводским настройкам</string>
+    <string name="keymap_listening_title">Нажмите кнопку</string>
+    <string name="keymap_listening_hint">Назад — отмена</string>
+    <string name="keymap_reserved_key_warning">Зарезервировано. Выберите другую или «Назад».</string>
+    <string name="keymap_listening_for">Для: %1$s</string>
+    <string name="keymap_remove_key">Удалить %1$s</string>
+    <string name="keymap_already_default">Уже по умолчанию</string>
+    <string name="keymap_pick_app_title">Выбор приложения</string>
+    <string name="keymap_pick_app_subtitle">Выберите приложение, которое откроет кнопка</string>
+    <string name="keymap_pick_setting_title">Выбор ярлыка</string>
+    <string name="keymap_pick_setting_subtitle">Выберите экран, который откроет кнопка</string>
+    <string name="keymap_dialog_restore_title">Сбросить на заводские?</string>
+    <string name="keymap_dialog_restore_body">Все назначенные кнопки, ярлыки настроек и приложений будут сброшены к заводским настройкам.</string>
+    <string name="key_menu">Меню</string>
+    <string name="key_favorite">Избранное</string>
+    <string name="key_input">Вход</string>
+    <string name="key_guide">Гид</string>
+    <string name="key_info">Инфо</string>
+    <string name="key_captions">Субтитры</string>
+    <string name="key_tv">ТВ</string>
+    <string name="key_red">Красная</string>
+    <string name="key_green">Зеленая</string>
+    <string name="key_yellow">Желтая</string>
+    <string name="key_blue">Синяя</string>
+    <string name="key_channel_up">Канал +</string>
+    <string name="key_channel_down">Канал -</string>
+    <string name="key_volume_up">Громкость +</string>
+    <string name="key_volume_down">Громкость -</string>
+    <string name="key_volume_mute">Без звука</string>
+    <string name="key_play_pause">Воспр./Пауза</string>
+    <string name="key_stop">Стоп</string>
+    <string name="key_fast_forward">Вперед</string>
+    <string name="key_rewind">Назад</string>
+    <string name="key_settings">Настройки</string>
+    <string name="key_fallback">Кнопка %1$d</string>
+
     <!-- Сообщения -->
     <string name="toast_app_not_found">Приложение не найдено</string>
+    <string name="toast_key_mapped">Кнопка назначена</string>
 </resources>

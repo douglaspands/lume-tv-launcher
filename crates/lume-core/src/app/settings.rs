@@ -38,8 +38,9 @@ const PANEL_WIDTH: f32 = COLUMN_WIDTH;
 const PANEL_HEIGHT: f32 = 312.0;
 
 pub(super) const ITEM_HOME_SCREEN: u32 = ids::SETTINGS_BASE;
-pub(super) const ITEM_TV_INFO: u32 = ids::SETTINGS_BASE + 1;
-pub(super) const ITEM_ABOUT: u32 = ids::SETTINGS_BASE + 2;
+pub(super) const ITEM_KEY_MAPPING: u32 = ids::SETTINGS_BASE + 1;
+pub(super) const ITEM_TV_INFO: u32 = ids::SETTINGS_BASE + 2;
+pub(super) const ITEM_ABOUT: u32 = ids::SETTINGS_BASE + 3;
 
 /// The line height of running text on the ruler (see the `design-system` spec): 32 for captions,
 /// 40 for body and labels, 44 for the primary size and above.
@@ -71,6 +72,10 @@ impl LumeApp {
             (
                 ITEM_HOME_SCREEN,
                 t.get(StringId::SettingsHomeScreen).into_owned(),
+            ),
+            (
+                ITEM_KEY_MAPPING,
+                t.get(StringId::SettingsKeyMapping).into_owned(),
             ),
             (ITEM_TV_INFO, t.get(StringId::SettingsTvInfo).into_owned()),
             (ITEM_ABOUT, t.get(StringId::SettingsAbout).into_owned()),
@@ -186,6 +191,10 @@ impl LumeApp {
                 self.open_editor(false);
                 vec![]
             }
+            ITEM_KEY_MAPPING => {
+                self.open_keymap();
+                vec![]
+            }
             ITEM_TV_INFO => {
                 self.open_tv_info();
                 vec![]
@@ -206,7 +215,7 @@ impl LumeApp {
         self.pending_focus = Some(PendingFocus::Id(ids::GRID_SETTINGS));
     }
 
-    fn open_tv_info(&mut self) {
+    pub(super) fn open_tv_info(&mut self) {
         self.screen = Screen::TvInfo;
         // The sheet is read again each time it opens (the address and the free space change).
         self.device_info = None;

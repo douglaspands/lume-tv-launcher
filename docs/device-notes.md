@@ -562,3 +562,44 @@ Medições realizadas durante a change `tuning-performance-tv` (benchmark automa
    - `Shell::icons_wanted`: Filtro com dedup de pacotes e interrupção antecipada (`.take(limit)`) assim que a cota solicitada for atendida, reduzindo o tempo de resolução de 1.18 ms para 0.06 ms.
    - `Catalog`: Busca por pacote em $O(N)$ usando mapa de posições pré-computado em `choose_activities`, serialização/desserialização de pares chave-valor com reutilização de buffers sem alocações temporárias.
 
+
+## Atalhos de configurações na AIWA (change `mapeamento-de-controle`, 2026-10-22)
+
+AIWA SMART TV (KTC, MediaTek, Android 11, API 30). Medido por `adb` com o build debug: o `keys.v1` da TV recebeu um
+código por atalho e cada um foi disparado com `input keyevent` com o Lume na tela.
+
+- **Android 11 esconde as telas de configurações do `resolveActivity`.** Sem `<queries>` para os pacotes de
+  configurações, todo atalho achava "nenhuma tela" e caía nas Configurações gerais (era o motivo de todos irem ao
+  mesmo lugar). O manifest agora declara `com.android.tv.settings`, `com.android.settings`,
+  `com.google.android.permissioncontroller` e o pacote de stubs.
+- **A cascata do `LumeBridge.openSetting`** tenta o primeiro que resolve; um stub
+  (`com.google.android.tv.frameworkpackagestubs`, "Nenhum aplicativo pode executar esta ação") e o seletor "Abrir
+  com" (`ResolverActivity`) são pulados. Tela de cada atalho nesta TV:
+
+  | Atalho | Tela |
+  |---|---|
+  | Timer / Sleep | `com.android.tv.settings/.partnercustomizer.timer.TimerActivity` ("Tempo de desligamento automático") |
+  | Imagem | ação `android.settings.PQAQ.SETTINGS` (`MainSettingsSecond`: lista Imagem e Som) |
+  | Som | `android.settings.SOUND_SETTINGS` (`DisplaySoundActivity`, "Tela e Som") |
+  | Wi-Fi | `android.settings.WIFI_SETTINGS` (`NetworkActivity`) |
+  | Bluetooth | ação `com.google.android.intent.action.CONNECT_INPUT` (`AddAccessoryActivity`, procura acessórios) |
+  | Aplicativos | `.device.apps.AppsActivity` (a ação padrão cai num seletor) |
+  | Armazenamento | `android.settings.INTERNAL_STORAGE_SETTINGS` (`StorageResetActivity`, "Armazenamento") |
+  | Idioma | `android.settings.LOCALE_SETTINGS` (`LanguageActivity`) |
+  | Data e hora | `.system.DateTimeActivity` (a ação padrão cai num seletor) |
+  | Teclado | `android.settings.INPUT_METHOD_SETTINGS` (`KeyboardActivity`) |
+  | Legendas | `android.settings.CAPTIONING_SETTINGS` (`CaptionSetupActivity`) |
+  | Localização | `android.settings.LOCATION_SOURCE_SETTINGS` (`LocationActivity`) |
+  | Segurança e restrições | `android.settings.SECURITY_SETTINGS` (`SecurityActivity`) |
+  | Opções do desenvolvedor | `android.settings.APPLICATION_DEVELOPMENT_SETTINGS` (`DevelopmentActivity`) |
+  | App de início padrão | `android.settings.HOME_SETTINGS` (`permissioncontroller`, `DefaultAppActivity`) |
+  | Sobre a TV | `android.settings.DEVICE_INFO_SETTINGS` (`AboutActivity`) |
+  | Android | `android.settings.SETTINGS` (`MainSettings`) |
+
+  Sem tela própria nesta TV: `DREAM_SETTINGS`, `DISPLAY_SETTINGS`, `BLUETOOTH_SETTINGS`, `BATTERY_SAVER_SETTINGS`,
+  `CAST_SETTINGS` e `PRIVACY_SETTINGS` (esta cai num stub). A TCL ainda não foi conferida.
+- **Acessibilidade não tem tela nesta TV** (`ACCESSIBILITY_SETTINGS` é respondida pelo stub e as telas `oemlink.*`
+  encerram na hora), o que levou a retirar o serviço de acessibilidade para atalhos em 2º plano: não havia como
+  ligá-lo pela interface da TV. Os atalhos valem com o Lume em primeiro plano.
+- **Teclas por `adb`:** `sendevent` é negado ao `shell` nesta TV; `input keyevent` chega ao Lume (serve para disparar
+  os atalhos com o Lume na tela). O `getevent -lp` lista os dispositivos `MStar Smart TV IR Receiver` e `MTK TV KEYPAD`.

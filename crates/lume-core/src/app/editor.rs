@@ -52,7 +52,7 @@ const BUTTONS_GAP: f32 = 24.0;
 /// The buttons of the design system (see the `design-system` spec).
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
-enum ButtonKind {
+pub(super) enum ButtonKind {
     /// The action of the screen.
     Primary,
     /// The quiet alternative.
@@ -755,7 +755,7 @@ impl LumeApp {
     }
 
     /// A button of the design system: `kind` picks the component of the theme.
-    fn draw_button(
+    pub(super) fn draw_button(
         &mut self,
         p: &mut Painter,
         rect: Rect,
@@ -1151,7 +1151,7 @@ fn flow(
 }
 
 /// Breaks `text` into lines no wider than `max_width`.
-fn wrap(p: &mut Painter, text: &str, style: &TextStyle, max_width: f32) -> Vec<String> {
+pub(super) fn wrap(p: &mut Painter, text: &str, style: &TextStyle, max_width: f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {

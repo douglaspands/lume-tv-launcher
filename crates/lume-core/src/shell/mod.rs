@@ -246,6 +246,13 @@ impl Shell {
         self.finish(effects)
     }
 
+    /// Passes a raw hardware keycode to the launcher, saves what changed, and returns what the platform must do.
+    pub fn raw_key(&mut self, code: i32, now_ms: u64) -> Vec<Effect> {
+        let effects = self.app.handle_keycode(code, now_ms);
+        self.dirty = true;
+        self.finish(effects)
+    }
+
     /// Saves data the launcher asked to save and hands over the effects for the platform.
     fn finish(&mut self, effects: Vec<Effect>) -> Vec<Effect> {
         let mut platform = Vec::new();

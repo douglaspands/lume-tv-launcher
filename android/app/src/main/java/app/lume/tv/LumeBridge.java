@@ -94,6 +94,8 @@ public final class LumeBridge {
                     return inputsAvailable(context);
                 case "open-inputs":
                     return openInputs(context);
+                case "open-setting":
+                    return openSetting(context, argument);
                 case "app-info":
                     return openAppInfo(context, argument);
                 case "uninstall":
@@ -630,6 +632,179 @@ public final class LumeBridge {
             context.startActivity(intent);
             return "ok";
         } catch (ActivityNotFoundException | SecurityException e) {
+            return "missing";
+        }
+    }
+
+    /** An activity of the TV settings app, by name. */
+    private static Intent tvSettings(String activity) {
+        return new Intent().setClassName("com.android.tv.settings", "com.android.tv.settings." + activity);
+    }
+
+    /**
+     * Whether `intent` leads to a real screen: something resolves it, and that is not the stub some
+     * firmwares register to say "no app can do this" nor the chooser that asks which app to use.
+     */
+    private static boolean leadsToScreen(Context context, Intent intent) {
+        ResolveInfo found = context.getPackageManager().resolveActivity(intent, 0);
+        if (found == null || found.activityInfo == null) {
+            return false;
+        }
+        String owner = found.activityInfo.packageName;
+        return !"android".equals(owner) && !"com.google.android.tv.frameworkpackagestubs".equals(owner);
+    }
+
+    /**
+     * Opens the settings screen of a shortcut. Each one tries the standard action first and then the
+     * screens the TV firmwares have for it (checked on the AIWA, Android 11), and ends in the general
+     * settings, which every TV has.
+     */
+    private static String openSetting(Context context, String setting) {
+        if (setting == null) {
+            return "missing";
+        }
+        Intent[] intents;
+        switch (setting) {
+            case "sleep":
+                // The auto-off timer of the TV settings (a partner screen), then the screensaver.
+                intents = new Intent[] {
+                    tvSettings("partnercustomizer.timer.TimerActivity"),
+                    new Intent("android.settings.DREAM_SETTINGS"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "picture":
+                // "PQAQ" is the picture and sound quality screen of the MediaTek TVs.
+                intents = new Intent[] {
+                    new Intent("android.settings.PQAQ.SETTINGS"),
+                    new Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                    tvSettings("device.displaysound.DisplaySoundActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "sound":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_SOUND_SETTINGS),
+                    tvSettings("device.displaysound.DisplaySoundActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "wifi":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_WIFI_SETTINGS),
+                    tvSettings("connectivity.NetworkActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "bluetooth":
+                // Android TV's "add accessory" (searches and pairs), then the standard action.
+                intents = new Intent[] {
+                    new Intent("com.google.android.intent.action.CONNECT_INPUT"),
+                    new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                    tvSettings("accessories.AddAccessoryActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "apps":
+                // The standard action is answered by a chooser on some TVs, so the screen comes first.
+                intents = new Intent[] {
+                    tvSettings("device.apps.AppsActivity"),
+                    new Intent(Settings.ACTION_APPLICATION_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "storage":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS),
+                    new Intent(Settings.ACTION_MEMORY_CARD_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "language":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_LOCALE_SETTINGS),
+                    tvSettings("system.LanguageActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "datetime":
+                // The standard action is answered by a chooser on some TVs, so the screen comes first.
+                intents = new Intent[] {
+                    tvSettings("system.DateTimeActivity"),
+                    new Intent(Settings.ACTION_DATE_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "keyboard":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS),
+                    tvSettings("inputmethod.KeyboardActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "captions":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_CAPTIONING_SETTINGS),
+                    tvSettings("system.CaptionSetupActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "location":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),
+                    tvSettings("system.LocationActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "security":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_SECURITY_SETTINGS),
+                    tvSettings("system.SecurityActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "developer":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS),
+                    tvSettings("system.development.DevelopmentActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "home_app":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_HOME_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "about":
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_DEVICE_INFO_SETTINGS),
+                    tvSettings("about.AboutActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+            case "android":
+            default:
+                intents = new Intent[] {
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+                break;
+        }
+
+        for (Intent intent : intents) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (leadsToScreen(context, intent)) {
+                try {
+                    context.startActivity(intent);
+                    return "ok";
+                } catch (ActivityNotFoundException | SecurityException ignored) {
+                }
+            }
+        }
+        try {
+            context.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return "ok";
+        } catch (Exception e) {
             return "missing";
         }
     }
