@@ -25,7 +25,7 @@
     <string name="stats_title">STATUS TV</string>
     <string name="stats_memory">Memori</string>
     <string name="stats_disk">Penyimpanan</string>
-    <string name="stats_cpu">CPU</string>
+    <string name="stats_cpu">Clock CPU</string>
 
     <!-- TV information -->
     <string name="tv_info_title">Informasi TV</string>

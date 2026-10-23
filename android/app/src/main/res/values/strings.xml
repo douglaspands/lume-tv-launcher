@@ -30,7 +30,7 @@
     <string name="stats_title">TV STATUS</string>
     <string name="stats_memory">Memory</string>
     <string name="stats_disk">Storage</string>
-    <string name="stats_cpu">CPU</string>
+    <string name="stats_cpu">CPU clock</string>
 
     <!-- TV information -->
     <string name="tv_info_title">TV information</string>

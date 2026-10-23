@@ -179,7 +179,11 @@ impl Bridge {
 
     /// Memory, disk and CPU of the TV, for the settings panel.
     pub fn stats(&self) -> Option<lume_core::stats::Stats> {
-        lume_core::stats::Stats::parse(&self.call("stats", "")?)
+        let mut stats = lume_core::stats::Stats::parse(&self.call("stats", "")?)?;
+        if let Some(freq) = lume_core::stats::read_sysfs_cpu_freq() {
+            stats.cpu = freq;
+        }
+        Some(stats)
     }
 
     /// The interface size, refresh rate and density, for the TV information screen.

@@ -25,7 +25,7 @@
     <string name="stats_title">СОСТОЯНИЕ ТВ</string>
     <string name="stats_memory">Память</string>
     <string name="stats_disk">Хранилище</string>
-    <string name="stats_cpu">ЦП</string>
+    <string name="stats_cpu">Частота ЦП</string>
 
     <!-- TV information -->
     <string name="tv_info_title">Информация о ТВ</string>
