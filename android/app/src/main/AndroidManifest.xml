@@ -34,6 +34,14 @@
         <intent>
             <action android:name="com.android.tv.action.VIEW_INPUTS" />
         </intent>
+        <!-- Android 11 also hides the settings screens from resolveActivity, so every settings
+             shortcut found only the general settings. These are the settings apps of the TVs (and
+             the one with the default home app screen), and the stub some firmwares answer with when
+             no app does the action (which is skipped). -->
+        <package android:name="com.android.tv.settings" />
+        <package android:name="com.android.settings" />
+        <package android:name="com.google.android.permissioncontroller" />
+        <package android:name="com.google.android.tv.frameworkpackagestubs" />
     </queries>
 
     <application
