@@ -457,6 +457,9 @@ mod tests {
             &THEME.settings_item,
             &THEME.menu_item,
             &THEME.menu_note,
+            &THEME.menu_button,
+            &THEME.menu_button_danger,
+            &THEME.keycap,
             &THEME.toast,
             &THEME.brand,
             &THEME.page_title,
@@ -495,6 +498,9 @@ mod tests {
             ("settings-item", &THEME.settings_item),
             ("menu", &THEME.menu),
             ("menu-item", &THEME.menu_item),
+            ("menu-button", &THEME.menu_button),
+            ("menu-button-danger", &THEME.menu_button_danger),
+            ("keycap", &THEME.keycap),
             ("editor-row", &THEME.editor_row),
             ("panel", &THEME.panel),
             ("chip", &THEME.chip),
@@ -680,6 +686,35 @@ mod tests {
         ] {
             assert!(contrast(c) >= 4.5, "{name}: contrast {:.2}", contrast(c));
         }
+    }
+
+    #[test]
+    fn the_text_on_the_light_card_is_readable() {
+        fn luminance(c: Color) -> f32 {
+            let f = |v: u8| {
+                let v = f32::from(v) / 255.0;
+                if v <= 0.03928 {
+                    v / 12.92
+                } else {
+                    ((v + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b)
+        }
+        let contrast = |a: Color, b: Color| {
+            let (a, b) = (luminance(a) + 0.05, luminance(b) + 0.05);
+            a.max(b) / a.min(b)
+        };
+        for (name, c) in [
+            ("menu-text", vars::MENU_TEXT),
+            ("menu-text-muted", vars::MENU_TEXT_MUTED),
+            ("menu-danger", vars::MENU_DANGER),
+        ] {
+            let ratio = contrast(c, vars::MENU_SURFACE);
+            assert!(ratio >= 4.5, "{name}: contrast {ratio:.2}");
+        }
+        // The primary fill of a focused button keeps its dark text readable.
+        assert!(contrast(vars::ON_PRIMARY, vars::PRIMARY) >= 4.5);
     }
 
     #[test]

@@ -11,6 +11,7 @@ mod dock;
 mod dock_move;
 mod editor;
 mod home;
+mod keymap;
 mod page;
 mod painter;
 mod settings;
@@ -96,6 +97,10 @@ pub enum Effect {
     },
     OpenAndroidSettings,
     OpenInputs,
+    /// A specific TV or Android settings screen.
+    OpenTvSetting {
+        setting: crate::keys::SettingShortcut,
+    },
     /// The app's page in the Android settings.
     OpenAppInfo {
         package: String,
@@ -122,6 +127,12 @@ pub enum Screen {
     TvInfo,
     /// Editing the home screen.
     Editor,
+    /// Remote control key mapping.
+    KeyMap,
+    /// Choosing the app a key will open (opened from the key mapping).
+    KeyMapPickApp,
+    /// Choosing the settings screen a key will open (opened from the key mapping).
+    KeyMapPickSetting,
 }
 
 /// What is animated.
@@ -193,6 +204,7 @@ pub struct LumeApp {
     /// Whether the system has a TV inputs panel: the top bar shows its button only then.
     pub inputs_available: bool,
     editor: editor::EditorState,
+    pub keymap: keymap::KeyMapState,
     /// The context menu, while it is open or fading out.
     context_menu: Option<ContextMenu>,
     /// The place in the Apps grid of the focused tile, as drawn in the last frame.
@@ -275,6 +287,7 @@ impl LumeApp {
             screen: Screen::Main(Tab::Home),
             inputs_available: false,
             editor: editor::EditorState::default(),
+            keymap: keymap::KeyMapState::default(),
             context_menu: None,
             grid_position: None,
             dock_move: None,
@@ -344,6 +357,12 @@ impl LumeApp {
     /// Handles a key press.
     pub fn handle_key(&mut self, key: Key, now_ms: u64) -> Vec<Effect> {
         self.now_ms = now_ms;
+
+        // Listening for a key: Back cancels and the keys the interface needs are refused.
+        if self.is_listening_key() {
+            return self.listening_key(key);
+        }
+
         // A key ends the splash at once and goes to the interface. Home does not: it is what brings
         // lume back, and it only decides which screen the splash reveals.
         if key != Key::Home {
@@ -354,12 +373,19 @@ impl LumeApp {
             self.return_point = None;
         }
         let effects = self.dispatch_key(key);
+        self.note_return_point(&effects);
+        effects
+    }
+
+    /// When the effects take the user out of lume, remembers where they were, to bring them back.
+    fn note_return_point(&mut self, effects: &[Effect]) {
         if effects.iter().any(|e| {
             matches!(
                 e,
                 Effect::OpenApp { .. }
                     | Effect::OpenAndroidSettings
                     | Effect::OpenInputs
+                    | Effect::OpenTvSetting { .. }
                     | Effect::OpenAppInfo { .. }
                     | Effect::Uninstall { .. }
             )
@@ -370,6 +396,56 @@ impl LumeApp {
                 scroll_y: self.scroll_y,
             });
         }
+    }
+
+    /// Handles a raw hardware keycode from the remote control.
+    pub fn handle_keycode(&mut self, code: i32, now_ms: u64) -> Vec<Effect> {
+        self.now_ms = now_ms;
+
+        // 1. Listening for a key: Back cancels, a reserved key is refused, any other is recorded.
+        if self.is_listening_key() {
+            return self.listening_code(code);
+        }
+
+        // 2. Otherwise check custom mapping table:
+        let effects = if let Some(action) = self.keys.action_for(code) {
+            match action {
+                crate::keys::KeyAction::Key(key) => self.handle_key(key, now_ms),
+                crate::keys::KeyAction::Inputs => vec![Effect::OpenInputs],
+                crate::keys::KeyAction::Setting(s) => match s {
+                    crate::keys::SettingShortcut::LumeSettings => {
+                        self.open_settings();
+                        vec![]
+                    }
+                    crate::keys::SettingShortcut::LumeEditor => {
+                        self.open_editor(false);
+                        vec![]
+                    }
+                    crate::keys::SettingShortcut::LumeTvInfo => {
+                        self.open_tv_info();
+                        vec![]
+                    }
+                    crate::keys::SettingShortcut::Android => vec![Effect::OpenAndroidSettings],
+                    other => vec![Effect::OpenTvSetting { setting: other }],
+                },
+                crate::keys::KeyAction::App(pkg) => {
+                    if let Some(app) = self.catalog.get(&pkg) {
+                        vec![Effect::OpenApp {
+                            package: app.package.clone(),
+                            activity: app.activity.clone(),
+                        }]
+                    } else {
+                        vec![]
+                    }
+                }
+            }
+        } else if let Some(key) = crate::keys::from_android(code) {
+            self.handle_key(key, now_ms)
+        } else {
+            vec![]
+        };
+        // A shortcut that leaves lume is something to come back from, like OK on a tile.
+        self.note_return_point(&effects);
         effects
     }
 
@@ -453,6 +529,9 @@ impl LumeApp {
             Screen::Settings => return self.activate_settings(id),
             Screen::About | Screen::TvInfo => return vec![],
             Screen::Editor => return self.activate_editor(id),
+            Screen::KeyMap => return self.activate_keymap(id),
+            Screen::KeyMapPickApp => return self.activate_pick_app(id),
+            Screen::KeyMapPickSetting => return self.activate_pick_setting(id),
         }
         match id {
             ids::GEAR => vec![Effect::OpenAndroidSettings],
@@ -500,6 +579,9 @@ impl LumeApp {
                 vec![]
             }
             Screen::Editor => self.back_from_editor(),
+            Screen::KeyMap => self.back_from_keymap(),
+            Screen::KeyMapPickApp => self.back_from_picker(keymap::ADD_APP),
+            Screen::KeyMapPickSetting => self.back_from_picker(keymap::ADD_SETTING),
         }
     }
 
@@ -769,6 +851,9 @@ impl LumeApp {
             Screen::About => self.draw_about(p),
             Screen::TvInfo => self.draw_tv_info(p),
             Screen::Editor => self.draw_editor(p),
+            Screen::KeyMap => self.draw_keymap(p),
+            Screen::KeyMapPickApp => self.draw_pick_app(p),
+            Screen::KeyMapPickSetting => self.draw_pick_setting(p),
         }
         self.draw_context_menu(p);
         self.draw_toast(p);

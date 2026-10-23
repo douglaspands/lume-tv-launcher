@@ -10,13 +10,13 @@ use crate::text::Align;
 use crate::theme::{vars, Paint, StateFlags, THEME};
 use crate::ui::focus::{Focusable, Row};
 
-const COLUMNS: usize = 6;
+pub(super) const COLUMNS: usize = 6;
 const WIDTH: f32 = 1280.0 - 2.0 * topbar::MARGIN;
-const GAP: f32 = 24.0;
+pub(super) const GAP: f32 = 24.0;
 pub(super) const TILE_WIDTH: f32 = (WIDTH - (COLUMNS as f32 - 1.0) * GAP) / COLUMNS as f32;
-const TILE_HEIGHT: f32 = TILE_WIDTH * 9.0 / 16.0;
+pub(super) const TILE_HEIGHT: f32 = TILE_WIDTH * 9.0 / 16.0;
 /// Distance between the tops of two grid rows: the tile and its name below it.
-const ROW_PITCH: f32 = 148.0;
+pub(super) const ROW_PITCH: f32 = 148.0;
 const TITLE_BASELINE: f32 = 116.0;
 const GRID_TOP: f32 = 144.0;
 const BOTTOM_PADDING: f32 = 40.0;

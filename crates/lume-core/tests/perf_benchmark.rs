@@ -148,7 +148,7 @@ fn bench_before_after_tuning() {
     );
     shell
         .app_mut_for_test()
-        .focus_for_test(ids::SETTINGS_BASE + 2); // ITEM_ABOUT
+        .focus_for_test(ids::SETTINGS_BASE + 3); // ITEM_ABOUT
     shell.key(Key::Ok, 70_020); // Abre About
     shell.build_frame(70_030); // Resolve layout de About
     assert_eq!(

@@ -91,6 +91,9 @@ impl Viewer {
                 Effect::SaveConfig => println!("save the configuration"),
                 Effect::SaveUsage => println!("save the usage history"),
                 Effect::SaveKeys => println!("save the key mapping"),
+                Effect::OpenTvSetting { setting } => {
+                    println!("open TV setting {setting:?}")
+                }
             }
         }
         self.needs_frame = true;

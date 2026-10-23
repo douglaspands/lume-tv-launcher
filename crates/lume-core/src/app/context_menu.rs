@@ -7,6 +7,7 @@ use super::painter::Painter;
 use super::{dock, ids, Anim, Effect, Key, LumeApp, PendingFocus, Screen, Tab};
 use crate::home::config::MAX_FAVORITES;
 use crate::i18n::{Arg, PluralId, StringId};
+use crate::keys::{keycode_parts, KeyTarget};
 use crate::render::Rect;
 use crate::text::Align;
 use crate::theme::{StateFlags, Transition, THEME};
@@ -30,6 +31,8 @@ const DOCK_GAP: f32 = 4.0;
 /// Space between the card and the focus ring of the tile it belongs to, over the grid: close enough
 /// to read as the tile's. The card's top is the ring's top.
 const GRID_GAP: f32 = 8.0;
+/// Space between the card of a key-mapping row's menu and the row it belongs to.
+const ROW_GAP: f32 = 8.0;
 /// Where the name of a disabled item sits in it, and its reason below: the two lines are centered
 /// in the 72 of the item (by their ink, measured with scripts/measure-ink.py).
 const NOTE_NAME_TOP: f32 = 11.0;
@@ -52,6 +55,14 @@ pub enum MenuAction {
     Move,
     AppInfo,
     Uninstall,
+    /// Key mapping: opens the listening for a new key of the row's target.
+    AddKey,
+    /// Key mapping: takes the key `code` off the row's target.
+    RemoveKey(i32),
+    /// Key mapping: puts the row's command back to its factory keys.
+    RestoreDefault,
+    /// Key mapping: takes the shortcut of the row away, with all its keys.
+    RemoveShortcut,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,12 +79,16 @@ pub enum Origin {
     Grid(FocusId),
     /// A favorite of the dock (its place).
     Dock(usize),
+    /// A row of the key mapping screen (its focus id): the menu opens under it.
+    KeyRow(FocusId),
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ContextMenu {
     pub origin: Origin,
     pub package: String,
+    /// What the menu of a key mapping row acts on.
+    pub target: Option<KeyTarget>,
     pub items: Vec<MenuItem>,
     /// The item with the focus.
     pub selected: usize,
@@ -84,11 +99,12 @@ pub struct ContextMenu {
 }
 
 impl ContextMenu {
-    fn new(origin: Origin, package: String, items: Vec<MenuItem>) -> ContextMenu {
+    pub(super) fn new(origin: Origin, package: String, items: Vec<MenuItem>) -> ContextMenu {
         let selected = items.iter().position(|i| i.enabled).unwrap_or(0);
         ContextMenu {
             origin,
             package,
+            target: None,
             items,
             selected,
             closing: false,
@@ -142,6 +158,21 @@ pub fn grid_panel(anchor: Rect, size: (f32, f32), safe: Rect) -> Rect {
     Rect::new(x, y, w, h)
 }
 
+/// Where the panel goes under a row of the key mapping screen: with its right edge on the row's,
+/// 8 below it, or 8 above when it does not fit under; moved only as far as it needs to stay inside
+/// `safe`.
+pub fn row_panel(anchor: Rect, size: (f32, f32), safe: Rect) -> Rect {
+    let (w, h) = size;
+    let x = (anchor.right() - w).clamp(safe.x, (safe.right() - w).max(safe.x));
+    let below = anchor.bottom() + ROW_GAP;
+    let y = if below + h <= safe.bottom() {
+        below
+    } else {
+        anchor.y - ROW_GAP - h
+    };
+    Rect::new(x, y.clamp(safe.y, (safe.bottom() - h).max(safe.y)), w, h)
+}
+
 impl LumeApp {
     /// The open menu, if any (for tests).
     #[doc(hidden)]
@@ -165,21 +196,26 @@ impl LumeApp {
             _ => None,
         };
         if let Some(menu) = menu {
-            // Every item starts unfocused: the last menu may have left one of these lit.
-            for index in 0..menu.items.len() {
-                self.anim.set(Anim::Focus(item_id(index)), 0.0);
-            }
-            self.anim
-                .animate_to(Anim::MenuFade, 0.0, 1.0, self.now_ms, Some(FADE));
-            self.anim.animate_to(
-                Anim::Focus(item_id(menu.selected)),
-                0.0,
-                1.0,
-                self.now_ms,
-                self.focus_transition(),
-            );
-            self.context_menu = Some(menu);
+            self.show_context_menu(menu);
         }
+    }
+
+    /// Opens `menu` with its fade, the focus on its first enabled item.
+    pub(super) fn show_context_menu(&mut self, menu: ContextMenu) {
+        // Every item starts unfocused: the last menu may have left one of these lit.
+        for index in 0..menu.items.len() {
+            self.anim.set(Anim::Focus(item_id(index)), 0.0);
+        }
+        self.anim
+            .animate_to(Anim::MenuFade, 0.0, 1.0, self.now_ms, Some(FADE));
+        self.anim.animate_to(
+            Anim::Focus(item_id(menu.selected)),
+            0.0,
+            1.0,
+            self.now_ms,
+            self.focus_transition(),
+        );
+        self.context_menu = Some(menu);
     }
 
     fn grid_menu(&self, id: FocusId) -> Option<ContextMenu> {
@@ -257,9 +293,13 @@ impl LumeApp {
                 let action = menu.items.get(menu.selected).filter(|i| i.enabled);
                 let action = action.map(|i| i.action);
                 let (origin, package) = (menu.origin, menu.package.clone());
+                let target = menu.target.clone();
                 self.close_context_menu();
                 return action
-                    .map(|a| self.run_menu_action(a, origin, &package))
+                    .map(|a| match origin {
+                        Origin::KeyRow(id) => self.run_key_menu_action(a, id, target),
+                        _ => self.run_menu_action(a, origin, &package),
+                    })
                     .unwrap_or_default();
             }
         }
@@ -329,15 +369,18 @@ impl LumeApp {
                     package: package.to_string(),
                 }]
             }
+            // The menus of the key mapping screen go through `run_key_menu_action`.
+            _ => {}
         }
         vec![]
     }
 
     /// The catalog changed: a menu whose app is gone closes.
     pub(super) fn check_context_menu(&mut self) {
-        let gone = self
-            .context_menu()
-            .is_some_and(|m| !self.catalog.contains(&m.package));
+        let gone = self.context_menu().is_some_and(|m| {
+            matches!(m.origin, Origin::Grid(_) | Origin::Dock(_))
+                && !self.catalog.contains(&m.package)
+        });
         if gone {
             self.close_context_menu();
         }
@@ -352,14 +395,40 @@ impl LumeApp {
 
     /// The text of an item.
     fn menu_label(&self, action: MenuAction) -> String {
+        let t = self.translator;
         let id = match action {
             MenuAction::AddToHome => StringId::MenuAddHome,
             MenuAction::RemoveFromHome => StringId::MenuRemoveHome,
             MenuAction::Move => StringId::MenuMove,
             MenuAction::AppInfo => StringId::MenuAppInfo,
             MenuAction::Uninstall => StringId::MenuUninstall,
+            MenuAction::AddKey => StringId::KeymapAddKey,
+            MenuAction::RestoreDefault => StringId::KeymapRestoreAction,
+            MenuAction::RemoveShortcut => StringId::KeymapRemoveAction,
+            MenuAction::RemoveKey(code) => {
+                let key = match keycode_parts(code, &t) {
+                    (name, Some(code)) => format!("{name} {code}"),
+                    (name, None) => name,
+                };
+                return t.format(StringId::KeymapRemoveKey, &[Arg::Str(&key)]);
+            }
         };
-        self.translator.get(id).into_owned()
+        t.get(id).into_owned()
+    }
+
+    /// Why a disabled item is disabled.
+    fn menu_note(&self, action: MenuAction) -> String {
+        match action {
+            MenuAction::RestoreDefault => self
+                .translator
+                .get(StringId::KeymapAlreadyDefault)
+                .into_owned(),
+            _ => self.translator.plural(
+                PluralId::EditorLimitReached,
+                MAX_FAVORITES as i64,
+                &[Arg::Int(MAX_FAVORITES as i64)],
+            ),
+        }
     }
 
     /// Draws the panel over everything else, fading it as it opens and closes.
@@ -376,17 +445,12 @@ impl LumeApp {
         let Some(anchor) = menu.anchor else { return };
         let item_style = p.style(&THEME.menu_item, StateFlags::NONE);
         let note_style = p.style(&THEME.menu_note, StateFlags::NONE);
-        let limit = self.translator.plural(
-            PluralId::EditorLimitReached,
-            MAX_FAVORITES as i64,
-            &[Arg::Int(MAX_FAVORITES as i64)],
-        );
         let side = item_style.padding[1] + item_style.padding[3];
         let rows: Vec<(MenuItem, String, Option<String>)> = menu
             .items
             .iter()
             .map(|item| {
-                let note = (!item.enabled).then(|| limit.clone());
+                let note = (!item.enabled).then(|| self.menu_note(item.action));
                 (*item, self.menu_label(item.action), note)
             })
             .collect();
@@ -418,6 +482,7 @@ impl LumeApp {
         let panel = match menu.origin {
             Origin::Dock(_) => dock_panel(anchor, (width, height), safe),
             Origin::Grid(_) => grid_panel(anchor, (width, height), safe),
+            Origin::KeyRow(_) => row_panel(anchor, (width, height), safe),
         };
         // It rises a little into place as it fades in, and sinks as it fades out.
         let panel = panel.translate(0.0, (1.0 - visible) * RISE);
@@ -476,6 +541,7 @@ mod tests {
             ("GRID_GAP", GRID_GAP),
             ("NOTE_LINE_PITCH", NOTE_LINE_PITCH),
             ("RISE", RISE),
+            ("ROW_GAP", ROW_GAP),
         ]);
     }
 
@@ -493,6 +559,21 @@ mod tests {
         let low = Rect::new(64.0, 600.0, 172.0, 96.75);
         let panel = grid_panel(low, SIZE, safe);
         assert!(panel.bottom() <= safe.bottom() && panel.y >= safe.y);
+    }
+
+    #[test]
+    fn under_a_row_the_panel_is_right_aligned_and_above_it_when_it_does_not_fit() {
+        let safe = Display::new(1280, 720).safe_area();
+        let row = Rect::new(96.0, 300.0, 1088.0, 64.0);
+        let panel = row_panel(row, SIZE, safe);
+        assert_eq!(panel.right(), row.right(), "right edges meet");
+        assert_eq!(panel.y, row.bottom() + ROW_GAP, "under the row");
+        let low = Rect::new(96.0, 600.0, 1088.0, 64.0);
+        let panel = row_panel(low, SIZE, safe);
+        assert_eq!(panel.bottom(), low.y - ROW_GAP, "above the row");
+        // A list taller than both sides leaves room for is moved just enough to fit.
+        let tall = row_panel(Rect::new(96.0, 300.0, 1088.0, 64.0), (280.0, 576.0), safe);
+        assert!(tall.y >= safe.y && tall.bottom() <= safe.bottom());
     }
 
     #[test]

@@ -446,7 +446,7 @@ fn focus_on(rig: &mut Rig, id: FocusId) {
 }
 
 #[test]
-fn the_lume_settings_start_on_the_first_item_and_list_three() {
+fn the_lume_settings_start_on_the_first_item_and_list_four() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE));
@@ -454,15 +454,34 @@ fn the_lume_settings_start_on_the_first_item_and_list_three() {
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
     rig.press(Key::Down);
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 2));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 3));
     assert!(
         !rig.app.focus.move_focus(Direction::Down),
-        "three items only"
+        "four items only"
     );
+}
+
+#[test]
+fn the_keymap_opens_from_the_settings_and_back_returns_to_its_item() {
+    let mut rig = Rig::new();
+    open_settings(&mut rig);
+    rig.press_all(&[Key::Down, Key::Ok]);
+    assert_eq!(rig.app.screen(), &Screen::KeyMap);
+    rig.press(Key::Back);
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
+}
+
+fn open_key_map(rig: &mut Rig) {
+    open_settings(rig);
+    rig.press_all(&[Key::Down, Key::Ok]);
+    assert_eq!(rig.app.screen(), &Screen::KeyMap);
 }
 
 fn open_tv_info(rig: &mut Rig) {
     open_settings(rig);
-    rig.press_all(&[Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::TvInfo);
 }
 
@@ -508,7 +527,7 @@ fn the_tv_information_scrolls_within_the_sheet_and_back_returns_to_its_item() {
     rig.advance(1000);
     rig.press(Key::Back);
     assert_eq!(rig.app.screen(), &Screen::Settings);
-    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 1));
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 2));
     assert_eq!(rig.app.scroll_y, 0.0);
 }
 
@@ -557,7 +576,7 @@ fn without_an_inputs_panel_the_button_is_not_there() {
 fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
-    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.about_scroll, 0.0);
     rig.press(Key::Down);
@@ -566,7 +585,7 @@ fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
     assert_eq!(rig.app.about_scroll, 0.0);
     rig.press(Key::Back);
     assert_eq!(rig.app.screen(), &Screen::Settings);
-    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 2));
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 3));
 }
 
 #[test]
@@ -1304,9 +1323,12 @@ fn every_screen_starts_with_the_wallpaper_and_has_no_flat_background() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
     lists.push(("settings", rig.frame()));
-    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     lists.push(("about", rig.frame()));
+    let mut rig = Rig::new();
+    open_key_map(&mut rig);
+    lists.push(("key mapping", rig.frame()));
     let mut rig = Rig::new();
     open_tv_info(&mut rig);
     rig.app
@@ -2168,7 +2190,7 @@ fn the_statistics_are_read_only_while_the_settings_are_on_screen() {
     );
 
     // Leaving for the About screen, the editor or the background stops the readings.
-    rig.press_all(&[Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.stats_deadline(rig.now), None);
     rig.press(Key::Back);
@@ -3120,4 +3142,746 @@ fn icons_that_arrive_during_the_splash_do_not_fade_in() {
     let alphas = dock_image_alphas(&list);
     assert!(!alphas.is_empty());
     assert!(alphas.iter().all(|a| *a == 255), "{alphas:?}");
+}
+
+/// The key mapping screen as the tests below drive it.
+mod keymap {
+    use super::*;
+    use crate::app::context_menu::{MenuAction, Origin};
+    use crate::app::keymap::*;
+    use crate::app::keymap::{CONFIRM_CANCEL, CONFIRM_RESTORE};
+    use crate::keys::{CommandTarget, KeyTarget, SettingShortcut};
+
+    impl Rig {
+        /// A key of the remote control, by its Android code.
+        fn code(&mut self, code: i32) -> Vec<Effect> {
+            let effects = self.app.handle_keycode(code, self.now);
+            self.now += 100;
+            self.frame();
+            effects
+        }
+
+        fn menu_actions(&self) -> Vec<(MenuAction, bool)> {
+            self.app
+                .context_menu()
+                .map(|m| m.items.iter().map(|i| (i.action, i.enabled)).collect())
+                .unwrap_or_default()
+        }
+    }
+
+    fn menu() -> KeyTarget {
+        KeyTarget::Command(CommandTarget::Menu)
+    }
+
+    fn opened() -> Rig {
+        let mut rig = Rig::new();
+        open_key_map(&mut rig);
+        rig
+    }
+
+    /// On the row `id`, with its menu open.
+    fn open_menu_of(rig: &mut Rig, id: FocusId) {
+        assert!(rig.app.focus_for_test(id), "{id} is on the screen");
+        rig.press(Key::Ok);
+        assert!(rig.app.context_menu().is_some(), "the menu of {id}");
+    }
+
+    /// Chooses the item `action` of the open menu.
+    fn choose(rig: &mut Rig, action: MenuAction) {
+        let index = rig
+            .menu_actions()
+            .iter()
+            .position(|(a, _)| *a == action)
+            .unwrap_or_else(|| panic!("{action:?} is not in the menu"));
+        let selected = rig.app.context_menu().unwrap().selected;
+        for _ in selected..index {
+            rig.press(Key::Down);
+        }
+        for _ in index..selected {
+            rig.press(Key::Up);
+        }
+        rig.press(Key::Ok);
+    }
+
+    #[test]
+    fn the_screen_starts_on_the_first_command_and_has_no_horizontal_focus() {
+        let mut rig = opened();
+        assert_eq!(rig.focused(), Some(CMD_BASE));
+        rig.press_all(&[Key::Right, Key::Left, Key::Right]);
+        assert_eq!(rig.focused(), Some(CMD_BASE), "no row to the side");
+    }
+
+    #[test]
+    fn down_visits_every_line_in_order() {
+        let mut rig = opened();
+        let mut seen = vec![rig.focused().unwrap()];
+        for _ in 0..8 {
+            rig.press(Key::Down);
+            let id = rig.focused().unwrap();
+            if seen.last() != Some(&id) {
+                seen.push(id);
+            }
+        }
+        assert_eq!(
+            seen,
+            [
+                CMD_BASE,
+                CMD_BASE + 1,
+                ADD_SETTING,
+                ADD_APP,
+                RESTORE_FACTORY
+            ]
+        );
+    }
+
+    #[test]
+    fn the_first_rows_are_where_the_design_puts_them() {
+        let mut rig = opened();
+        let rect = |rig: &mut Rig, id| {
+            assert!(rig.app.focus_for_test(id));
+            rig.app.focus.current().unwrap().rect
+        };
+        // Panel 1 starts at 212 (where the content of a secondary screen starts), 216 tall.
+        assert_eq!(
+            rect(&mut rig, CMD_BASE),
+            Rect::new(96.0, 268.0, 1088.0, 64.0)
+        );
+        assert_eq!(
+            rect(&mut rig, CMD_BASE + 1),
+            Rect::new(96.0, 340.0, 1088.0, 64.0)
+        );
+        // Panel 2 starts at 452 and has only the "add" row; panel 3 at 620.
+        assert_eq!(
+            rect(&mut rig, ADD_SETTING),
+            Rect::new(96.0, 508.0, 1088.0, 64.0)
+        );
+        assert_eq!(
+            rect(&mut rig, ADD_APP),
+            Rect::new(96.0, 676.0, 1088.0, 64.0)
+        );
+        let restore = rect(&mut rig, RESTORE_FACTORY);
+        assert_eq!((restore.x, restore.y, restore.h), (64.0, 788.0, 48.0));
+        assert_eq!(
+            restore.bottom(),
+            836.0,
+            "the page ends at 836 without shortcuts"
+        );
+    }
+
+    #[test]
+    fn a_panel_grows_by_72_per_shortcut_and_the_add_row_goes_when_all_are_mapped() {
+        let mut rig = opened();
+        let count = SettingShortcut::COUNT;
+        for (i, setting) in SettingShortcut::ALL.into_iter().enumerate() {
+            rig.app
+                .keys
+                .add_code(&KeyTarget::Setting(setting), 200 + i as i32);
+        }
+        rig.frame();
+        assert!(!rig.app.focus_for_test(ADD_SETTING), "nothing left to add");
+        // Panel 2: 72 + 72 x 20 tall, from 452; panel 3 starts 24 below it.
+        assert!(rig.app.focus_for_test(SETTING_BASE + count as FocusId - 1));
+        assert_eq!(
+            rig.app.focus.current().unwrap().rect.y,
+            452.0 + 56.0 + (count as f32 - 1.0) * 72.0
+        );
+        let panel_2_bottom = 452.0 + 72.0 + 72.0 * count as f32;
+        assert!(rig.app.focus_for_test(ADD_APP));
+        assert_eq!(
+            rig.app.focus.current().unwrap().rect.y,
+            panel_2_bottom + 24.0 + 56.0
+        );
+    }
+
+    #[test]
+    fn the_scrolling_follows_the_focus_down_to_the_last_button() {
+        let mut rig = opened();
+        for _ in 0..4 {
+            rig.press(Key::Down);
+        }
+        assert_eq!(rig.focused(), Some(RESTORE_FACTORY));
+        rig.advance(1000);
+        assert!(rig.app.scroll_y > 0.0, "the page scrolled");
+        let restore = rig.app.focus.current().unwrap().rect;
+        let on_screen = restore.translate(0.0, -rig.app.scroll_y);
+        assert!(
+            on_screen.bottom() <= 720.0,
+            "the button is in view: {on_screen:?}"
+        );
+        for _ in 0..4 {
+            rig.press(Key::Up);
+        }
+        assert_eq!(rig.focused(), Some(CMD_BASE));
+        rig.advance(1000);
+        assert_eq!(
+            rig.app.scroll_y, 0.0,
+            "the first row brings the header back"
+        );
+    }
+
+    #[test]
+    fn ok_on_a_command_opens_its_menu_with_a_disabled_restore_while_at_the_default() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE);
+        assert_eq!(
+            rig.menu_actions(),
+            [
+                (MenuAction::AddKey, true),
+                (MenuAction::RemoveKey(82), true),
+                (MenuAction::RemoveKey(174), true),
+                (MenuAction::RestoreDefault, false),
+            ]
+        );
+        assert_eq!(
+            rig.app.context_menu().unwrap().origin,
+            Origin::KeyRow(CMD_BASE)
+        );
+        // Back closes it and the focus stays on the row.
+        rig.press(Key::Back);
+        rig.advance(1000);
+        assert!(rig.app.context_menu().is_none());
+        assert_eq!(rig.focused(), Some(CMD_BASE));
+    }
+
+    #[test]
+    fn removing_one_key_of_a_command_saves_and_enables_the_restore() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE);
+        // The first enabled item has the focus: "Add key". Down twice reaches "Remove 174".
+        rig.press_all(&[Key::Down, Key::Down]);
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, vec![Effect::SaveKeys]);
+        assert_eq!(rig.app.keys.codes(Key::Menu), &[82]);
+        assert_eq!(rig.focused(), Some(CMD_BASE), "the focus stays on the row");
+        open_menu_of(&mut rig, CMD_BASE);
+        assert_eq!(
+            rig.menu_actions().last(),
+            Some(&(MenuAction::RestoreDefault, true))
+        );
+        choose(&mut rig, MenuAction::RestoreDefault);
+        assert_eq!(rig.app.keys.codes(Key::Menu), &[82, 174]);
+    }
+
+    #[test]
+    fn a_disabled_restore_never_takes_the_focus() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE + 1);
+        for _ in 0..6 {
+            rig.press(Key::Down);
+        }
+        let selected = rig.app.context_menu().unwrap().selected;
+        assert!(rig.app.context_menu().unwrap().items[selected].enabled);
+        assert_eq!(
+            rig.menu_actions().last(),
+            Some(&(MenuAction::RestoreDefault, false))
+        );
+    }
+
+    #[test]
+    fn adding_a_key_listens_records_it_and_moves_it_from_the_other_command() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE);
+        choose(&mut rig, MenuAction::AddKey);
+        assert!(rig.app.is_listening_key());
+        assert_eq!(rig.app.keymap.listening, Some(menu()));
+        assert_eq!(rig.focused(), None, "the card takes no focus");
+
+        let effects = rig.code(100);
+        assert_eq!(effects, vec![Effect::SaveKeys]);
+        assert!(!rig.app.is_listening_key());
+        assert!(rig.app.keys.codes(Key::Menu).contains(&100));
+        assert!(rig.app.toast_text().is_some(), "the key was assigned");
+        assert_eq!(
+            rig.focused(),
+            Some(CMD_BASE),
+            "back on the row it came from"
+        );
+
+        // The same key given to the other command leaves the first.
+        open_menu_of(&mut rig, CMD_BASE + 1);
+        choose(&mut rig, MenuAction::AddKey);
+        rig.code(100);
+        assert!(rig.app.keys.inputs().contains(&100));
+        assert!(!rig.app.keys.codes(Key::Menu).contains(&100));
+    }
+
+    #[test]
+    fn a_command_without_keys_goes_straight_to_the_listening() {
+        let mut rig = opened();
+        rig.app
+            .keys
+            .remove_code(&KeyTarget::Command(CommandTarget::Inputs), 178);
+        rig.frame();
+        assert!(rig.app.focus_for_test(CMD_BASE + 1));
+        rig.press(Key::Ok);
+        assert!(rig.app.context_menu().is_none(), "no menu to choose from");
+        assert!(rig.app.is_listening_key());
+    }
+
+    #[test]
+    fn only_back_cancels_the_listening_and_reserved_keys_are_refused() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE);
+        choose(&mut rig, MenuAction::AddKey);
+        assert!(!rig.app.keymap.reserved_warning);
+        let before = rig.app.keys.clone();
+        // Arrows, OK (all four codes), Home and the power keys: the warning, nothing recorded.
+        for code in [19, 20, 21, 22, 23, 66, 160, 96, 3, 26, 177, 223, 224, 276] {
+            let effects = rig.code(code);
+            assert!(effects.is_empty(), "{code}");
+            assert!(rig.app.is_listening_key(), "{code} does not cancel");
+            assert!(rig.app.keymap.reserved_warning, "{code} warns");
+        }
+        assert!(rig.app.keys == before, "nothing was recorded");
+        // Back cancels without changing the mapping, and the focus goes back to the row.
+        for code in [4, 111, 97] {
+            open_menu_of_after_cancel(&mut rig, code);
+        }
+    }
+
+    /// Back with the code `code` cancels a listening started again from the row.
+    fn open_menu_of_after_cancel(rig: &mut Rig, code: i32) {
+        if !rig.app.is_listening_key() {
+            open_menu_of(rig, CMD_BASE);
+            choose(rig, MenuAction::AddKey);
+        }
+        let before = rig.app.keys.clone();
+        let effects = rig.code(code);
+        assert!(effects.is_empty());
+        assert!(!rig.app.is_listening_key());
+        assert!(!rig.app.keymap.reserved_warning);
+        assert!(rig.app.keys == before);
+        assert_eq!(rig.focused(), Some(CMD_BASE));
+    }
+
+    #[test]
+    fn the_logical_keys_of_the_desktop_viewer_listen_the_same_way() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE);
+        choose(&mut rig, MenuAction::AddKey);
+        for key in [
+            Key::Up,
+            Key::Down,
+            Key::Left,
+            Key::Right,
+            Key::Ok,
+            Key::Home,
+        ] {
+            rig.press(key);
+            assert!(rig.app.is_listening_key(), "{key:?}");
+            assert!(rig.app.keymap.reserved_warning, "{key:?}");
+        }
+        rig.press(Key::Back);
+        assert!(!rig.app.is_listening_key());
+        assert_eq!(rig.app.screen(), &Screen::KeyMap, "Back only cancelled");
+    }
+
+    #[test]
+    fn the_listening_card_is_drawn_without_a_dark_layer_and_the_focus_tree_may_be_empty() {
+        let mut rig = opened();
+        open_menu_of(&mut rig, CMD_BASE);
+        choose(&mut rig, MenuAction::AddKey);
+        let list = rig.frame();
+        let visible = rig.display.visible_rect();
+        let layer = list.cmds().iter().any(|cmd| {
+            matches!(cmd, crate::render::Cmd::Rect(r)
+                if r.rect.w >= visible.w - 1.0 && r.rect.h >= visible.h - 1.0)
+        });
+        assert!(!layer, "no full-screen layer over the screen");
+        assert!(rig.app.focus.rows().is_empty());
+        assert_eq!(rig.focused(), None);
+    }
+
+    /// The "Add shortcut" row, opened.
+    fn open_pick_setting(rig: &mut Rig) {
+        assert!(rig.app.focus_for_test(ADD_SETTING));
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::KeyMapPickSetting);
+    }
+
+    #[test]
+    fn every_settings_shortcut_is_in_the_choose_a_shortcut_list_and_cancelling_creates_nothing() {
+        let mut rig = opened();
+        open_pick_setting(&mut rig);
+        assert_eq!(rig.focused(), Some(PICK_SETTING_BASE));
+        let count = SettingShortcut::COUNT;
+        assert_eq!(rig.app.pick_setting_rows().len(), count);
+        // Every one can be reached with Down, and the list scrolls to show it.
+        let mut reached = vec![rig.focused().unwrap()];
+        for _ in 0..count + 2 {
+            rig.press(Key::Down);
+            reached.push(rig.focused().unwrap());
+            rig.advance(400);
+            let rect = rig
+                .app
+                .focus
+                .current()
+                .unwrap()
+                .rect
+                .translate(0.0, -rig.app.scroll_y);
+            assert!(rect.y >= 0.0 && rect.bottom() <= 720.0, "in view: {rect:?}");
+        }
+        reached.dedup();
+        assert_eq!(
+            reached,
+            (0..count as FocusId)
+                .map(|i| PICK_SETTING_BASE + i)
+                .collect::<Vec<_>>()
+        );
+
+        // Choosing one listens for its key; cancelling creates nothing.
+        assert!(rig.app.focus_for_test(PICK_SETTING_BASE));
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::KeyMap);
+        assert_eq!(
+            rig.app.keymap.listening,
+            Some(KeyTarget::Setting(SettingShortcut::Sleep))
+        );
+        assert!(
+            rig.app.keys.setting_shortcuts().is_empty(),
+            "not created yet"
+        );
+        rig.code(4);
+        assert!(rig.app.keys.setting_shortcuts().is_empty());
+        assert_eq!(rig.focused(), Some(ADD_SETTING), "back on the add row");
+    }
+
+    #[test]
+    fn back_from_the_choose_a_shortcut_list_returns_to_the_add_row() {
+        let mut rig = opened();
+        open_pick_setting(&mut rig);
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::KeyMap);
+        assert_eq!(rig.focused(), Some(ADD_SETTING));
+        assert!(rig.app.keys.setting_shortcuts().is_empty());
+    }
+
+    #[test]
+    fn a_shortcut_with_a_key_leaves_the_choose_a_shortcut_list() {
+        let mut rig = opened();
+        rig.app
+            .keys
+            .add_code(&KeyTarget::Setting(SettingShortcut::Sleep), 183);
+        rig.frame();
+        open_pick_setting(&mut rig);
+        let listed: Vec<_> = rig
+            .app
+            .pick_setting_rows()
+            .into_iter()
+            .map(|(_, s, _)| s)
+            .collect();
+        assert_eq!(listed.len(), SettingShortcut::COUNT - 1);
+        assert!(!listed.contains(&SettingShortcut::Sleep));
+        assert_eq!(listed[0], SettingShortcut::Picture);
+    }
+
+    #[test]
+    fn a_settings_shortcut_exists_once_its_key_is_recorded_and_can_be_removed() {
+        let mut rig = opened();
+        open_pick_setting(&mut rig);
+        rig.press(Key::Ok);
+        let effects = rig.code(174);
+        assert_eq!(effects, vec![Effect::SaveKeys]);
+        assert_eq!(
+            rig.app
+                .keys
+                .codes_for(&KeyTarget::Setting(SettingShortcut::Sleep)),
+            &[174]
+        );
+        assert_eq!(rig.focused(), Some(SETTING_BASE), "on the new row");
+        // 174 moved off the context menu.
+        assert!(!rig.app.keys.codes(Key::Menu).contains(&174));
+
+        open_menu_of(&mut rig, SETTING_BASE);
+        assert_eq!(
+            rig.menu_actions(),
+            [
+                (MenuAction::AddKey, true),
+                (MenuAction::RemoveKey(174), true),
+                (MenuAction::RemoveShortcut, true),
+            ]
+        );
+        choose(&mut rig, MenuAction::RemoveShortcut);
+        assert!(rig.app.keys.setting_shortcuts().is_empty());
+        assert_eq!(
+            rig.focused(),
+            Some(ADD_SETTING),
+            "the add row took its place"
+        );
+        // The shortcut is in the list again, first.
+        open_pick_setting(&mut rig);
+        assert_eq!(rig.app.pick_setting_rows()[0].1, SettingShortcut::Sleep);
+    }
+
+    #[test]
+    fn removing_the_only_key_of_a_shortcut_removes_the_row() {
+        let mut rig = opened();
+        rig.app
+            .keys
+            .add_code(&KeyTarget::Setting(SettingShortcut::Wifi), 183);
+        rig.app
+            .keys
+            .add_code(&KeyTarget::Setting(SettingShortcut::Sound), 184);
+        rig.frame();
+        open_menu_of(&mut rig, SETTING_BASE);
+        choose(&mut rig, MenuAction::RemoveKey(183));
+        assert_eq!(rig.app.keys.setting_shortcuts().len(), 1);
+        assert_eq!(
+            rig.focused(),
+            Some(SETTING_BASE),
+            "the next row took its place"
+        );
+    }
+
+    #[test]
+    fn the_choose_an_app_screen_lists_every_app_and_back_returns_to_the_add_row() {
+        let mut rig = opened();
+        rig.app.focus_for_test(ADD_APP);
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::KeyMapPickApp);
+        assert_eq!(rig.focused(), Some(PICK_BASE));
+        // The seven apps of the catalog, in the alphabetical order of the grid.
+        let apps = rig.app.catalog.apps().len();
+        assert_eq!(apps, 7);
+        let mut reached = vec![rig.focused().unwrap()];
+        for _ in 0..4 {
+            rig.press(Key::Right);
+            rig.press(Key::Down);
+            reached.push(rig.focused().unwrap());
+        }
+        assert!(
+            rig.app.focus_for_test(PICK_BASE + 6),
+            "the seventh app has a tile"
+        );
+        let first = rig.app.focus.rows()[0].items[0].rect;
+        assert_eq!(
+            (first.x, first.y),
+            (64.0, 212.0),
+            "the grid starts at y = 212"
+        );
+
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::KeyMap);
+        assert_eq!(rig.focused(), Some(ADD_APP));
+        assert!(
+            rig.app.keys.app_shortcuts().is_empty(),
+            "nothing was created"
+        );
+    }
+
+    #[test]
+    fn choosing_an_app_listens_for_its_key_and_the_app_leaves_the_choice() {
+        let mut rig = opened();
+        rig.app.focus_for_test(ADD_APP);
+        rig.press_all(&[Key::Ok, Key::Right]);
+        let chosen = rig.app.catalog.apps()[1].package.clone();
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::KeyMap);
+        assert_eq!(
+            rig.app.keymap.listening,
+            Some(KeyTarget::App(chosen.clone()))
+        );
+        // Cancelling comes back to the add row with nothing created.
+        rig.code(4);
+        assert_eq!(rig.focused(), Some(ADD_APP));
+        assert!(!rig.app.keys.has_app(&chosen));
+
+        rig.press_all(&[Key::Ok, Key::Right, Key::Ok]);
+        let effects = rig.code(183);
+        assert_eq!(effects, vec![Effect::SaveKeys]);
+        assert_eq!(
+            rig.app.keys.codes_for(&KeyTarget::App(chosen.clone())),
+            &[183]
+        );
+        assert_eq!(rig.focused(), Some(APP_BASE), "on the new row");
+        // Pressing the key opens the app.
+        let effects = rig.code(183);
+        assert!(matches!(&effects[..], [Effect::OpenApp { package, .. }] if *package == chosen));
+        // The app is not offered again.
+        rig.app.focus_for_test(ADD_APP);
+        rig.app.go_home();
+        rig.app.open_keymap();
+        rig.frame();
+        rig.app.focus_for_test(ADD_APP);
+        rig.press(Key::Ok);
+        let offered: Vec<_> = rig
+            .app
+            .pick_cells()
+            .into_iter()
+            .map(|c| c.package)
+            .collect();
+        assert_eq!(offered.len(), 6);
+        assert!(!offered.contains(&chosen));
+    }
+
+    #[test]
+    fn many_apps_all_get_a_tile_and_the_grid_scrolls_to_the_last() {
+        let apps: Vec<(String, String)> = (0..40)
+            .map(|i| (format!("com.demo.app{i:02}"), format!("App {i:02}")))
+            .collect();
+        let refs: Vec<(&str, &str)> = apps.iter().map(|(p, l)| (p.as_str(), l.as_str())).collect();
+        let mut rig = Rig::with_catalog(catalog(&refs));
+        open_key_map(&mut rig);
+        rig.app.focus_for_test(ADD_APP);
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::KeyMapPickApp);
+        for index in 0..40 {
+            assert!(
+                rig.app.focus_for_test(PICK_BASE + index),
+                "app {index} has a tile"
+            );
+        }
+        rig.advance(1000);
+        assert!(rig.app.scroll_y > 0.0);
+        let rect = rig
+            .app
+            .focus
+            .current()
+            .unwrap()
+            .rect
+            .translate(0.0, -rig.app.scroll_y);
+        assert!(rect.y >= 0.0 && rect.bottom() <= 720.0, "{rect:?}");
+    }
+
+    #[test]
+    fn the_factory_dialog_starts_on_cancel_and_back_closes_it() {
+        let mut rig = opened();
+        rig.app.keys.add_code(&menu(), 999);
+        rig.app.focus_for_test(RESTORE_FACTORY);
+        rig.press(Key::Ok);
+        assert!(rig.app.keymap.confirm_restore);
+        assert_eq!(rig.focused(), Some(CONFIRM_CANCEL));
+        // The dialog traps the focus: Left goes to "Restore", never to the page.
+        rig.press(Key::Left);
+        assert_eq!(rig.focused(), Some(CONFIRM_RESTORE));
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(CONFIRM_RESTORE));
+        rig.press(Key::Back);
+        assert!(!rig.app.keymap.confirm_restore);
+        assert_eq!(rig.focused(), Some(RESTORE_FACTORY));
+        assert!(
+            rig.app.keys.codes(Key::Menu).contains(&999),
+            "nothing changed"
+        );
+    }
+
+    #[test]
+    fn confirming_the_factory_dialog_restores_commands_and_clears_the_shortcuts() {
+        let mut rig = opened();
+        rig.app.keys.add_code(&menu(), 999);
+        rig.app
+            .keys
+            .add_code(&KeyTarget::Setting(SettingShortcut::Wifi), 183);
+        rig.app
+            .keys
+            .add_code(&KeyTarget::App(NETFLIX.to_string()), 184);
+        rig.app.focus_for_test(RESTORE_FACTORY);
+        rig.press(Key::Ok);
+        rig.press(Key::Left);
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, vec![Effect::SaveKeys]);
+        assert!(!rig.app.keymap.confirm_restore);
+        assert!(rig.app.keys.is_all_default());
+        assert!(rig.app.keys.setting_shortcuts().is_empty());
+        assert!(rig.app.keys.app_shortcuts().is_empty());
+        assert_eq!(rig.app.keys.inputs(), &[178]);
+    }
+
+    #[test]
+    fn the_dialog_is_a_light_card_of_560_by_260_without_a_dark_layer() {
+        let mut rig = opened();
+        rig.app.focus_for_test(RESTORE_FACTORY);
+        rig.press(Key::Ok);
+        let list = rig.frame();
+        let visible = rig.display.visible_rect();
+        let full_screen = list.cmds().iter().any(|cmd| {
+            matches!(cmd, crate::render::Cmd::Rect(r)
+                if r.rect.w >= visible.w - 1.0 && r.rect.h >= visible.h - 1.0)
+        });
+        assert!(!full_screen);
+        // The card, and its shadow a few units lower.
+        let card = list.cmds().iter().find_map(|cmd| match cmd {
+            crate::render::Cmd::Rect(r)
+                if (r.rect.w - 560.0).abs() < 0.5 && (r.rect.y - 232.0).abs() < 0.5 =>
+            {
+                Some(r.rect)
+            }
+            _ => None,
+        });
+        let card = card.expect("a 560 wide card at y = 232");
+        assert_eq!((card.x, card.y, card.h), (360.0, 232.0, 260.0));
+        let (restore, cancel) = {
+            let row = &rig.app.focus.rows()[0];
+            (row.items[0].rect, row.items[1].rect)
+        };
+        assert_eq!((restore.h, cancel.h), (48.0, 48.0));
+        assert_eq!(cancel.y, 232.0 + 180.0);
+        assert_eq!(cancel.right(), 888.0, "right-aligned inside the padding");
+        assert_eq!(cancel.x - restore.right(), 16.0, "16 between the buttons");
+    }
+
+    #[test]
+    fn a_shortcut_that_leaves_lume_is_something_to_return_from() {
+        let mut rig = Rig::new();
+        rig.app
+            .keys
+            .add_code(&KeyTarget::App(NETFLIX.to_string()), 203);
+        rig.advance(1000);
+        let effects = rig.code(203);
+        assert!(matches!(&effects[..], [Effect::OpenApp { .. }]));
+        assert!(rig.app.return_point.is_some());
+    }
+}
+
+#[test]
+fn handle_keycode_triggers_shortcuts_for_commands_settings_and_apps() {
+    let mut rig = Rig::new();
+
+    // Custom mapping: 200 -> Inputs command
+    rig.app.keys.add_code(
+        &crate::keys::KeyTarget::Command(crate::keys::CommandTarget::Inputs),
+        200,
+    );
+    let effects = rig.app.handle_keycode(200, rig.now);
+    assert_eq!(effects, vec![Effect::OpenInputs]);
+
+    // Custom mapping: 201 -> Picture setting
+    rig.app.keys.add_code(
+        &crate::keys::KeyTarget::Setting(crate::keys::SettingShortcut::Picture),
+        201,
+    );
+    let effects = rig.app.handle_keycode(201, rig.now);
+    assert_eq!(
+        effects,
+        vec![Effect::OpenTvSetting {
+            setting: crate::keys::SettingShortcut::Picture
+        }]
+    );
+
+    // Custom mapping: 202 -> Lume Settings
+    rig.app.keys.add_code(
+        &crate::keys::KeyTarget::Setting(crate::keys::SettingShortcut::LumeSettings),
+        202,
+    );
+    let effects = rig.app.handle_keycode(202, rig.now);
+    assert!(effects.is_empty());
+    assert_eq!(rig.app.screen(), &Screen::Settings);
+
+    // Custom mapping: 203 -> Netflix app
+    rig.app
+        .keys
+        .add_code(&crate::keys::KeyTarget::App(NETFLIX.to_string()), 203);
+    let effects = rig.app.handle_keycode(203, rig.now);
+    assert_eq!(
+        effects,
+        vec![Effect::OpenApp {
+            package: NETFLIX.to_string(),
+            activity: format!("{NETFLIX}.Main"),
+        }]
+    );
+
+    // Pure navigation keys still work natively
+    rig.app.go_home();
+    let effects = rig.app.handle_keycode(20, rig.now); // KEYCODE_DPAD_DOWN
+    assert!(effects.is_empty());
 }
