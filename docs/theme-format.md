@@ -191,7 +191,7 @@ The favorites on the Home screen sit in a floating bar. `.dock` styles the bar a
   outline: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
-.dock-label { padding: 8px 16px; border-radius: 12px; background: rgba(15, 23, 30, 0.9); color: #F2F5F7; font-size: 18px; font-weight: 700; }
+.dock-label { padding: 8px 16px; border-radius: 12px; background: rgba(0, 0, 0, 0); color: #F2F5F7; font-size: 18px; font-weight: 700; }
 ```
 
 ## What is not supported

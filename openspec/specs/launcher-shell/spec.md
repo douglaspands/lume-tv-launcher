@@ -21,7 +21,7 @@ A barra superior SHALL exibir o logo do Lume, as abas "Início" e "Apps", o bot�
 
 #### Scenario: Aba ativa destacada
 - **WHEN** a aba Apps está selecionada e o foco está na grade
-- **THEN** o rótulo "Apps" aparece em destaque com o sublinhado azul, e "Início" aparece em cinza claro, sem contorno
+- **THEN** o rótulo "Apps" aparece em destaque com o sublinhado branco, e "Início" aparece em cinza claro, sem contorno
 
 #### Scenario: Sublinhado branco no conteúdo
 - **WHEN** o foco está num item do dock ou da grade de Apps

@@ -120,6 +120,64 @@ pub fn format_size(bytes: u64, comma: bool) -> String {
     }
 }
 
+/// Formats a CPU frequency in kHz as GHz (2 decimal places when >= 1_000_000 kHz)
+/// or MHz (rounded integer when < 1_000_000 kHz).
+pub fn format_freq(khz: u64, comma: bool) -> String {
+    if khz >= 1_000_000 {
+        let ghz = khz as f64 / 1_000_000.0;
+        let s = format!("{ghz:.2} GHz");
+        if comma {
+            s.replace('.', ",")
+        } else {
+            s
+        }
+    } else {
+        let mhz = (khz as f64 / 1_000.0).round() as u64;
+        format!("{mhz} MHz")
+    }
+}
+
+/// Reads average per-core current and max CPU frequency (in kHz) from a sysfs-like cpu directory.
+pub fn read_cpu_freq_from_dir(base: &std::path::Path) -> Option<CpuReading> {
+    let mut sum_cur = 0u64;
+    let mut sum_max = 0u64;
+    let mut count = 0u64;
+    for i in 0..16 {
+        let cpufreq = base.join(format!("cpu{i}/cpufreq"));
+        if !cpufreq.is_dir() {
+            continue;
+        }
+        let cur = read_u64_file(&cpufreq.join("scaling_cur_freq"))
+            .or_else(|| read_u64_file(&cpufreq.join("cpuinfo_cur_freq")))
+            .unwrap_or(0);
+        let max = read_u64_file(&cpufreq.join("cpuinfo_max_freq"))
+            .or_else(|| read_u64_file(&cpufreq.join("scaling_max_freq")))
+            .unwrap_or(0);
+        if cur > 0 && max > 0 {
+            sum_cur += cur;
+            sum_max += max;
+            count += 1;
+        }
+    }
+    Some(CpuReading::Freq {
+        current: sum_cur.checked_div(count)?,
+        max: sum_max.checked_div(count)?,
+    })
+}
+
+/// Reads average per-core current and max CPU frequency from `/sys/devices/system/cpu`.
+pub fn read_sysfs_cpu_freq() -> Option<CpuReading> {
+    read_cpu_freq_from_dir(std::path::Path::new("/sys/devices/system/cpu"))
+}
+
+fn read_u64_file(path: &std::path::Path) -> Option<u64> {
+    std::fs::read_to_string(path)
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +246,37 @@ mod tests {
         assert_eq!(format_size(1_610_612_736, false), "1.5 GB");
         assert_eq!(format_size(1_610_612_736, true), "1,5 GB");
         assert_eq!(format_size(300 * 1024 * 1024, false), "300 MB");
+    }
+
+    #[test]
+    fn frequencies_in_ghz_and_mhz() {
+        assert_eq!(format_freq(1_350_000, true), "1,35 GHz");
+        assert_eq!(format_freq(1_500_000, false), "1.50 GHz");
+        assert_eq!(format_freq(1_000_000, true), "1,00 GHz");
+        assert_eq!(format_freq(750_000, true), "750 MHz");
+    }
+
+    #[test]
+    fn average_cpu_freq_is_read_from_sysfs_tree() {
+        let dir = std::env::temp_dir().join(format!("lume_cpufreq_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let c0 = dir.join("cpu0/cpufreq");
+        let c1 = dir.join("cpu1/cpufreq");
+        std::fs::create_dir_all(&c0).unwrap();
+        std::fs::create_dir_all(&c1).unwrap();
+        std::fs::write(c0.join("scaling_cur_freq"), "1200000\n").unwrap();
+        std::fs::write(c0.join("cpuinfo_max_freq"), "1500000\n").unwrap();
+        std::fs::write(c1.join("cpuinfo_cur_freq"), "1500000\n").unwrap();
+        std::fs::write(c1.join("scaling_max_freq"), "1500000\n").unwrap();
+
+        let reading = read_cpu_freq_from_dir(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            reading,
+            Some(CpuReading::Freq {
+                current: 1_350_000,
+                max: 1_500_000,
+            })
+        );
     }
 }

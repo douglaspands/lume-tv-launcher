@@ -162,7 +162,14 @@ impl LumeApp {
             (
                 StringId::StatsCpu,
                 self.cpu_use,
-                self.cpu_use.map(|u| format!("{:.0}%", u * 100.0)),
+                match stats.map(|s| s.cpu) {
+                    Some(stats::CpuReading::Freq { current, max }) if max > 0 => Some(format!(
+                        "{} / {}",
+                        stats::format_freq(current, comma),
+                        stats::format_freq(max, comma)
+                    )),
+                    _ => self.cpu_use.map(|u| format!("{:.0}%", u * 100.0)),
+                },
             ),
         ];
         let label = p.style(&THEME.breadcrumb, StateFlags::NONE);

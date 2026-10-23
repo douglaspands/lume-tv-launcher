@@ -170,8 +170,8 @@ pub fn feed_stats(app: &mut LumeApp, now_ms: u64) {
                 disk_total: 12_000_000_000,
                 disk_free: 7_300_000_000,
                 cpu: CpuReading::Freq {
-                    current: 3_600_000,
-                    max: 8_000_000,
+                    current: 1_350_000,
+                    max: 1_500_000,
                 },
             },
             now_ms,
