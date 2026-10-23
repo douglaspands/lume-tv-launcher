@@ -39,8 +39,8 @@
   /* Type scale: six even sizes, so the text lands on whole pixels at 1.5x (1080p). Every text
      component uses one of them; the build warns about any other size. */
   --font-title: 40px;   /* screen title */
-  --font-brand: 28px;   /* "Lume" in the top bar */
-  --font-primary: 22px; /* tabs, clock, sections, settings items, tiles, editor rows, About headings */
+  --font-brand: 28px;   /* "Lume" and the clock in the top bar */
+  --font-primary: 22px; /* tabs, sections, settings items, tiles, editor rows, About headings */
   --font-body: 20px;    /* base text, About body */
   --font-label: 18px;   /* buttons, dock bubble, toast, subtitle, breadcrumb, version, tile label, chip, panel */
   --font-caption: 16px; /* third-party licenses, card headings */
