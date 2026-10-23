@@ -70,7 +70,7 @@ under 1 the edges stair-step once the TV upscales and sharpens the picture, over
 
 Only the components below, with at most one pseudo-class: `:focus` (D-pad focus), `:active` (selected) and `:disabled`.
 
-`.app` `.topbar` `.brand` `.tab` `.clock` `.icon-button` `.button` `.button-secondary` `.button-danger` `.section-title` `.tile` `.tile-label` `.dock` `.dock-label` `.editor-row` `.chip` `.panel` `.breadcrumb` `.settings-item` `.menu` `.menu-item` `.menu-note` `.toast` `.page-title` `.page-subtitle` `.card-heading` `.about-heading` `.about-body` `.about-license`
+`.app` `.topbar` `.brand` `.tab` `.clock` `.icon-button` `.button` `.button-secondary` `.button-danger` `.section-title` `.tile` `.tile-label` `.dock` `.dock-label` `.editor-row` `.chip` `.panel` `.breadcrumb` `.settings-item` `.menu` `.menu-item` `.menu-note` `.menu-button` `.menu-button-danger` `.keycap` `.toast` `.page-title` `.page-subtitle` `.card-heading` `.about-heading` `.about-body` `.about-license`
 
 `.brand` is the "Lume" wordmark in the top bar; `.page-title` and `.page-subtitle` are the header of secondary screens; `.card-heading` is the uppercase heading inside a card (TV statistics, favorites order); `.about-heading`, `.about-body` and `.about-license` are the three kinds of text of the About screen. No screen sets a font size, weight or letter spacing in code: they all come from these components.
 
