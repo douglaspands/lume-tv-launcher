@@ -597,9 +597,48 @@ código por atalho e cada um foi disparado com `input keyevent` com o Lume na te
   | Android | `android.settings.SETTINGS` (`MainSettings`) |
 
   Sem tela própria nesta TV: `DREAM_SETTINGS`, `DISPLAY_SETTINGS`, `BLUETOOTH_SETTINGS`, `BATTERY_SAVER_SETTINGS`,
-  `CAST_SETTINGS` e `PRIVACY_SETTINGS` (esta cai num stub). A TCL ainda não foi conferida.
+  `CAST_SETTINGS` e `PRIVACY_SETTINGS` (esta cai num stub).
 - **Acessibilidade não tem tela nesta TV** (`ACCESSIBILITY_SETTINGS` é respondida pelo stub e as telas `oemlink.*`
   encerram na hora), o que levou a retirar o serviço de acessibilidade para atalhos em 2º plano: não havia como
   ligá-lo pela interface da TV. Os atalhos valem com o Lume em primeiro plano.
 - **Teclas por `adb`:** `sendevent` é negado ao `shell` nesta TV; `input keyevent` chega ao Lume (serve para disparar
   os atalhos com o Lume na tela). O `getevent -lp` lista os dispositivos `MStar Smart TV IR Receiver` e `MTK TV KEYPAD`.
+
+## Atalhos de configurações na TCL (change `atalhos-configuracoes-tcl`, 2026-10-24)
+
+TCL 55C715 (BeyondTV2, Android 11, API 30). Medido por `adb` com o build debug: o `keys.v1` da TV recebeu um
+código por atalho e cada um foi disparado com `input keyevent` com o Lume na tela.
+
+- **Filtragem de stubs vazios (`EmptyStubActivity`):** O firmware da TCL registra `com.android.tv.settings.EmptyStubActivity`
+  para responder a intents não suportados pelo fabricante (como `HOME_SETTINGS`). O método `leadsToScreen` descarta classes
+  com o sufixo `EmptyStubActivity`, permitindo que a cascata prossiga e entregue o seletor do `permissioncontroller`.
+- **Armazenamento seguro:** Na TCL, `ACTION_INTERNAL_STORAGE_SETTINGS` aponta para `StorageResetActivity` (Redefinição de fábrica).
+  A cascata foi ajustada para priorizar `com.android.tv.settings.STORAGE` e `device.StorageSummaryActivity`, abrindo a tela de estatísticas
+  e partições de armazenamento em vez do diálogo de reset.
+- **Timer / Sleep e Protetor de tela:** A cascata de desligamento automático/sleep prioriza a tela do parceiro da AIWA (`partnercustomizer.timer.TimerActivity`), seguida pela tela oficial de descanso do Android TV na TCL (`device.display.daydream.DaydreamActivity`), que concentra o Temporizador de desligamento (10 a 240 minutos), Desligar a tela e Protetor de tela, com fallback no intent padrão `DREAM_SETTINGS` e nas Configurações gerais.
+- **Tratamento de exceções na ROM da TCL:** A ação `ACTION_SOUND_SETTINGS` é mapeada no manifesto da TCL para
+  `com.android.tv.settings.device.displaysound.SoundActivity`, mas a classe não existe no DEX do pacote `TvSettings.apk` da fabricante.
+  O tratamento com captura abrangente de `Exception` no `LumeBridge` evita instabilidades no launcher.
+
+Tela de cada atalho conferida nesta TV:
+
+| Atalho | Tela |
+|---|---|
+| Timer / Sleep | `com.android.tv.settings/.device.display.daydream.DaydreamActivity` ("Protetor de tela": Temporizador de desligamento de 10 a 240 min e Desligar a tela) |
+| Imagem | `android.settings.SETTINGS` (`MainSettings`, fallback suave) |
+| Som | `com.android.tv.settings/.MainSettings` (evita `SoundActivity` ausente no DEX da TCL e faz fallback seguro em MainSettings) |
+| Wi-Fi | `android.settings.WIFI_SETTINGS` (`NetworkActivity`) |
+| Bluetooth | ação `com.google.android.intent.action.CONNECT_INPUT` (`AddAccessoryActivity`, procura acessórios) |
+| Aplicativos | `.device.apps.AppsActivity` |
+| Armazenamento | ação `com.android.tv.settings.STORAGE` (`StorageSummaryActivity`, partição e detalhes de disco) |
+| Idioma | `android.settings.LOCALE_SETTINGS` (`LanguageActivity`) |
+| Data e hora | `.system.DateTimeActivity` |
+| Teclado | `android.settings.INPUT_METHOD_SETTINGS` (`KeyboardActivity`) |
+| Legendas | `android.settings.CAPTIONING_SETTINGS` (`CaptionSetupActivity`) |
+| Localização | `android.settings.LOCATION_SOURCE_SETTINGS` (`LocationActivity`) |
+| Segurança e restrições | `android.settings.SECURITY_SETTINGS` (`SecurityActivity`) |
+| Opções do desenvolvedor | `android.settings.APPLICATION_DEVELOPMENT_SETTINGS` (`DevelopmentActivity`) |
+| App de início padrão | `android.settings.HOME_SETTINGS` (`com.google.android.permissioncontroller`, `DefaultAppActivity`) |
+| Sobre a TV | `android.settings.DEVICE_INFO_SETTINGS` (`AboutActivity`) |
+| Android | `android.settings.SETTINGS` (`MainSettings`) |
+

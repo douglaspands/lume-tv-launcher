@@ -37,7 +37,10 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Everything the Rust side needs from the Android framework, behind one text command.
@@ -636,6 +639,32 @@ public final class LumeBridge {
         }
     }
 
+    /** TV model profile detected to prioritize the most pertinent validation sequence. */
+    private enum DeviceProfile {
+        TCL,
+        AIWA,
+        GENERIC
+    }
+
+    private static DeviceProfile cachedProfile = null;
+    private static final Map<String, Intent> resolvedSettingCache = new ConcurrentHashMap<>();
+
+    private static DeviceProfile getDeviceProfile() {
+        if (cachedProfile != null) {
+            return cachedProfile;
+        }
+        String info = (Build.MANUFACTURER + " " + Build.BRAND + " " + Build.MODEL + " " + Build.PRODUCT)
+                .toLowerCase(Locale.ROOT);
+        if (info.contains("tcl") || info.contains("beyondtv")) {
+            cachedProfile = DeviceProfile.TCL;
+        } else if (info.contains("aiwa") || info.contains("ktc") || info.contains("stanford") || info.contains("mediatek")) {
+            cachedProfile = DeviceProfile.AIWA;
+        } else {
+            cachedProfile = DeviceProfile.GENERIC;
+        }
+        return cachedProfile;
+    }
+
     /** An activity of the TV settings app, by name. */
     private static Intent tvSettings(String activity) {
         return new Intent().setClassName("com.android.tv.settings", "com.android.tv.settings." + activity);
@@ -650,159 +679,218 @@ public final class LumeBridge {
         if (found == null || found.activityInfo == null) {
             return false;
         }
+        if (found.activityInfo.name != null && found.activityInfo.name.endsWith("EmptyStubActivity")) {
+            return false;
+        }
         String owner = found.activityInfo.packageName;
         return !"android".equals(owner) && !"com.google.android.tv.frameworkpackagestubs".equals(owner);
     }
 
     /**
-     * Opens the settings screen of a shortcut. Each one tries the standard action first and then the
-     * screens the TV firmwares have for it (checked on the AIWA, Android 11), and ends in the general
-     * settings, which every TV has.
+     * Constructs the intent cascade prioritized for the specific TV model profile.
+     */
+    private static Intent[] getIntentsForSetting(DeviceProfile profile, String setting) {
+        switch (setting) {
+            case "sleep":
+                if (profile == DeviceProfile.AIWA) {
+                    return new Intent[] {
+                        tvSettings("partnercustomizer.timer.TimerActivity"),
+                        tvSettings("device.display.daydream.DaydreamActivity"),
+                        new Intent("android.settings.DREAM_SETTINGS"),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                } else if (profile == DeviceProfile.TCL) {
+                    return new Intent[] {
+                        tvSettings("device.display.daydream.DaydreamActivity"),
+                        new Intent("android.settings.DREAM_SETTINGS"),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                } else {
+                    return new Intent[] {
+                        tvSettings("device.display.daydream.DaydreamActivity"),
+                        tvSettings("partnercustomizer.timer.TimerActivity"),
+                        new Intent("android.settings.DREAM_SETTINGS"),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                }
+
+            case "picture":
+                if (profile == DeviceProfile.AIWA) {
+                    return new Intent[] {
+                        new Intent("android.settings.PQAQ.SETTINGS"),
+                        tvSettings("device.displaysound.DisplaySoundActivity"),
+                        new Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                } else {
+                    return new Intent[] {
+                        tvSettings("device.displaysound.DisplaySoundActivity"),
+                        new Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                        new Intent("android.settings.PQAQ.SETTINGS"),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                }
+
+            case "sound":
+                if (profile == DeviceProfile.TCL) {
+                    // TCL TvSettings declares SoundActivity in manifest but lacks class in DEX.
+                    // Fall back cleanly to DisplaySound or General Settings to avoid ROM crash logs.
+                    return new Intent[] {
+                        tvSettings("device.displaysound.DisplaySoundActivity"),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                } else {
+                    return new Intent[] {
+                        new Intent(Settings.ACTION_SOUND_SETTINGS),
+                        tvSettings("device.displaysound.DisplaySoundActivity"),
+                        new Intent(Settings.ACTION_SETTINGS)
+                    };
+                }
+
+            case "wifi":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_WIFI_SETTINGS),
+                    tvSettings("connectivity.NetworkActivity"),
+                    new Intent(Settings.ACTION_WIRELESS_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "bluetooth":
+                return new Intent[] {
+                    new Intent("com.google.android.intent.action.CONNECT_INPUT"),
+                    tvSettings("accessories.AddAccessoryActivity"),
+                    new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "apps":
+                // The standard action is answered by a chooser on some TVs, so the screen comes first.
+                return new Intent[] {
+                    tvSettings("device.apps.AppsActivity"),
+                    tvSettings("device.apps.AllAppsActivity"),
+                    new Intent(Settings.ACTION_APPLICATION_SETTINGS),
+                    new Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "storage":
+                return new Intent[] {
+                    new Intent("com.android.tv.settings.STORAGE"),
+                    tvSettings("device.StorageSummaryActivity"),
+                    new Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS),
+                    new Intent(Settings.ACTION_MEMORY_CARD_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "language":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_LOCALE_SETTINGS),
+                    tvSettings("system.LanguageActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "datetime":
+                // The standard action is answered by a chooser on some TVs, so the screen comes first.
+                return new Intent[] {
+                    tvSettings("system.DateTimeActivity"),
+                    new Intent(Settings.ACTION_DATE_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "keyboard":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS),
+                    tvSettings("inputmethod.KeyboardActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "captions":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_CAPTIONING_SETTINGS),
+                    tvSettings("system.CaptionSetupActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "location":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),
+                    tvSettings("system.LocationActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "security":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_SECURITY_SETTINGS),
+                    tvSettings("system.SecurityActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "developer":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS),
+                    tvSettings("system.development.DevelopmentActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "home_app":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_HOME_SETTINGS).setPackage("com.google.android.permissioncontroller"),
+                    new Intent(Settings.ACTION_HOME_SETTINGS),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "about":
+                return new Intent[] {
+                    new Intent(Settings.ACTION_DEVICE_INFO_SETTINGS),
+                    tvSettings("about.AboutActivity"),
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+
+            case "android":
+            default:
+                return new Intent[] {
+                    new Intent(Settings.ACTION_SETTINGS)
+                };
+        }
+    }
+
+    /**
+     * Opens the settings screen of a shortcut. Uses TV model detection to prioritize the most pertinent
+     * sequence of validation (AIWA, TCL, and Android TV default), with caching of working intents.
      */
     private static String openSetting(Context context, String setting) {
         if (setting == null) {
             return "missing";
         }
-        Intent[] intents;
-        switch (setting) {
-            case "sleep":
-                // The auto-off timer of the TV settings (a partner screen), then the screensaver.
-                intents = new Intent[] {
-                    tvSettings("partnercustomizer.timer.TimerActivity"),
-                    new Intent("android.settings.DREAM_SETTINGS"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "picture":
-                // "PQAQ" is the picture and sound quality screen of the MediaTek TVs.
-                intents = new Intent[] {
-                    new Intent("android.settings.PQAQ.SETTINGS"),
-                    new Intent(Settings.ACTION_DISPLAY_SETTINGS),
-                    tvSettings("device.displaysound.DisplaySoundActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "sound":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_SOUND_SETTINGS),
-                    tvSettings("device.displaysound.DisplaySoundActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "wifi":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_WIFI_SETTINGS),
-                    tvSettings("connectivity.NetworkActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "bluetooth":
-                // Android TV's "add accessory" (searches and pairs), then the standard action.
-                intents = new Intent[] {
-                    new Intent("com.google.android.intent.action.CONNECT_INPUT"),
-                    new Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
-                    tvSettings("accessories.AddAccessoryActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "apps":
-                // The standard action is answered by a chooser on some TVs, so the screen comes first.
-                intents = new Intent[] {
-                    tvSettings("device.apps.AppsActivity"),
-                    new Intent(Settings.ACTION_APPLICATION_SETTINGS),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "storage":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS),
-                    new Intent(Settings.ACTION_MEMORY_CARD_SETTINGS),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "language":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_LOCALE_SETTINGS),
-                    tvSettings("system.LanguageActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "datetime":
-                // The standard action is answered by a chooser on some TVs, so the screen comes first.
-                intents = new Intent[] {
-                    tvSettings("system.DateTimeActivity"),
-                    new Intent(Settings.ACTION_DATE_SETTINGS),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "keyboard":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS),
-                    tvSettings("inputmethod.KeyboardActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "captions":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_CAPTIONING_SETTINGS),
-                    tvSettings("system.CaptionSetupActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "location":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS),
-                    tvSettings("system.LocationActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "security":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_SECURITY_SETTINGS),
-                    tvSettings("system.SecurityActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "developer":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS),
-                    tvSettings("system.development.DevelopmentActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "home_app":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_HOME_SETTINGS),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "about":
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_DEVICE_INFO_SETTINGS),
-                    tvSettings("about.AboutActivity"),
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
-            case "android":
-            default:
-                intents = new Intent[] {
-                    new Intent(Settings.ACTION_SETTINGS)
-                };
-                break;
+
+        // Fast path: reuse working intent resolved previously
+        Intent cached = resolvedSettingCache.get(setting);
+        if (cached != null) {
+            try {
+                context.startActivity(cached);
+                return "ok";
+            } catch (Exception e) {
+                resolvedSettingCache.remove(setting);
+            }
         }
+
+        DeviceProfile profile = getDeviceProfile();
+        Intent[] intents = getIntentsForSetting(profile, setting);
 
         for (Intent intent : intents) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if (leadsToScreen(context, intent)) {
                 try {
                     context.startActivity(intent);
+                    resolvedSettingCache.put(setting, new Intent(intent));
                     return "ok";
-                } catch (ActivityNotFoundException | SecurityException ignored) {
+                } catch (Exception ignored) {
                 }
             }
         }
         try {
-            context.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            Intent fallback = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(fallback);
             return "ok";
         } catch (Exception e) {
             return "missing";
