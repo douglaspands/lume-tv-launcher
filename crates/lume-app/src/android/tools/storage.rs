@@ -17,10 +17,16 @@ use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
-/// The temporary file of the test, in the app's `files/`.
-pub const TEST_FILE: &str = "lume-storage-test.tmp";
+/// The start of the temporary file's name, in the app's `files/`. Every run has a file of its own
+/// (`lume-storage-test.<run>.tmp`): a cancelled run whose thread is still ending deletes its own
+/// file, never the one of the run that replaced it.
+const TEST_FILE_PREFIX: &str = "lume-storage-test";
+
+/// Numbers the runs, for their file names.
+static RUN: AtomicU32 = AtomicU32::new(0);
 
 /// The free and total bytes of the partition that holds `dir`.
 pub fn space(dir: &Path) -> Option<StorageSpace> {
@@ -71,7 +77,8 @@ pub fn run(context: &TestContext) {
         let _ = send(context, StorageUpdate::Failed);
         return;
     };
-    let path = context.files.join(TEST_FILE);
+    let run = RUN.fetch_add(1, Ordering::Relaxed);
+    let path = context.files.join(format!("{TEST_FILE_PREFIX}.{run}.tmp"));
     let result = if space.free_bytes < MIN_FREE_BYTES {
         send(context, StorageUpdate::NoSpace(space))
     } else {
@@ -142,7 +149,16 @@ fn drop_cache(file: &File) {
     }
 }
 
-/// Deletes the test file if a run left it (finished, cancelled or killed).
+/// Deletes the test files that runs left (finished, cancelled or killed). A run still ending keeps
+/// writing to its open file, which goes once it is closed.
 pub fn cleanup(files: &Path) {
-    let _ = std::fs::remove_file(files.join(TEST_FILE));
+    let Ok(entries) = std::fs::read_dir(files) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with(TEST_FILE_PREFIX) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }

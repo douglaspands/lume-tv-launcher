@@ -112,7 +112,7 @@ impl Tools {
         if let Some(mut run) = self.test.take() {
             run.cancel.store(true, Ordering::SeqCst);
             // Dropping the receiver makes the thread's next send fail; it is not joined here, so
-            // the loop never waits on the network.
+            // the loop never waits on the storage. The thread deletes its own file when it ends.
             drop(run.thread.take());
         }
         storage::cleanup(&self.files);
