@@ -79,7 +79,7 @@ fn main() {
         "logo" => screenshot::save(path, width, height, screenshot::draw_logo),
         "banner" => screenshot::save(path, width, height, screenshot::draw_banner),
         "home" | "apps" | "settings" | "tvinfo" | "about" | "editor" | "tools" | "tool-display"
-        | "tool-picture" | "tool-remote" | "tool-audio" | "tool-storage" => {
+        | "tool-picture" | "tool-remote" | "tool-audio" | "tool-storage" | "receive" => {
             let setup = Setup {
                 locale: options.locale.clone(),
                 pseudo_locale: options.pseudo_locale,
@@ -95,6 +95,8 @@ fn main() {
                 "tvinfo" => "up,right,down,down,right,ok,down,down,ok",
                 "about" => "up,right,down,down,right,ok,down,down,down,down,ok",
                 "editor" => "up,right,down,down,right,ok,ok",
+                // The editor, then its last mini-card ("+ From phone").
+                "receive" => "up,right,down,down,right,ok,ok,left,ok",
                 // The Tools menu, then each tool by its place in the menu.
                 "tools" => "up,right,down,down,right,ok,down,down,down,ok",
                 "tool-display" => "up,right,down,down,right,ok,down,down,down,ok,ok",
@@ -111,6 +113,63 @@ fn main() {
                 keys.extend(demo::parse_keys(list).unwrap_or_else(|e| fail(&e)));
             }
             screenshot::render_app(width, height, &mut app, &keys, options.splash)
+                .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
+        }
+        // Serves the Receive image screen for real (a phone or a browser on this network can send a
+        // picture), then shoots the Adjust screen it opens. LUME_SERVE_SECS: how long to wait (120).
+        "receive-live" => {
+            let setup = Setup {
+                locale: options.locale.clone(),
+                pseudo_locale: options.pseudo_locale,
+                is_24h: !options.clock_12h,
+                favorites: options.favorites,
+            };
+            let mut app = demo::app_with(&setup);
+            let keys = demo::parse_keys(
+                "up,right,down,down,right,ok,ok,right,right,right,right,right,right,ok",
+            )
+            .unwrap_or_else(|e| fail(&e));
+            let secs = std::env::var("LUME_SERVE_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(120);
+            screenshot::serve_receive(
+                width,
+                height,
+                &mut app,
+                &keys,
+                std::time::Duration::from_secs(secs),
+            )
+            .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
+        }
+        "confirm" => {
+            let setup = Setup {
+                locale: options.locale.clone(),
+                pseudo_locale: options.pseudo_locale,
+                is_24h: !options.clock_12h,
+                favorites: options.favorites,
+            };
+            let mut app = demo::app_with(&setup);
+            let image = match &options.image {
+                Some(path) => {
+                    let (width, height, rgb) =
+                        png_out::read_rgb(path).unwrap_or_else(|e| fail(&e));
+                    if (width, height) != (1920, 1080) {
+                        fail("the phone sends 1920x1080: --image must have that size");
+                    }
+                    lume_core::wallpaper::Image { width, height, rgb: rgb.into() }
+                }
+                None => demo::sample_photo(),
+            };
+            // The editor first, so Cancel and Apply go back to it as on the TV.
+            let mut keys = demo::parse_keys("up,right,down,down,right,ok,ok").unwrap_or_else(|e| fail(&e));
+            let mut extra = Vec::new();
+            if let Some(list) = &options.keys {
+                extra = demo::parse_keys(list).unwrap_or_else(|e| fail(&e));
+            }
+            screenshot::render_app_then(width, height, &mut app, &keys.split_off(0), options.splash, |app| {
+                app.confirm_with(image.clone());
+            }, &extra)
                 .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
         }
         other if other.starts_with("keymap") => {
@@ -137,7 +196,7 @@ fn main() {
                 .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
         }
         other => fail(&format!(
-            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor, keymap, tools, tool-display, tool-picture, tool-remote, tool-audio, tool-storage)"
+            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor, keymap, tools, tool-display, tool-picture, tool-remote, tool-audio, tool-storage, receive, confirm)"
         )),
     };
     match result {

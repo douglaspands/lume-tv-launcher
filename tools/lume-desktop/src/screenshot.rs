@@ -142,6 +142,20 @@ pub fn render_app(
     keys: &[Key],
     splash: Option<u64>,
 ) -> Result<Vec<u8>, String> {
+    render_app_then(width, height, app, keys, splash, |_| {}, &[])
+}
+
+/// Like [`render_app`], with `between` done to the app after `keys` and then `after` pressed (the
+/// Confirm screen opens with a picture this way, as if the phone had sent it).
+pub fn render_app_then(
+    width: u32,
+    height: u32,
+    app: &mut LumeApp,
+    keys: &[Key],
+    splash: Option<u64>,
+    between: impl FnOnce(&mut LumeApp),
+    after: &[Key],
+) -> Result<Vec<u8>, String> {
     let mut session = Session::new(width, height)?;
     session.load_icons(app);
     let mut now = 0u64;
@@ -165,6 +179,39 @@ pub fn render_app(
             eprintln!("{key:?} -> focus {:?}", app.focused());
         }
     }
+    between(app);
+    now += 100;
+    frame(&mut session, app, now);
+    for key in after {
+        now += 100;
+        app.handle_key(*key, now);
+        frame(&mut session, app, now);
+        if std::env::var_os("LUME_TRACE").is_some() {
+            eprintln!("{key:?} -> focus {:?}", app.focused());
+        }
+    }
+    // Apply keeps the picture off the loop: wait for it.
+    let mut changed = false;
+    for _ in 0..1000 {
+        if !app.confirm_busy() {
+            break;
+        }
+        changed |= app.poll_background(now).is_some();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    // LUME_ADVANCE_MS: the clock moves on before the picture (the Receive image screen's countdown
+    // and its time-out).
+    if let Some(ms) = std::env::var("LUME_ADVANCE_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+    {
+        now += ms;
+    }
+    if app.poll_background(now).is_some() || changed {
+        // The screen changed off the loop (Apply took it back to the editor): a frame starts its
+        // animations, and the ones below let them finish.
+        frame(&mut session, app, now);
+    }
     // Let every animation finish before the picture that is kept.
     now += 2000;
     frame(&mut session, app, now);
@@ -186,6 +233,60 @@ pub fn render_app(
     let pixels = session.render();
     session.finish();
     Ok(pixels)
+}
+
+/// Opens the Receive image screen with `keys`, prints the address the QR carries and serves for real
+/// until a picture arrives (or `limit` passes); then takes the screenshot of the Confirm screen.
+pub fn serve_receive(
+    width: u32,
+    height: u32,
+    app: &mut LumeApp,
+    keys: &[Key],
+    limit: std::time::Duration,
+) -> Result<Vec<u8>, String> {
+    let mut session = Session::new(width, height)?;
+    session.load_icons(app);
+    let started = std::time::Instant::now();
+    let now = |started: std::time::Instant| started.elapsed().as_millis() as u64;
+    let frame = |session: &mut Session, app: &mut LumeApp, now: u64| {
+        session.build(|scene| {
+            let mut painter = Painter {
+                list: scene.list,
+                text: scene.text,
+                display: *scene.display,
+            };
+            app.draw(&mut painter, now);
+        });
+    };
+    frame(&mut session, app, now(started));
+    for key in keys {
+        app.handle_key(*key, now(started));
+        frame(&mut session, app, now(started));
+    }
+    let url = app
+        .companion_url()
+        .ok_or("the Receive image screen has no address (no network?)")?;
+    println!("companion {url}");
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+    while started.elapsed() < limit {
+        if app.poll_background(now(started)).is_some() {
+            frame(&mut session, app, now(started));
+            println!("screen {:?}", app.screen());
+            let _ = std::io::stdout().flush();
+        }
+        if *app.screen() == lume_core::app::Screen::ConfirmImage {
+            for _ in 0..3 {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                frame(&mut session, app, now(started));
+            }
+            let pixels = session.render();
+            session.finish();
+            return Ok(pixels);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    Err("no picture arrived in time".into())
 }
 
 /// The logo lockup on the theme background: mark, wordmark and tagline, as in the design file.

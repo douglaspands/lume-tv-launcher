@@ -93,11 +93,69 @@ pub fn map_some_keys(app: &mut LumeApp) {
     }
 }
 
+/// The computer's address on the local network, for the phone companion: the one a UDP socket
+/// would leave from (connecting a UDP socket sends nothing). Named `eth0`, as a single wired
+/// interface.
+fn local_interfaces() -> Vec<(String, std::net::Ipv4Addr)> {
+    // LUME_NO_NETWORK: as a TV without a network (the Receive image screen's message).
+    if std::env::var_os("LUME_NO_NETWORK").is_some() {
+        return Vec::new();
+    }
+    let socket = std::net::UdpSocket::bind(("0.0.0.0", 0));
+    let address = socket.and_then(|s| {
+        s.connect(("192.0.2.1", 9))?;
+        s.local_addr()
+    });
+    match address {
+        Ok(std::net::SocketAddr::V4(v4)) => vec![("eth0".to_string(), *v4.ip())],
+        _ => Vec::new(),
+    }
+}
+
+/// A made-up photo already framed by the phone (1920x1080): a dusk sky over hills, for the Confirm
+/// screen.
+pub fn sample_photo() -> lume_core::wallpaper::Image {
+    let (width, height) = (1920u32, 1080u32);
+    let mut rgb = Vec::with_capacity((width * height * 3) as usize);
+    for y in 0..height {
+        for x in 0..width {
+            let t = y as f32 / height as f32;
+            let hill = 760.0 + 80.0 * ((x as f32) / 170.0).sin() + 40.0 * ((x as f32) / 53.0).cos();
+            let (r, g, b) = if (y as f32) > hill {
+                (20.0 + 30.0 * t, 40.0 + 20.0 * t, 35.0)
+            } else {
+                (40.0 + 200.0 * t, 60.0 + 90.0 * t, 160.0 - 60.0 * t)
+            };
+            let sun = ((x as f32 - 1300.0).powi(2) + (y as f32 - 620.0).powi(2)).sqrt();
+            let glow = (1.0 - sun / 220.0).max(0.0) * 140.0;
+            rgb.extend_from_slice(&[
+                (r + glow).min(255.0) as u8,
+                (g + glow * 0.8).min(255.0) as u8,
+                (b + glow * 0.4).min(255.0) as u8,
+            ]);
+        }
+    }
+    lume_core::wallpaper::Image {
+        width,
+        height,
+        rgb: rgb.into(),
+    }
+}
+
 /// A launcher with the mockup apps, as it looks on a first run.
 pub fn app_with(setup: &Setup) -> LumeApp {
     let catalog = Catalog::from_discovered(&mockup_apps(), "app.lume.tv");
     let mut usage = UsageHistory::new();
     usage.mark_baseline(catalog.apps().iter().map(|a| a.package.as_str()));
+    // Where "Minha imagem" keeps its source, as the app's files/ on the TV: LUME_DATA_DIR, or a
+    // directory of this run under the system's temporary one (a fresh start every time).
+    let files = std::env::var_os("LUME_DATA_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::temp_dir().join(format!("lume-desktop-{}", std::process::id()))
+        });
+    lume_core::wallpaper::custom::set_files_dir(files);
+    lume_core::companion::set_interface_provider(local_interfaces);
     let mut config = HomeConfig::first_use(&catalog);
     if let Some(count) = setup.favorites {
         config.favorites = mockup_apps()
