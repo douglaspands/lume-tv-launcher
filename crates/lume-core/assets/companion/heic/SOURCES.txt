@@ -1,0 +1,14 @@
+HEIC decoder of the Lume phone page (heic.js, heic.wasm)
+
+Built by scripts/build-heic-wasm.sh from:
+  libheif 1.23.7  (LGPL-3.0)  https://github.com/strukturag/libheif/releases/download/v1.23.7/libheif-1.23.7.tar.gz
+    SHA-256 f7483e818503ea6224c8863e4a56ac02c7089021a98472c811c12aa19faf2475
+  libde265 1.1.3  (LGPL-3.0)  https://github.com/strukturag/libde265/releases/download/v1.1.3/libde265-1.1.3.tar.gz
+    SHA-256 554228bd17788c99a7e63b37ab5634722190e6e2bf60c1dcb01cef328e133905
+Compiler: docker.io/emscripten/emsdk:6.0.9
+Options: static libraries, Release, only the libde265 (HEVC) decoder in libheif, no plugins, no
+threads, no SIMD; the glue function lume_heic_decode (in the script) returns the primary picture as
+RGBA with the file's rotation and mirroring applied.
+
+heic.js  SHA-256 bb152705c5f20e5c181cf44358b21f14006866678c9b550215235748af148c2d
+heic.wasm SHA-256 7fb224a646cb5e9d34d9037259fc387ac993fc45c3c6b48a6075cad1d2355254
