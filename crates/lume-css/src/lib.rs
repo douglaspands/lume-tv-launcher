@@ -59,6 +59,27 @@ pub const MIN_FONT_SIZE: f32 = 16.0;
 /// even, so the text lands on whole pixels at 1.5x (1080p).
 pub const FONT_SCALE: &[f32] = &[16.0, 18.0, 20.0, 22.0, 28.0, 40.0];
 
+/// The duration scale of Material Design 3 (`--duration-short1` to `--duration-long4`): 50 to 600 ms
+/// in steps of 50. Any other duration produces a warning, except the [`DURATION_EXCEPTIONS`].
+pub const DURATION_SCALE: &[f32] = &[
+    50.0, 100.0, 150.0, 200.0, 250.0, 300.0, 350.0, 400.0, 450.0, 500.0, 550.0, 600.0,
+];
+
+/// Durations off the scale that the author decided on: the tab fade (`--tab-fade`, 180 ms) and the
+/// dock reordering (`--dock-reorder`, 240 ms).
+pub const DURATION_EXCEPTIONS: &[f32] = &[180.0, 240.0];
+
+/// Whether a transition duration is a step of the scale or a registered exception.
+pub fn duration_is_allowed(ms: f32) -> bool {
+    DURATION_SCALE.contains(&ms) || DURATION_EXCEPTIONS.contains(&ms)
+}
+
+fn duration_warning(ms: f32) -> String {
+    format!(
+        "transition of {ms}ms is not in the duration scale {DURATION_SCALE:?} nor a registered exception {DURATION_EXCEPTIONS:?}"
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum State {
     Base,
@@ -521,15 +542,26 @@ impl<'a> Parser<'a> {
         };
         let mut variables = Vec::new();
         let mut var_errors = Vec::new();
+        let mut var_warnings = Vec::new();
         for (name, _, line) in &raw_vars {
             match resolver.resolve_var(name, &mut Vec::new()) {
-                Ok(v) => variables.push((name.clone(), v)),
+                Ok(v) => {
+                    if let Ok(t) = value::parse_transition(&v) {
+                        if !duration_is_allowed(t.duration_ms) {
+                            var_warnings.push((*line, duration_warning(t.duration_ms)));
+                        }
+                    }
+                    variables.push((name.clone(), v))
+                }
                 Err(ResolveError::Failed) => {}
                 Err(e) => var_errors.push((*line, e.message(name))),
             }
         }
         for (line, msg) in var_errors {
             self.error(line, msg);
+        }
+        for (line, msg) in var_warnings {
+            self.warn(line, msg);
         }
 
         let mut sheet_rules = Vec::new();
@@ -566,6 +598,11 @@ impl<'a> Parser<'a> {
                 };
                 match value::parse_decl(&d.name, &value) {
                     Ok(decl) => {
+                        if let Decl::Transition(t) = decl {
+                            if !duration_is_allowed(t.duration_ms) {
+                                self.warn(d.line, duration_warning(t.duration_ms));
+                            }
+                        }
                         if let Decl::FontSize(px) = decl {
                             if px < MIN_FONT_SIZE {
                                 self.warn(

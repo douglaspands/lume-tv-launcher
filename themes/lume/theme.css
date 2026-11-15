@@ -8,30 +8,40 @@
  */
 
 :root {
+  /* Tonal palettes (Material Design 3, HCT): every neutral and danger color below is a tone of one
+     of them, named in the comment after its hex. Do not edit those hex by hand: change the palette
+     or the tone and run `uv run scripts/tonal-palette.py` (`--check` only compares).
+     A text over its background is at least 50 tones away (4.5:1); an outline, at least 40 (3:1).
+     @palette surface 245 12
+     @palette surface-variant 246 18
+     @palette neutral 240 6
+     @palette error 25 84
+     --primary is a fixed seed (tone 70, hue 247), not generated. */
+
   /* Surfaces */
-  --bg: #0F171E;
-  --surface: #121C25;
-  --surface-row: #17222C;
-  --surface-focus: #1F3040;
-  --surface-icon: #1A252F;
-  --control: #2A3A48;
-  --control-disabled: #1D2A35;
-  --border: #2F4252;
-  --danger-bg: #4A2630;
-  --danger-fg: #FFB4BE;
+  --bg: #0C171F; /* surface T7 */
+  --surface: #121D25; /* surface T10 */
+  --surface-row: #18232C; /* surface T13 */
+  --surface-focus: #1E303F; /* surface-variant T19 */
+  --surface-icon: #1B252E; /* surface T14 */
+  --control: #293B4B; /* surface-variant T24 */
+  --control-disabled: #1F2932; /* surface T16 */
+  --border: #304252; /* surface-variant T27 */
+  --danger-bg: #690005; /* error T20 */
+  --danger-fg: #FFB4AB; /* error T80 */
 
   /* Text */
   --text: var(--secondary);
-  --text-soft: #DDE3E8;
-  --text-muted: #AEB9C2;
-  --text-disabled: #59626A;
+  --text-soft: #DFE3E8; /* neutral T90 */
+  --text-muted: #B5B9BE; /* neutral T75 */
+  --text-disabled: #5D6165; /* neutral T41 */
 
   /* Roles. The primary color says "this is where the focus is and what you control": the tab
      underline while the top bar has the focus, the focus outline, the main buttons. The
      secondary color is the neutral one: text, and the underline when the focus is in the content. */
   --primary: #4DB3FF;
-  --on-primary: #0F171E;
-  --secondary: #F2F5F7;
+  --on-primary: var(--bg);
+  --secondary: #F1F4F9; /* neutral T96 */
   /* Old names, kept for themes written before the roles existed. */
   --accent: var(--primary);
   --on-accent: var(--on-primary);
@@ -44,44 +54,113 @@
   --font-body: 20px;    /* base text, About body */
   --font-label: 18px;   /* buttons, dock bubble, toast, subtitle, breadcrumb, version, tile label, chip, panel */
   --font-caption: 16px; /* third-party licenses, card headings */
+  /* Each level is a package of size, line height and letter spacing (Material Design 3 type scale,
+     adapted). The line heights are on the 4-unit ruler; they space the lines of multi-line text,
+     while a single line is still placed by its baseline. */
+  --line-title: 48px;
+  --line-brand: 36px;
+  --line-primary: 28px;
+  --line-body: 28px;
+  --line-label: 24px;
+  --line-caption: 24px;
+  --tracking-title: -0.8px;
+  --tracking-brand: -0.5px; /* the wordmark; the clock keeps 0 (author's decision) */
+  --tracking-primary: 0px;
+  --tracking-body: 0px;
+  --tracking-label: 0px;
+  --tracking-caption: 0px;
+  --tracking-caps: 1.2px;   /* uppercase card headings */
 
-  /* Shape */
-  --radius: 12px;
+  /* Shape: the corner radius scale of Material Design 3. Every corner of the interface is one of
+     these; --shape-full is a pill or a circle (a radius larger than half the box is drawn as half,
+     as in CSS). */
+  --shape-md: 12px;   /* cards, buttons, items, tiles, mini-cards */
+  --shape-lg: 20px;   /* light cards: context menu, modal, dialog */
+  --shape-xl: 28px;   /* dock */
+  --shape-full: 9999px; /* chip, keycap, round button, switch */
+  --radius: var(--shape-md); /* old name */
   /* Width of the antialiased edge of every shape and clipped image, in pixels of the render buffer
      (not of the canvas), from 1 to 1.5: wide enough to survive the TV's upscaling and sharpening. */
   --edge-softness: 1.5px;
 
+  /* Elevation: only the layers that float over others cast a shadow, one level each. Nothing else
+     (tiles, mini-cards, items, panels) has a shadow, and no screen draws one in code. */
+  --elevation-1: 0 4px 24px rgba(0, 0, 0, 0.45);  /* light cards: context menu, modal, dialog */
+  --elevation-2: 0 8px 24px rgba(0, 0, 0, 0.4);   /* toast */
+  --elevation-3: 0 16px 40px rgba(0, 0, 0, 0.45); /* dock */
+
+  /* Motion (Material Design 3): named easing curves and a scale of durations, 50 to 600 ms in steps
+     of 50. Every transition uses one curve and one step; the build warns about any other duration.
+     Something that comes in decelerates (emphasized), a response to the remote decelerates (standard). */
+  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --easing-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);
+  --easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --easing-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --duration-short1: 50ms;
+  --duration-short2: 100ms;
+  --duration-short3: 150ms;
+  --duration-short4: 200ms;
+  --duration-medium1: 250ms;
+  --duration-medium2: 300ms;
+  --duration-medium3: 350ms;
+  --duration-medium4: 400ms;
+  --duration-long1: 450ms;
+  --duration-long2: 500ms;
+  --duration-long3: 550ms;
+  --duration-long4: 600ms;
+  /* The author's exceptions, off the scale on purpose: the fade of the content when the tab changes,
+     and the icons sliding to their new places when the favorites change. */
+  --tab-fade: 180ms ease-out;
+  --dock-reorder: 240ms ease-in-out;
+
   /* Focus */
   --focus-ring: 4px solid var(--primary);
   --focus-scale: 1.05;
-  --focus-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  --focus-time: 150ms ease-out;
+  --focus-time: var(--duration-short3) var(--easing-standard-decelerate);
+  /* The context menu fades in and rises 8 as it opens, and fades out as it closes. */
+  --menu-in: var(--duration-short3) var(--easing-emphasized-decelerate);
 
   /* Context menu: a light card, the one surface that stands out over the dark screens */
-  --menu-surface: #F2F5F7;
-  --menu-text: #1B2630;
-  --menu-text-muted: #5E6A75;
-  /* Danger on the light card (the reserved-key warning, the "Restore" button): 5.97:1 on --menu-surface.
-     --danger-fg is only for dark surfaces. */
-  --menu-danger: #B3261E;
+  --menu-surface: #F1F4F9; /* neutral T96 */
+  --menu-text: #1D2730; /* surface T15 */
+  --menu-text-muted: #64696D; /* neutral T44 */
+  /* Danger on the light card (the reserved-key warning, the "Restore" button). --danger-fg is only
+     for dark surfaces. */
+  --menu-danger: #BA1A1A; /* error T40 */
+
+  /* Material Design 3 color roles, as aliases of the tokens above. The screens keep the lume names;
+     a new component picks its color by the M3 role. */
+  --surface-container-lowest: var(--bg);
+  --surface-container-low: var(--surface);
+  --surface-container: var(--surface-row);
+  --surface-container-high: var(--surface-focus);
+  --on-surface: var(--text);
+  --on-surface-variant: var(--text-muted);
+  --outline: var(--border);
+  --error: var(--menu-danger);
+  --error-container: var(--danger-bg);
+  --on-error-container: var(--danger-fg);
+  --inverse-surface: var(--menu-surface);
+  --inverse-on-surface: var(--menu-text);
 
   /* Splash: the logo fades in centered on --bg (the color of the system's starting window) while
      the screen behind it gets ready, then the reveal. The status band under it is kept empty for
      a future loading indicator. */
   --splash-logo: 128px;
-  --splash-logo-in: 300ms ease-out;
+  --splash-logo-in: var(--duration-medium2) var(--easing-emphasized-decelerate);
   /* How long the logo is held from the first frame before the reveal may start (a duration; the
      curve is unused). */
-  --splash-hold-cold: 600ms linear;
-  --splash-hold-warm: 300ms linear;
+  --splash-hold-cold: var(--duration-long4) linear;
+  --splash-hold-warm: var(--duration-medium2) linear;
   --splash-status-top: 32px;    /* from the logo's bottom edge */
   --splash-status-height: 24px;
-  --splash-reveal-cold: 600ms linear;   /* linear: the stages below shape it */
-  --splash-reveal-warm: 360ms linear;
+  --splash-reveal-cold: var(--duration-long4) linear;   /* linear: the stages below shape it */
+  --splash-reveal-warm: var(--duration-medium3) linear;
   --splash-rise: 16px;          /* the content comes up this much while it is revealed */
   /* An icon that arrives once the interface is on screen fades in over the app's color and initial,
      instead of popping in. */
-  --icon-in: 150ms ease-out;
+  --icon-in: var(--duration-short3) var(--easing-emphasized-decelerate);
 
   /* Tabs */
   --tab-underline: 2px;
@@ -107,6 +186,7 @@
   background: var(--bg);
   color: var(--text);
   font-size: var(--font-body);
+  line-height: var(--line-body);
   font-weight: 500;
 }
 
@@ -119,13 +199,15 @@
 .brand {
   color: var(--text);
   font-size: var(--font-brand);
+  line-height: var(--line-brand);
   font-weight: 800;
-  letter-spacing: -0.5px;
+  letter-spacing: var(--tracking-brand);
 }
 
 .tab {
   color: var(--text-muted);
   font-size: var(--font-primary);
+  line-height: var(--line-primary);
   font-weight: 500;
   transition: var(--focus-time);
 }
@@ -142,13 +224,14 @@
 .clock {
   color: var(--text);
   font-size: var(--font-brand);
+  line-height: var(--line-brand);
   font-weight: 500;
 }
 
 .icon-button {
   width: 48px;
   height: 48px;
-  border-radius: 24px;
+  border-radius: var(--shape-full);
   background: rgba(0, 0, 0, 0);
   color: var(--text);
   transition: var(--focus-time);
@@ -171,10 +254,11 @@
   height: 48px;
   padding: 0 28px;
   gap: 8px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--control);
   color: var(--text-muted);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -193,11 +277,12 @@
   height: 48px;
   padding: 0 28px;
   gap: 8px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--surface);
   outline: 2px solid var(--border);
   color: var(--text);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -215,10 +300,11 @@
   height: 48px;
   padding: 0 28px;
   gap: 8px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--danger-bg);
   color: var(--danger-fg);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -233,19 +319,20 @@
 
 /* Dock: the favorites on the Home screen. Item sizes and spacing are fixed in the code. */
 .dock {
-  border-radius: 28px;
+  border-radius: var(--shape-xl);
   background: rgba(15, 23, 30, 0.55);
   outline: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elevation-3);
 }
 
 /* The name of the focused dock item, in a bubble above it */
 .dock-label {
   padding: 8px 16px;
-  border-radius: 12px;
+  border-radius: var(--shape-md);
   background: rgba(0, 0, 0, 0);
   color: var(--text);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
 }
 
@@ -253,15 +340,17 @@
 .section-title {
   color: var(--text);
   font-size: var(--font-primary);
+  line-height: var(--line-primary);
   font-weight: 700;
 }
 
 .tile {
   width: 172px;
   height: 97px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   color: #FFFFFF;
   font-size: var(--font-primary);
+  line-height: var(--line-primary);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -269,12 +358,12 @@
   outline: var(--focus-ring);
   outline-offset: 0px;
   transform: scale(1.05);
-  box-shadow: var(--focus-shadow);
 }
 
 .tile-label {
   color: var(--text-muted);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 500;
 }
 
@@ -292,10 +381,11 @@
   height: 72px;
   padding: 0 28px;
   gap: 16px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--surface-row);
   color: var(--text-muted);
   font-size: var(--font-primary);
+  line-height: var(--line-primary);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -312,21 +402,22 @@
    the focus, then they are filled with the primary color, without a ring: on the light card the
    fill alone marks the focus. A disabled item says why in a .menu-note. */
 .menu {
-  border-radius: 20px;
+  border-radius: var(--shape-lg);
   background: var(--menu-surface);
   /* Close to the card and all around it, so the light card stands apart from a white tile. */
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--elevation-1);
 }
 
 .menu-item {
   height: 56px;
   /* With the card's 8, the text starts 24 from its edge. */
   padding: 0 16px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: rgba(0, 0, 0, 0);
   color: var(--menu-text);
   /* The size and weight of the app names: at 20/700 the dark text on the light card read heavy. */
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 500;
   transition: var(--focus-time);
 }
@@ -342,6 +433,7 @@
 .menu-note {
   color: var(--menu-text-muted);
   font-size: var(--font-caption);
+  line-height: var(--line-caption);
   font-weight: 500;
 }
 
@@ -351,10 +443,11 @@
 .menu-button {
   height: 48px;
   padding: 0 28px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   outline: 2px solid var(--menu-text-muted);
   color: var(--menu-text);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -367,10 +460,11 @@
 .menu-button-danger {
   height: 48px;
   padding: 0 28px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   outline: 2px solid var(--menu-danger);
   color: var(--menu-danger);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -383,6 +477,7 @@
 .breadcrumb {
   color: var(--text-muted);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 500;
 }
 .breadcrumb:active {
@@ -393,13 +488,15 @@
 .page-title {
   color: var(--text);
   font-size: var(--font-title);
+  line-height: var(--line-title);
   font-weight: 800;
-  letter-spacing: -0.8px;
+  letter-spacing: var(--tracking-title);
 }
 
 .page-subtitle {
   color: var(--text-muted);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 500;
 }
 
@@ -407,26 +504,30 @@
 .card-heading {
   color: var(--text-muted);
   font-size: var(--font-caption);
+  line-height: var(--line-caption);
   font-weight: 800;
-  letter-spacing: 1.2px;
+  letter-spacing: var(--tracking-caps);
 }
 
 /* About screen */
 .about-heading {
   color: var(--text);
   font-size: var(--font-primary);
+  line-height: var(--line-primary);
   font-weight: 700;
 }
 
 .about-body {
   color: var(--text-muted);
   font-size: var(--font-body);
+  line-height: var(--line-body);
   font-weight: 500;
 }
 
 .about-license {
   color: var(--text-muted);
   font-size: var(--font-caption);
+  line-height: var(--line-caption);
   font-weight: 500;
 }
 
@@ -435,10 +536,11 @@
   height: 64px;
   padding: 0 24px;
   gap: 16px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--surface-row);
   color: var(--text);
   font-size: var(--font-primary);
+  line-height: var(--line-primary);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -452,20 +554,22 @@
   height: 40px;
   padding: 0 16px;
   gap: 8px;
-  border-radius: 20px;
+  border-radius: var(--shape-full);
   background: var(--control);
   color: var(--text);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
 }
 
 .panel {
   padding: 16px 32px;
   gap: 16px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--surface);
   color: var(--text-muted);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 500;
 }
 
@@ -473,10 +577,11 @@
   height: 40px;
   padding: 0 16px;
   gap: 8px;
-  border-radius: 20px;
+  border-radius: var(--shape-full);
   background: var(--control);
   color: var(--text);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 700;
   transition: var(--focus-time);
 }
@@ -495,10 +600,11 @@
 /* Transient message */
 .toast {
   padding: 12px 20px;
-  border-radius: var(--radius);
+  border-radius: var(--shape-md);
   background: var(--surface-focus);
   color: var(--text);
   font-size: var(--font-label);
+  line-height: var(--line-label);
   font-weight: 500;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--elevation-2);
 }

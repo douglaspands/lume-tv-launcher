@@ -170,11 +170,8 @@ pub(super) enum Anim {
     },
 }
 
-/// The fade of the content when the tab changes.
-const TAB_FADE: crate::theme::Transition = crate::theme::Transition {
-    duration_ms: 180.0,
-    curve: crate::theme::Curve::EaseOut,
-};
+/// The fade of the content when the tab changes (`--tab-fade`).
+const TAB_FADE: crate::theme::Transition = crate::theme::vars::TAB_FADE;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PendingFocus {

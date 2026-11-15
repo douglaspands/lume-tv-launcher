@@ -31,12 +31,71 @@ The default theme names its colors by the role they play, so a new theme mostly 
 | Variable | Role | In the default theme |
 |---|---|---|
 | `--primary` | the color of focus and control: focus outlines, the tab underline while the top bar has the focus, the settings button, main actions | `#4DB3FF` (blue) |
-| `--on-primary` | text and icons drawn on top of `--primary` | `#0F171E` |
-| `--secondary` | the neutral light color: text, and the tab underline when the focus is in the content | `#F2F5F7` (near white) |
+| `--on-primary` | text and icons drawn on top of `--primary` | `var(--bg)` (`#0C171F`) |
+| `--secondary` | the neutral light color: text, and the tab underline when the focus is in the content | `#F1F4F9` (near white, `neutral` T96) |
 
 `--text` follows `--secondary`. The older names `--accent` and `--on-accent` still work and are aliases of
 `--primary` and `--on-primary`. Other variables (`--bg`, the `--surface-*` shades, `--text-muted`, `--danger-*`) keep
-their own values.
+their own values, generated from tonal palettes (below).
+
+## Tonal palettes
+
+Every neutral and danger color of the default theme is a tone of a tonal palette (Material Design 3, HCT color space):
+a palette is a hue and a chroma, and a tone is a lightness from 0 (black) to 100 (white). The theme declares its
+palettes in a comment of `:root`, one `@palette <name> <hue> <chroma>` per line, and each generated token names its
+palette and tone in a comment right after its value:
+
+```css
+:root {
+  /* @palette surface 245 12
+     @palette surface-variant 246 18
+     @palette neutral 240 6
+     @palette error 25 84 */
+  --bg: #0C171F; /* surface T7 */
+  --text-muted: #B5B9BE; /* neutral T75 */
+  --danger-bg: #690005; /* error T20 */
+}
+```
+
+| Palette | Hue, chroma | Tokens (tone) |
+|---|---|---|
+| `surface` | 245, 12 | `--bg` 7, `--surface` 10, `--surface-row` 13, `--surface-icon` 14, `--menu-text` 15, `--control-disabled` 16 |
+| `surface-variant` | 246, 18 | `--surface-focus` 19, `--control` 24, `--border` 27 |
+| `neutral` | 240, 6 | `--secondary` and `--menu-surface` 96, `--text-soft` 90, `--text-muted` 75, `--menu-text-muted` 44, `--text-disabled` 41 |
+| `error` | 25, 84 | `--danger-bg` 20, `--menu-danger` 40, `--danger-fg` 80 |
+
+The build reads only the hex; the comments are for the generator. Do not edit those hex by hand: change the palette or
+the tone and run, from the repository root,
+
+```
+uv run scripts/tonal-palette.py           # rewrites the hex of themes/lume/theme.css
+uv run scripts/tonal-palette.py --check   # only compares; exits with 1 if a hex is out of date
+```
+
+(another theme file can be passed as the last argument). `--primary` is a fixed seed and is not generated, and the
+brand colors of the tiles (`--brand-*`, `--tile-*`, `--dot-*`) stay outside the palettes.
+
+**Contrast by tone.** The tone difference sets the contrast: a text at least 50 tones away from its background has at
+least 4.5:1, and an outline or graphic at least 40 tones away has at least 3:1. The theme test
+`the_pairs_of_the_components_keep_the_tone_distance` checks the pairs the components use (`--text-disabled` is left out).
+
+**Material Design 3 roles.** The theme also has the M3 role names, as aliases of the lume tokens; a new component picks
+its color by role:
+
+| M3 role | lume token |
+|---|---|
+| `--surface-container-lowest` | `--bg` |
+| `--surface-container-low` | `--surface` |
+| `--surface-container` | `--surface-row` |
+| `--surface-container-high` | `--surface-focus` |
+| `--on-surface` | `--text` |
+| `--on-surface-variant` | `--text-muted` |
+| `--outline` | `--border` |
+| `--error` | `--menu-danger` |
+| `--error-container` | `--danger-bg` |
+| `--on-error-container` | `--danger-fg` |
+| `--inverse-surface` | `--menu-surface` |
+| `--inverse-on-surface` | `--menu-text` |
 
 A variable can use another one (`--accent: var(--primary);`), so a theme can set the roles once and derive the rest:
 
@@ -191,7 +250,7 @@ The favorites on the Home screen sit in a floating bar. `.dock` styles the bar a
   outline: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
-.dock-label { padding: 8px 16px; border-radius: 12px; background: rgba(0, 0, 0, 0); color: #F2F5F7; font-size: 18px; font-weight: 700; }
+.dock-label { padding: 8px 16px; border-radius: 12px; background: rgba(0, 0, 0, 0); color: #F1F4F9; font-size: 18px; font-weight: 700; }
 ```
 
 ## What is not supported

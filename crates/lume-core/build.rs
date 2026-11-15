@@ -422,6 +422,7 @@ fn style_literal(sheet: &lume_css::Stylesheet, component: &str, state: State) ->
             Decl::FontSize(v) => set("font_size", some(format!("{v:?}"))),
             Decl::FontWeight(v) => set("font_weight", some(format!("{v}"))),
             Decl::LetterSpacing(v) => set("letter_spacing", some(format!("{v:?}"))),
+            Decl::LineHeight(v) => set("line_height", some(format!("{v:?}"))),
             Decl::Padding(p) => set("padding", some(format!("[{:?}, {:?}, {:?}, {:?}]", p[0], p[1], p[2], p[3]))),
             Decl::Gap(v) => set("gap", some(format!("{v:?}"))),
             Decl::Width(v) => set("width", some(format!("{v:?}"))),

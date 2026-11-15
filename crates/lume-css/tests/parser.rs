@@ -169,6 +169,7 @@ fn lengths_and_numbers() {
         single_decl("letter-spacing", "-0.5px"),
         Decl::LetterSpacing(-0.5)
     );
+    assert_eq!(single_decl("line-height", "28px"), Decl::LineHeight(28.0));
     assert_eq!(single_decl("opacity", ".4"), Decl::Opacity(0.4));
     assert_eq!(single_decl("width", "320px"), Decl::Width(320.0));
     assert_eq!(single_decl("height", "180px"), Decl::Height(180.0));
@@ -462,6 +463,28 @@ fn font_size_outside_the_type_scale_warns() {
     for size in ["16px", "18px", "20px", "22px", "28px", "40px"] {
         let p = parse(&format!(".tile-label {{ font-size: {size}; }}"), "t.css");
         assert!(p.diagnostics.is_empty(), "{size}");
+    }
+}
+
+#[test]
+fn duration_outside_the_scale_warns() {
+    // A component asking for 170 ms: neither a step of the scale nor an exception.
+    let p = parse(".tile { transition: 170ms ease-out; }", "t.css");
+    assert_eq!(p.diagnostics.len(), 1);
+    assert_eq!(p.diagnostics[0].severity, Severity::Warning);
+    assert!(p.diagnostics[0].message.contains("170ms"));
+    // Also through a variable, reported once at its definition.
+    let p = parse(":root {\n  --t: 170ms linear;\n}", "t.css");
+    assert_eq!(p.diagnostics.len(), 1);
+    assert_eq!(p.diagnostics[0].line, 2);
+    for ok in ["50ms", "150ms", "350ms", "600ms", "180ms", "240ms"] {
+        let p = parse(&format!(".tile {{ transition: {ok} ease-out; }}"), "t.css");
+        assert!(p.diagnostics.is_empty(), "{ok}");
+    }
+    for off in ["120ms", "210ms", "360ms", "650ms"] {
+        assert!(!duration_is_allowed(
+            off.trim_end_matches("ms").parse().unwrap()
+        ));
     }
 }
 

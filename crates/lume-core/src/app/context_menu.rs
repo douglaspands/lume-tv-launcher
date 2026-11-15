@@ -41,11 +41,8 @@ const NOTE_LINE_PITCH: f32 = 28.0;
 /// How far below its place the panel starts as it fades in.
 const RISE: f32 = 8.0;
 
-/// The fade of the panel as it opens and closes (`--focus-time`).
-const FADE: Transition = Transition {
-    duration_ms: 150.0,
-    curve: crate::theme::Curve::EaseOut,
-};
+/// The fade of the panel as it opens and closes (`--menu-in`).
+const FADE: Transition = crate::theme::vars::MENU_IN;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuAction {

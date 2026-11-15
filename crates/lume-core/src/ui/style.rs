@@ -98,6 +98,7 @@ pub fn mix(a: &ComputedStyle, b: &ComputedStyle, t: f32) -> ComputedStyle {
         font_size: lerp(a.font_size, b.font_size, t),
         font_weight: late.font_weight,
         letter_spacing: lerp(a.letter_spacing, b.letter_spacing, t),
+        line_height: late.line_height,
         padding: late.padding,
         gap: late.gap,
         width: match (a.width, b.width) {
