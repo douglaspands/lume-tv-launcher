@@ -765,3 +765,53 @@ Depois da retirada do teste de velocidade, o autor retirou também a ferramenta 
 não trazer nada útil. Saíram com ela o comando Java `wifi-signal`, a permissão `ACCESS_WIFI_STATE` e a leitura de rotas por
 netlink. As medidas de gateway e de Wi-Fi acima ficam como registro. O menu Ferramentas tem cinco itens, e as permissões
 voltam a ser `REQUEST_DELETE_PACKAGES` e `INTERNET`.
+
+### Medição controlada na AIWA e ferramenta Log (2026-11-15, build `b539131-dirty`)
+
+Navegação pelo `adb shell input keyevent`, uma ferramenta por vez, com captura de tela em cada passo (`dumpsys meminfo`,
+`TOTAL`: PSS e privada = Private Dirty + Private Clean).
+
+| Momento | PSS | Privada |
+|---|---|---|
+| Menu Ferramentas, 20 s parado | 48,5 MB | 41,3 MB |
+| Tela, padrões de cor | 47,7 MB | 40,6 MB |
+| Imagem, Movimento | 48,2 MB | 41,0 MB |
+| Áudio, tom nos dois canais | 48,7 MB | 41,3 MB |
+| Armazenamento, durante e no fim do teste | 49,5–49,8 MB | 42,2–42,4 MB |
+| Log aberto | 50,1 MB | 42,3 MB |
+| Início, 20 s depois de sair | 50,3 MB | 42,5 MB |
+
+- As ferramentas somam no máximo 1,8 MB sobre o menu (limite de 2 MB da spec).
+- Movimento: 0 de 1013 intervalos de 33 ms ou mais, a 60 quadros por segundo (o maior, 18 ms).
+- Padrão parado: nenhum quadro novo em 5 s (`SurfaceFlinger --latency`).
+- Armazenamento: 17,0 e 17,3 MB/s de escrita, 111,9 e 135,4 MB/s de leitura. Iniciar, cancelar e reiniciar três vezes
+  seguidas terminou em "Teste concluído" (correção do arquivo por execução).
+- O nível geral da AIWA (48 a 50 MB de PSS) está acima da referência antiga (39 a 43 MB), que é de antes de outras changes
+  já na `main`. Para saber se vem desta branch, falta medir um build da `main` do mesmo jeito.
+- Contagem de quadros sem saber a tela: a coleta passiva (amostras a cada 3 s, só com o app em foco) não serve, porque as
+  ferramentas desenham de propósito a 4 quadros por segundo (varredura, progresso) e esses intervalos parecem perdas.
+- `logcat`: o buffer principal guarda 64 KB na AIWA (cerca de 13 s de histórico) e 256 KB na TCL (cerca de 4 min). As linhas
+  do Lume somem antes de alguém abrir o Log, por isso ele lê o arquivo próprio `files/lume.log` (rotação em 256 KB). Na
+  AIWA, o Log mostrou as linhas desde a abertura (`lume ... starting`, `first frame`, `interface ready`).
+- `dumpsys meminfo` dispara uma coleta de lixo explícita no processo medido (pausa de cerca de 0,1 ms), sem efeito nos quadros.
+
+### AIWA: build da `main` contra o da branch (2026-11-15)
+
+Mesmo roteiro para os dois, duas rodadas cada, instalando do zero: Início parado 30 e 60 s, aba Apps, Configurações do Lume
+e Início de novo (PSS / privada, MB). `main` = `a30f8cc`, branch = `b539131-dirty` (ferramentas, sem abrir nenhuma).
+
+| Momento | `main` (1ª) | `main` (2ª) | branch (1ª) | branch (2ª) |
+|---|---|---|---|---|
+| Início, 30 s | 47,5 / 41,4 | 61,9 / 56,0 | 62,0 / 55,8 | 63,5 / 57,6 |
+| Início, 60 s | 55,0 / 48,8 | 51,0 / 45,2 | 50,7 / 44,5 | 51,8 / 46,0 |
+| Apps, 10 s | 55,8 / 49,6 | 51,9 / 46,1 | 51,4 / 45,2 | 53,1 / 47,3 |
+| Configurações, 10 s | 56,4 / 50,1 | 52,0 / 46,2 | 51,0 / 44,8 | 53,1 / 47,2 |
+| Início de volta, 20 s | 56,5 / 50,2 | 52,1 / 46,3 | 51,2 / 45,0 | 53,0 / 47,1 |
+
+- A branch não muda a memória da AIWA: depois de assentar, as duas ficam entre 51 e 56 MB de PSS, e a diferença entre
+  rodadas do mesmo build (até 5 MB) é maior que a diferença entre os builds.
+- A subida sobre a referência antiga (39 a 43 MB) já está na `main`, de changes anteriores.
+- Nas duas, o pico logo depois da abertura chega a 62–64 MB de PSS, encostado no orçamento de 64 MB em primeiro plano. Ele
+  cai sozinho em seguida.
+- Sincronia de áudio e imagem (tarefa 5.4), TCL pelo alto-falante da TV: o autor viu o bipe e o quadrado juntos, sem precisar
+  de ajuste. Soundbar não testada.

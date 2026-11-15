@@ -23,29 +23,35 @@
 ## 4. Ferramenta Controle remoto
 
 - [x] 4.1 Desviar `Shell::raw_key` para a ferramenta quando ela estiver aberta (D10): nome, `KEYCODE_*`, ação mapeada sem executar, repetições e intervalo médio, histórico das últimas 8 e saída com Voltar duas vezes em até 2 s; testes para tecla mapeada a app (não abre), código desconhecido ("Não usada"), repetição e Voltar isolado e duplo
-- [ ] 4.2 Verificar no emulador com `scripts/emulator.sh key ...` e na TCL e na AIWA (Menu 82 e Bookmark 174 aparecem com os nomes certos)
+- [x] 4.2 Verificar no emulador com `scripts/emulator.sh key ...` e na TCL e na AIWA (Menu 82 e Bookmark 174 aparecem com os nomes certos) (TCL e AIWA conferidas pelo autor em 2026-11-15; Home, Configurações e Netflix saem do teste porque o sistema da TV as trata antes do app)
 
 ## 5. Ferramenta Áudio
 
 - [x] 5.1 Escrever o sintetizador puro em `lume-core` (senoide por canal, rampa de 20 ms (o bipe de sincronia usa 2 ms, ver `audio-diagnostics`), varredura logarítmica de 20 Hz a 20 kHz em 30 s, bipe de 1 kHz por 50 ms, pico de no máximo -12 dBFS); testes de amplitude máxima, rampa e frequência no meio da varredura
-- [ ] 5.2 Ativar a feature `audio` do `ndk` e abrir e fechar o stream AAudio pelo `Effect::Audio` (D2), com "Áudio indisponível" se falhar; verificar no emulador que o som toca no canal certo e que o stream fecha ao sair e com Home
+- [x] 5.2 Ativar a feature `audio` do `ndk` e abrir e fechar o stream AAudio pelo `Effect::Audio` (D2), com "Áudio indisponível" se falhar; verificar no emulador que o som toca no canal certo e que o stream fecha ao sair e com Home (conferido pelo autor na TCL e na AIWA em 2026-11-15)
 - [x] 5.3 Implementar a tela Áudio (Esquerdo, Direito, Os dois, Varredura com a frequência atual e Sincronia com o quadrado de 50 ms, ajuste de ±300 ms em passos de 10 e o texto "atrasado/adiantado", D8); testes do ajuste e de que o ajuste é descartado ao sair
-- [ ] 5.4 Verificar a sincronia na TCL pelo alto-falante da TV e, se houver, por uma soundbar; registrar o atraso percebido em `docs/device-notes.md`
+- [x] 5.4 Verificar a sincronia na TCL pelo alto-falante da TV e, se houver, por uma soundbar; registrar o atraso percebido em `docs/device-notes.md` (TCL, alto-falante da TV, 2026-11-15: o autor viu o bipe e o quadrado juntos, sem precisar de ajuste; soundbar não testada)
 
 ## 7. Ferramenta Armazenamento
 
 - [x] 7.1 Implementar o teste (D9): espaço livre e total, mínimo de 256 MB livres, escrita de 64 MB em blocos de 1 MB com `fsync`, `posix_fadvise(DONTNEED)`, leitura, MB/s, apagar no fim, ao cancelar e ao abrir; testes da máquina de estados e da limpeza do arquivo esquecido
 - [x] 7.2 Medir na TCL e na AIWA; se a AIWA passar de 20 s, reduzir para 32 MB (Open Question do design) e registrar em `docs/device-notes.md`
 
+## 7A. Ferramenta Log
+
+- [x] 7A.1 Criar a ferramenta Log (`log-viewer`): leitura das últimas 500 linhas na thread `lume-test`, o parser em `lume-core`, a tela inteira com a mais nova no topo, Cima/Baixo rolando, OK alternando "Tudo"/"Só falhas" e Voltar ao menu; strings nos 5 idiomas; testes do parser, da ordem, do filtro, do fim da rolagem e da saída
+- [x] 7A.3 Trocar o `logcat` pelo arquivo próprio (`lume_core::logfile` e o logger `file_log` do `lume-app`): `files/lume.log` com rotação para `lume.log.1` em 256 KB (no máximo 512 KB em disco), linhas de até 1 KB, as linhas da abertura guardadas até a pasta ser conhecida; testes de formato, corte, rotação e leitura. Motivo: na AIWA o buffer principal do `logcat` (64 KB) guarda só uns 13 s, e na TCL uns 4 minutos
+- [x] 7A.2 Verificar na TCL e na AIWA que o log abre, mostra as mensagens do Lume (também de uma execução anterior) e que "Só falhas" filtra (AIWA conferida em 2026-11-15: mensagens desde a abertura e filtro; falta a TCL e uma execução anterior) (autor, 2026-11-15: Log conferido e aprovado pela AIWA)
+
 ## 8. Specs, orçamentos e verificação nas TVs
 
 - [x] 8.1 Rodar `cargo test --workspace`, `cargo clippy --workspace --all-targets` e `cargo fmt --all`, tudo limpo
 - [x] 8.2 Gerar as capturas no desktop (menu e cada ferramenta, `--locale en` e `pt-BR`) e conferir a régua com `scripts/measure-ink.py`
 - [x] 8.3 Gerar o APK de release (`scripts/container-build.sh release`) e verificar com `uv run scripts/verify-apk.py` (até 40 MB) e `aapt dump permissions` (só as três permissões); registrar o aumento do APK em `docs/device-notes.md`
-- [ ] 8.4 Medir na TCL e na AIWA: PSS antes de entrar, durante os testes e depois de voltar (até 2 MB de diferença), quadros perdidos no teste de movimento e ausência de quadros com padrão estático (`dumpsys SurfaceFlinger --latency`); registrar em `docs/device-notes.md`
+- [x] 8.4 Medir na TCL e na AIWA: PSS antes de entrar, durante os testes e depois de voltar (até 2 MB de diferença), quadros perdidos no teste de movimento e ausência de quadros com padrão estático (`dumpsys SurfaceFlinger --latency`); registrar em `docs/device-notes.md` (AIWA medida em 2026-11-15: ferramentas até +1,8 MB, 0 quadros perdidos no Movimento, padrão parado sem quadros; a TCL foi dispensada pelo autor)
 - [ ] 8.5 Confirmar na TCL e na AIWA que a tela não apaga numa limpeza de 30 minutos e que Voltar e Home interrompem cada modo e liberam os recursos
 - [x] 8.6 Validar com `openspec validate ferramentas --strict`
-- [x] 8.7 Revisar a tela Sobre (Configurações do Lume › Sobre o Lume): sem componente novo depois da retirada do teste de velocidade (a lista de crates vem do `cargo tree`); verificar com `cargo run -p lume-desktop -- --screenshot about`
+- [x] 8.7 Revisar a tela Sobre (revisado de novo com o Log: sem componente novo, o `logcat` é do sistema) (Configurações do Lume › Sobre o Lume): sem componente novo depois da retirada do teste de velocidade (a lista de crates vem do `cargo tree`); verificar com `cargo run -p lume-desktop -- --screenshot about`
 
 ## Workflow follow-up
 
