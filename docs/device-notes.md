@@ -724,7 +724,7 @@ anterior da `main` (`2e7421d`):
 | Teste de movimento | ~62 quadros/s, 0 de 868 com 33 ms ou mais | até 1% |
 | Grade em 1920x1080 (`screencap`) | 33 linhas verticais, todas de 1 px | 1 px físico |
 | AudioTrack do Lume | criado ao tocar, removido ao parar e com Home (`media.audio_flinger`) | sem stream parado |
-| Teste de velocidade (Ethernet) | latência 48 ms, download 92 Mbps, upload 80 Mbps | até 20% de outro medidor |
+| Teste de velocidade (Ethernet; retirado depois, ver abaixo) | latência 48 ms, download 92 Mbps, upload 80 Mbps | n/a |
 | Teste de armazenamento (64 MB) | escrita 44,8 MB/s, leitura 163,5 MB/s, cerca de 2 s no total | até 20 s |
 | Controle remoto | Menu (82) e Bookmark (174) com os nomes certos; Voltar duas vezes sai | `remote-mapping` |
 
@@ -735,6 +735,8 @@ anterior da `main` (`2e7421d`):
 - A TCL roda o Lume em `armeabi-v7a` (`ro.product.cpu.abilist` = `armeabi-v7a,armeabi`), num Cortex-A55 (`CPU part 0xd05`)
   com NEON, VFPv4, `idiva` e CRC32.
 - A TCL está no cabo, então a seção do Wi-Fi não aparece e o comando `wifi-signal` não foi exercitado nela.
+- O teste de velocidade foi retirado por decisão do autor (2026-11-15), com o `ureq`/`rustls`: a ferramenta Rede ficou só
+  com dados locais e o Lume voltou a não abrir conexões. A medida abaixo fica como registro.
 - Referência do teste de velocidade: o PC na mesma rede, contra o mesmo serviço com `curl`, mediu 334 Mbps de download e
   151 Mbps de upload, com 100 a 300 ms até o primeiro byte. Não serve de comparação: os 92 Mbps da TCL batem com uma porta
   Ethernet de 100 Mbit/s (a velocidade do link não é legível pelo `adb shell`). Falta comparar com um medidor rodando na
@@ -748,6 +750,9 @@ anterior da `main` (`2e7421d`):
 ### Emulador `tv_api28` (Android 9, x86, build de debug, 2026-11-15)
 
 - Texto em russo (tarefa 1.6): Configurações, menu Ferramentas e as seis ferramentas sem corte nem sobreposição.
+- Controle remoto (tarefa 4.2, com `scripts/emulator.sh key` e `adb shell input keyevent`): Menu (82), Bookmark (174, "Favorito"),
+  setas e OK com o nome e o `KEYCODE_*` certos; F1 (131) como "Não usada"; Cima repetido aparece como "Cima ×2"; Voltar
+  duas vezes sai. O volume (24) abre o painel de volume do sistema e não chega ao Lume, então não entra no histórico.
 - Sinal do Wi-Fi (tarefa 6.2): a ferramenta Rede mostrou -50 dBm ("Excelente"), 26 Mbps · 2,4 GHz e o gateway
   192.168.232.1. O autor aceitou esta verificação no lugar da TCL, que está no cabo; o comando `wifi-signal` roda dentro de
   `LumeBridge.handle`, que o ProGuard já mantém (`-keep class app.lume.tv.LumeBridge { *; }`).

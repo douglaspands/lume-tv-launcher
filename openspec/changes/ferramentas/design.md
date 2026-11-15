@@ -20,7 +20,7 @@ A motivação e o escopo estão no proposal.md. Pontos do estado atual que molda
 **Non-Goals:**
 - Ajustar brilho, backlight ou o áudio do sistema. Seria API de fabricante ou Java não autorizado.
 - Persistir resultados de testes ou histórico entre sessões.
-- Teste de velocidade com servidores alternativos ou escolha de servidor.
+- Teste de velocidade da internet (ver D3).
 - Separar o código das ferramentas em uma biblioteca nativa carregada sob demanda.
 
 ## Decisions
@@ -38,11 +38,8 @@ O `lume-core` só descreve o que quer, e a plataforma (`lume-app`) cria e destr�
 - O Lume ir para segundo plano (`sleep()` do `Shell`) gera `Stop` e `CancelTest` sempre.
 - *Alternativa*: threads e streams criados dentro do `lume-core`. Foi descartada porque o `lume-core` roda no desktop e nos testes sem Android, e a fronteira por `Effect` já é o padrão do projeto.
 
-### D3. Teste de velocidade em Rust com `ureq` + `rustls` + `webpki-roots`
-O `speed.cloudflare.com` usa HTTPS: `GET /__down?bytes=N` para o download e a latência (`bytes=0`), e `POST /__up` para o upload. Em Rust, o `ureq` (síncrono, sem runtime async) com `rustls` e as raízes embutidas de `webpki-roots` não depende do repositório de certificados do Android. O download lê em blocos de 64 KB num buffer reutilizado e descarta os bytes. O upload envia de um gerador que repete um bloco de 64 KB. O tempo limite é de 5 s por conexão e de 10 s por fase. A dependência só entra no alvo Android (`[target.'cfg(target_os = "android")'.dependencies]`). No desktop, o teste devolve "indisponível".
-- *Alternativa*: `HttpURLConnection` em Java. Foi descartada porque é Java não autorizado, e o autor só liberou o Wi-Fi.
-- *Alternativa*: HTTP sem TLS. Foi descartada porque o serviço redireciona para HTTPS.
-- *Custo*: algo como 1 a 2 MB por arquitetura no APK, por causa do `ring` e do `rustls`. A medida entra em `docs/device-notes.md`, e o limite segue em 40 MB. As licenças (`ureq` MIT/Apache, `rustls` MIT/Apache/ISC, `ring` com licença própria do tipo ISC/OpenSSL, `webpki-roots` CDLA-Permissive-2.0 para os dados) entram em `licenses.rs` e na tela Sobre.
+### D3. Teste de velocidade da internet (retirado)
+O teste contra `speed.cloudflare.com` com `ureq` + `rustls` + `webpki-roots` chegou a ser implementado e medido na TCL (48 ms, 92/80 Mbps), e foi retirado por decisão do autor em 2026-11-15, junto com o cliente HTTPS (cerca de 2,6 MB no APK). A ferramenta Rede ficou só com dados locais, e o Lume segue sem abrir conexões.
 
 ### D4. Sinal do Wi-Fi: comando `wifi-signal` no `LumeBridge`
 `LumeBridge.handle(ctx, "wifi-signal", "")` lê `WifiManager.getConnectionInfo()` e responde com uma linha `rssi\tlinkMbps\tfreqMHz`, ou com vazio quando não há conexão Wi-Fi ou ela é indisponível. O SSID não é lido. O parser fica em `shell/protocol.rs`, com teste. A leitura segue o padrão `stats_due` (a cada 2 s, só com a ferramenta Rede visível e a interface parada). `getConnectionInfo` está obsoleto a partir da API 31, mas funciona nas duas TVs (API 28 e 30). A troca por `NetworkCapabilities` fica registrada como pendência (Open Questions). O método é chamado pelo `handle` já mantido, então não precisa de regra `-keep` nova. Isso é conferido no build de release.
@@ -70,10 +67,8 @@ Com a ferramenta Controle remoto aberta, `Shell::raw_key` desvia todo código pa
 
 - [Flashes do destravamento de pixel podem afetar pessoas com epilepsia fotossensível] → Aviso obrigatório com o foco em "Cancelar", janela restrita a 64x64 px físicos (menos de 0,3% da tela em 1080p) e tela cheia sempre abaixo de 3 Hz com transições graduais.
 - [A AIWA (`low_ram`, cerca de 913 MB) pode encerrar o Lume durante um teste longo] → Os recursos são liberados no `sleep()`, e o arquivo temporário é apagado na próxima abertura.
-- [O APK cresce com `rustls`/`ring`] → Medir com `verify-apk.py`. Se passar de 3 MB no total, avaliar `rustls` com o provedor `ring` sem features extras antes de mudar de abordagem.
 - [`/proc/net/route` bloqueado] → Mostrar "—", sem regressão.
 - [`AAudio` indisponível ou com falha no firmware da TV] → "Áudio indisponível" no item, sem travar.
-- [O teste de velocidade gasta dados de quem usa internet limitada] → Só roda manualmente, com aviso na tela e limites de 25 MB de download e 10 MB de upload.
 - [Quadros contínuos esquentam a TV ou gastam CPU numa limpeza de 60 minutos] → A limpeza "Branco" é estática (sem quadros), e a "Cores" desenha só `glClear`, o desenho mais barato possível.
 - [O teste de movimento pode mostrar quadros perdidos causados pelo próprio Lume] → É desejável, porque o teste também serve para medir o Lume.
 

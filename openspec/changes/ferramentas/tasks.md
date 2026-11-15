@@ -37,8 +37,6 @@
 - [x] 6.1 Reaproveitar `network()` para o tipo e o IP, e ler o gateway de `/proc/net/route` com "—" quando for negado (D5); leitura a cada 2 s só com a tela visível e a interface parada; teste do parser de `/proc/net/route`
 - [x] 6.2 (Java autorizado) Adicionar o comando `wifi-signal` em `LumeBridge.java` e a permissão `ACCESS_WIFI_STATE` no manifesto (D4), mais o parser em `shell/protocol.rs` com testes; verificar no build de release (ProGuard) que o comando responde na TCL
 - [x] 6.3 Mostrar o sinal (dBm, barra, classificação pelas faixas da spec, link e faixa de frequência), só com Wi-Fi; testes de classificação nos limites -55, -67 e -75
-- [ ] 6.4 Adicionar `ureq` + `rustls` + `webpki-roots` só no alvo Android e implementar o teste de velocidade na thread `lume-test` (latência como mediana de 5, download até 25 MB ou 10 s, upload até 10 MB ou 10 s, tempos limite, cancelamento, D3); no desktop o teste responde "indisponível"; verificar na TCL que os valores batem, com até 20% de diferença, com outro medidor na mesma rede
-- [x] 6.5 Mostrar o aviso de serviço externo, as fases com valor parcial e os resultados, e as mensagens de falha; testes da máquina de estados (iniciar, cancelar, falha, repetir) com progresso simulado
 
 ## 7. Ferramenta Armazenamento
 
@@ -50,10 +48,10 @@
 - [x] 8.1 Rodar `cargo test --workspace`, `cargo clippy --workspace --all-targets` e `cargo fmt --all`, tudo limpo
 - [x] 8.2 Gerar as capturas no desktop (menu e cada ferramenta, `--locale en` e `pt-BR`) e conferir a régua com `scripts/measure-ink.py`
 - [x] 8.3 Gerar o APK de release (`scripts/container-build.sh release`) e verificar com `uv run scripts/verify-apk.py` (até 40 MB) e `aapt dump permissions` (só as três permissões); registrar o aumento do APK em `docs/device-notes.md`
-- [ ] 8.4 Medir na TCL e na AIWA: PSS antes de entrar, durante o teste de velocidade e depois de voltar (até 2 MB de diferença), quadros perdidos no teste de movimento e ausência de quadros com padrão estático (`dumpsys SurfaceFlinger --latency`); registrar em `docs/device-notes.md`
+- [ ] 8.4 Medir na TCL e na AIWA: PSS antes de entrar, durante os testes e depois de voltar (até 2 MB de diferença), quadros perdidos no teste de movimento e ausência de quadros com padrão estático (`dumpsys SurfaceFlinger --latency`); registrar em `docs/device-notes.md`
 - [ ] 8.5 Confirmar na TCL e na AIWA que a tela não apaga numa limpeza de 30 minutos e que Voltar e Home interrompem cada modo e liberam os recursos
 - [x] 8.6 Validar com `openspec validate ferramentas --strict`
-- [x] 8.7 Revisar a tela Sobre (Configurações do Lume › Sobre o Lume): incluir `ureq`, `rustls`, `ring` e `webpki-roots` com as licenças em `licenses.rs`; verificar com `cargo run -p lume-desktop -- --screenshot about`
+- [x] 8.7 Revisar a tela Sobre (Configurações do Lume › Sobre o Lume): sem componente novo depois da retirada do teste de velocidade (a lista de crates vem do `cargo tree`); verificar com `cargo run -p lume-desktop -- --screenshot about`
 
 ## Workflow follow-up
 

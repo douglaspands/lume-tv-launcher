@@ -20,7 +20,7 @@ O Lume SHALL oferecer, a partir do item "Ferramentas" das Configurações, uma t
 - **THEN** a primeira volta leva ao menu Ferramentas com o foco na ferramenta de origem, a segunda às Configurações com o foco em "Ferramentas", e a terceira à aba Apps com o foco no tile "Lume"
 
 ### Requirement: Ativação e liberação sob demanda
-Cada ferramenta SHALL criar o próprio estado só quando é aberta e SHALL liberá-lo ao ser fechada. Os recursos pesados (saída de áudio, conexões de rede e a thread de teste, arquivo temporário e buffers de teste) SHALL ser criados só quando o teste que os usa começa, e SHALL ser liberados quando ele termina, é cancelado ou a ferramenta fecha. Fora do menu Ferramentas, o Lume SHALL NOT manter memória, threads, conexões ou arquivos das ferramentas.
+Cada ferramenta SHALL criar o próprio estado só quando é aberta e SHALL liberá-lo ao ser fechada. Os recursos pesados (saída de áudio, a thread de teste, arquivo temporário e buffers de teste) SHALL ser criados só quando o teste que os usa começa, e SHALL ser liberados quando ele termina, é cancelado ou a ferramenta fecha. Fora do menu Ferramentas, o Lume SHALL NOT manter memória, threads ou arquivos das ferramentas.
 
 #### Scenario: Nenhum custo fora das ferramentas
 - **WHEN** o usuário nunca abriu as Ferramentas, ou abriu e voltou às Configurações
