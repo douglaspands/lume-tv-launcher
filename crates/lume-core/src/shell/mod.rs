@@ -85,6 +85,11 @@ impl Shell {
             config
         });
         config.remove_uninstalled(&catalog);
+        // "Minha imagem" keeps its source in files/ (the system does not clear it).
+        crate::wallpaper::custom::set_files_dir(files.to_path_buf());
+        if config.reconcile_custom(files) {
+            save_log(config.save(&config_path), CONFIG_FILE);
+        }
 
         let preferred: Vec<&str> = locales.iter().map(String::as_str).collect();
         let mut app = LumeApp::new(catalog, usage, config, Translator::new(&preferred), clock);
@@ -502,6 +507,18 @@ impl Shell {
     }
 
     /// Whether the screen must be redrawn at `now_ms`.
+    /// Takes what happened off the loop (the phone companion's news, the end of Apply): a frame
+    /// when the screen changed. Returns what the platform must do.
+    pub fn poll_background(&mut self, now_ms: u64) -> Vec<Effect> {
+        match self.app.poll_background(now_ms) {
+            Some(effects) => {
+                self.dirty = true;
+                self.finish(effects)
+            }
+            None => Vec::new(),
+        }
+    }
+
     /// Asks for a frame although nothing in the interface changed (a wallpaper prepared in the
     /// background is ready to be swapped in).
     pub fn invalidate(&mut self) {

@@ -18,15 +18,27 @@ use super::shaders::{
 use super::{Backend, Viewport};
 use crate::text::{TextEngine, Update};
 use crate::theme::Color;
-use crate::wallpaper::WallpaperId;
+use crate::wallpaper::{Image, WallpaperId};
 use glow::HasContext;
 use std::mem::size_of;
+use std::sync::Arc;
+
+/// What the wallpaper texture holds: the wallpaper and, for "Minha imagem", the generation of its
+/// picture (the applied result or the Confirm screen's picture), which changes with it.
+type WallpaperKey = (WallpaperId, u64);
+
+fn wallpaper_key(id: WallpaperId) -> WallpaperKey {
+    match id {
+        WallpaperId::Custom => (id, crate::wallpaper::custom::generation()),
+        _ => (id, 0),
+    }
+}
 
 /// A wallpaper going up to the GPU: the decoded image and how many rows are already there.
 struct WallpaperUpload {
-    id: WallpaperId,
+    key: WallpaperKey,
     cover: (u32, u32),
-    rgb: Vec<u8>,
+    image: Arc<Image>,
     rows_done: u32,
     source: glow::Texture,
     started: std::time::Instant,
@@ -71,6 +83,10 @@ pub struct Gles2Backend {
     /// The wallpaper, created the first time a frame draws it and freed with everything else.
     wallpaper: Option<Texture>,
     wallpaper_id: Option<WallpaperId>,
+    /// The generation of "Minha imagem" the texture holds (see [`WallpaperKey`]).
+    wallpaper_generation: u64,
+    /// The generation of the custom thumbnail in the atlas' free slot.
+    custom_thumb_generation: u64,
     /// The size the wallpaper texture covers, in render-buffer pixels (the 1920x1080 image is
     /// reduced to it when smaller).
     wallpaper_cover: (u32, u32),
@@ -80,10 +96,10 @@ pub struct Gles2Backend {
     /// keeps the current one until the new one is ready) instead of inside the frame.
     async_wallpaper: bool,
     /// The wallpaper being prepared on the worker thread.
-    pending_wallpaper: Option<(WallpaperId, std::sync::mpsc::Receiver<Option<Vec<u8>>>)>,
+    pending_wallpaper: Option<(WallpaperKey, std::sync::mpsc::Receiver<Option<Arc<Image>>>)>,
     uploading: Option<WallpaperUpload>,
     /// The wallpaper whose asset could not be read or decoded; not tried again.
-    wallpaper_failed: Option<WallpaperId>,
+    wallpaper_failed: Option<WallpaperKey>,
     wallpaper_thumbs: Option<Texture>,
     /// The 4x4 dither pattern the wallpaper is drawn with, made with the wallpaper.
     bayer: Option<Texture>,
@@ -166,6 +182,8 @@ impl Gles2Backend {
                 image: None,
                 wallpaper: None,
                 wallpaper_id: None,
+                wallpaper_generation: 0,
+                custom_thumb_generation: 0,
                 wallpaper_cover: (0, 0),
                 render_size: (1920, 1080),
                 async_wallpaper: false,
@@ -372,8 +390,9 @@ impl Gles2Backend {
 
     fn prepare_wallpaper(&mut self, id: WallpaperId, block: bool) {
         let cover = cover_size(self.render_size);
+        let key = wallpaper_key(id);
         if let Some(upload) = &self.uploading {
-            if (upload.id, upload.cover) == (id, cover) {
+            if (upload.key, upload.cover) == (key, cover) {
                 self.step_wallpaper_upload(block);
                 return;
             }
@@ -384,20 +403,26 @@ impl Gles2Backend {
             }
         }
         if self.wallpaper.is_some()
-            && self.wallpaper_id == Some(id)
+            && (self.wallpaper_id, self.wallpaper_generation) == (Some(key.0), key.1)
             && self.wallpaper_cover == cover
         {
             return;
         }
-        let wallpaper = id.wallpaper();
-        if self.wallpaper_failed == Some(id) {
+        if self.wallpaper_failed == Some(key) {
             return;
         }
         let started = std::time::Instant::now();
-        let loaded_rgb = if self.async_wallpaper {
+        // The Confirm screen's picture is already in memory: no thread for it.
+        let preview = (id == WallpaperId::Custom)
+            .then(crate::wallpaper::custom::preview)
+            .flatten();
+        let loaded_rgb = if preview.is_some() {
+            self.pending_wallpaper = None;
+            preview
+        } else if self.async_wallpaper {
             // Only the last choice is prepared: a different pending one is dropped (its thread ends alone).
-            if self.pending_wallpaper.as_ref().map(|(pending, _)| *pending) != Some(id) {
-                self.pending_wallpaper = Some((id, crate::wallpaper::load_in_background(id)));
+            if self.pending_wallpaper.as_ref().map(|(pending, _)| *pending) != Some(key) {
+                self.pending_wallpaper = Some((key, crate::wallpaper::load_in_background(id)));
             }
             let Some((_, receiver)) = self.pending_wallpaper.as_ref() else {
                 return;
@@ -414,12 +439,12 @@ impl Gles2Backend {
             self.pending_wallpaper = None;
             result.unwrap_or(None)
         } else {
-            wallpaper.load_rgb()
+            crate::wallpaper::Source::of(id).load()
         };
-        let Some(rgb) = loaded_rgb else {
+        let Some(image) = loaded_rgb else {
             // Tried once: the frames keep the clear color instead of retrying (and logging) every frame.
             log::error!("cannot load the wallpaper {}", id.as_str());
-            self.wallpaper_failed = Some(id);
+            self.wallpaper_failed = Some(key);
             return;
         };
         let loaded = started.elapsed();
@@ -436,8 +461,8 @@ impl Gles2Backend {
                 glow::TEXTURE_2D,
                 0,
                 glow::RGB as i32,
-                wallpaper.width as i32,
-                wallpaper.height as i32,
+                image.width as i32,
+                image.height as i32,
                 0,
                 glow::RGB,
                 glow::UNSIGNED_BYTE,
@@ -447,9 +472,9 @@ impl Gles2Backend {
             texture
         };
         self.uploading = Some(WallpaperUpload {
-            id,
+            key,
             cover,
-            rgb,
+            image,
             rows_done: 0,
             source,
             started,
@@ -470,14 +495,9 @@ impl Gles2Backend {
         let Some(mut upload) = self.uploading.take() else {
             return;
         };
-        let wallpaper = upload.id.wallpaper();
-        let rows = if all {
-            wallpaper.height
-        } else {
-            WALLPAPER_UPLOAD_ROWS
-        }
-        .min(wallpaper.height - upload.rows_done);
-        let row_bytes = (wallpaper.width * 3) as usize;
+        let (width, height) = (upload.image.width, upload.image.height);
+        let rows = if all { height } else { WALLPAPER_UPLOAD_ROWS }.min(height - upload.rows_done);
+        let row_bytes = (width * 3) as usize;
         let from = upload.rows_done as usize * row_bytes;
         // SAFETY: see `new`.
         unsafe {
@@ -488,35 +508,35 @@ impl Gles2Backend {
                 0,
                 0,
                 upload.rows_done as i32,
-                wallpaper.width as i32,
+                width as i32,
                 rows as i32,
                 glow::RGB,
                 glow::UNSIGNED_BYTE,
                 glow::PixelUnpackData::Slice(Some(
-                    &upload.rgb[from..from + rows as usize * row_bytes],
+                    &upload.image.rgb[from..from + rows as usize * row_bytes],
                 )),
             );
         }
         upload.rows_done += rows;
-        if upload.rows_done < wallpaper.height {
+        if upload.rows_done < height {
             self.uploading = Some(upload);
             return;
         }
         let WallpaperUpload {
-            id,
+            key: (id, generation),
             cover,
             source,
             started,
             loaded,
             ..
         } = upload;
-        let reduce = cover.0 < wallpaper.width && cover.1 < wallpaper.height;
+        let reduce = cover.0 < width && cover.1 < height;
         // SAFETY: see `new`.
         unsafe {
             let mut texture = Texture {
                 texture: source,
-                width: wallpaper.width,
-                height: wallpaper.height,
+                width,
+                height,
             };
             if reduce {
                 let destination = match self.wallpaper {
@@ -545,6 +565,7 @@ impl Gles2Backend {
             }
             self.wallpaper = Some(texture);
             self.wallpaper_id = Some(id);
+            self.wallpaper_generation = generation;
             self.wallpaper_cover = cover;
         }
         log::info!(
@@ -555,6 +576,8 @@ impl Gles2Backend {
             self.wallpaper.map_or(0, |t| t.width),
             self.wallpaper.map_or(0, |t| t.height)
         );
+        // The picture's RGB is gone now that the GPU has it: its pages go back to the system.
+        crate::memory::release_freed();
     }
 
     /// Draws `source` (the full image) into `destination`, a texture of `cover` pixels, with the
@@ -707,6 +730,7 @@ impl Gles2Backend {
     /// Uploads the 640x144 RGBA wallpaper thumbnails atlas texture if not already present.
     pub fn ensure_wallpaper_thumbs(&mut self) {
         if self.wallpaper_thumbs.is_some() {
+            self.update_custom_thumb();
             return;
         }
         let rgba = crate::wallpaper::decompress_thumbnails();
@@ -739,6 +763,51 @@ impl Gles2Backend {
                 width: crate::wallpaper::THUMBNAILS_WIDTH,
                 height: crate::wallpaper::THUMBNAILS_HEIGHT,
             });
+        }
+        self.custom_thumb_generation = 0;
+        self.update_custom_thumb();
+    }
+
+    /// Puts the thumbnail of "Minha imagem" (128x72) in the atlas' free slot when it changed: no
+    /// texture of its own for one small picture.
+    fn update_custom_thumb(&mut self) {
+        let Some(atlas) = self.wallpaper_thumbs else {
+            return;
+        };
+        let Some((generation, thumb)) = crate::wallpaper::custom::thumbnail() else {
+            return;
+        };
+        if generation == self.custom_thumb_generation {
+            return;
+        }
+        self.custom_thumb_generation = generation;
+        let uv = WallpaperId::Custom.thumb_uv();
+        let (x, y) = (
+            (uv.x * atlas.width as f32).round() as i32,
+            (uv.y * atlas.height as f32).round() as i32,
+        );
+        let rgba: Vec<u8> = thumb
+            .rgb
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect();
+        // SAFETY: see `new`.
+        unsafe {
+            self.gl.bind_texture(glow::TEXTURE_2D, Some(atlas.texture));
+            self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
+            self.gl.tex_sub_image_2d(
+                glow::TEXTURE_2D,
+                0,
+                x,
+                y,
+                thumb.width as i32,
+                thumb.height as i32,
+                glow::RGBA,
+                glow::UNSIGNED_BYTE,
+                glow::PixelUnpackData::Slice(Some(&rgba)),
+            );
         }
     }
 
