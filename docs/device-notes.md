@@ -642,3 +642,48 @@ Tela de cada atalho conferida nesta TV:
 | Sobre a TV | `android.settings.DEVICE_INFO_SETTINGS` (`AboutActivity`) |
 | Android | `android.settings.SETTINGS` (`MainSettings`) |
 
+
+## Tokens do Material Design 3 (change `tokens-m3`, 2026-11-14)
+
+### Base, antes do change (tarefa 1.2)
+
+APK de release `v0.6.1` (o mesmo commit da `main`, `2e7421d`) já instalado na TCL 55C715, que estava ligada havia ~81 h, com carga
+média de 19. Mesmo método da change `antialiasing-do-tema`: 4 rodadas de 12 teclas com 0,4 s entre elas, `--latency` da camada
+simples limpo a cada rodada, e intervalos acima de 150 ms descartados. Na grade, o foco anda 5 tiles para a direita, uma linha
+para baixo, 5 para a esquerda e uma para cima. No dock (7 favoritos), anda 6 para cada lado.
+
+| Medida | Série 1 | Série 2 |
+|---|---|---|
+| Grade de Apps, quadros de 33 ms ou mais | 20 de 463 (4,3%): 5, 4, 7 e 4 | 28 de 463 (6,0%): 5, 10, 5 e 8 |
+| Dock, quadros de 33 ms ou mais | 1 de 476 (0,2%) | 1 de 475 (0,2%) |
+| PSS em primeiro plano, 30 s parado na grade | 14,5 MB | n/d |
+
+- Com muitas horas de uso, a grade da TCL perde mais quadros (3,5 a 3,9% na base de `antialiasing-do-tema`, contra 1,5% com a
+  TV recém-reiniciada). Para comparar, a medida da tarefa 7.2 deve repetir esta base nas mesmas condições: TV reiniciada, a
+  `v0.6.1` (`dist/lume-0.6.1.apk`) e depois o APK do change.
+
+### Antes e depois, TV reiniciada (tarefas 4.2 e 7.2)
+
+A TCL foi reiniciada e medida depois de 5 minutos ligada, com carga média de cerca de 19. A desinstalação apagou os dados do
+Lume, então o dock ficou com os 5 favoritos padrão e o papel de parede Aurora. Por isso, no dock, o foco anda 4 para a direita,
+4 para a esquerda, 2 e 2 (12 teclas). O resto segue o método da base: 4 rodadas de 12 teclas por série e 2 séries de cada.
+Base: `v0.6.1` (`dist/lume-0.6.1.apk`). Change: APK de release `lume-2e7421d-dirty-release-debugsigned.apk` (22,1 MB,
+`verify-apk.py` passou).
+
+| Medida | Base (`v0.6.1`) | Com o change | Orçamento |
+|---|---|---|---|
+| Dock, quadros de 33 ms ou mais | 2 de 476 (0,4%) e 0 de 476 | 0 de 474 e 0 de 475 | 1% |
+| Grade de Apps, quadros de 33 ms ou mais | 4 de 463 (0,9%) e 8 de 462 (1,7%) | 1 de 463 (0,2%) e 0 de 463 | 1% |
+| PSS em primeiro plano, 30 s parado na grade | 57,8 MB | 48,2 MB | 64 MB |
+| PSS em segundo plano (YouTube aberto, 12 s) | n/d | 14,4 MB | 20 MB |
+| Abertura a frio | n/d | primeiro quadro 70 ms após a janela; `am start -W` 363 ms | n/a |
+| Retorno a quente (Home com o YouTube aberto) | n/d | primeiro quadro 74 ms após a janela | 300 ms |
+
+- A grade melhorou: 0,1% nas duas séries, contra 1,3% na base, e voltou a ficar dentro do orçamento de 1%. Sem as sombras do
+  tile em foco e da escala, cada quadro preenche menos área. Ainda assim, é uma rodada só, e a diferença está perto da variação
+  entre séries.
+- O PSS em primeiro plano, logo depois de uma instalação limpa, fica bem acima dos 14,5 MB medidos com a TV ligada havia 81 h.
+  Os caches (papel de parede, ícones e atlas) estão sendo montados nos primeiros minutos. As duas versões foram medidas do
+  mesmo jeito e ficam abaixo dos 64 MB.
+- Na TV (4.2), o foco da grade, o menu de contexto (menu claro, item em `--primary`), o tile sem sombra, a abertura a frio e o
+  retorno a quente ficaram como esperado. O emulador `tv_api28` não existe mais nesta máquina, então a checagem foi feita na TCL.
