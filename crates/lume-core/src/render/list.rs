@@ -57,6 +57,12 @@ pub struct DisplayList {
     wallpaper: Option<WallpaperId>,
 }
 
+/// A corner radius larger than half the shorter side is drawn as half of it, as in CSS: a pill or
+/// a circle (`--shape-full`).
+fn fit_radius(radius: f32, rect: Rect) -> f32 {
+    radius.min(rect.w.min(rect.h) * 0.5).max(0.0)
+}
+
 impl DisplayList {
     pub fn new() -> DisplayList {
         DisplayList::default()
@@ -91,7 +97,7 @@ impl DisplayList {
     fn rect(&mut self, rect: Rect, radius: f32, kind: RectKind, opacity: f32) {
         self.cmds.push(Cmd::Rect(RectCmd {
             rect,
-            radius,
+            radius: fit_radius(radius, rect),
             kind,
             opacity,
         }));
@@ -142,7 +148,7 @@ impl DisplayList {
             dest,
             uv,
             color,
-            radius,
+            radius: fit_radius(radius, dest),
             background,
         }));
     }
@@ -167,7 +173,7 @@ impl DisplayList {
             dest,
             uv,
             color: Color::WHITE,
-            radius,
+            radius: fit_radius(radius, dest),
             background: Color::TRANSPARENT,
         }));
     }
@@ -270,7 +276,31 @@ mod tests {
     use crate::theme::{StateFlags, THEME};
 
     #[test]
-    fn focused_tile_draws_shadow_then_fill_then_ring() {
+    fn a_radius_larger_than_half_the_box_is_drawn_as_half() {
+        let mut list = DisplayList::new();
+        list.fill(
+            Rect::new(0.0, 0.0, 120.0, 40.0),
+            9999.0,
+            Paint::Solid(Color::WHITE),
+        );
+        list.fill(
+            Rect::new(0.0, 0.0, 120.0, 40.0),
+            12.0,
+            Paint::Solid(Color::WHITE),
+        );
+        let radii: Vec<f32> = list
+            .cmds()
+            .iter()
+            .map(|c| match c {
+                Cmd::Rect(r) => r.radius,
+                _ => panic!("a rect"),
+            })
+            .collect();
+        assert_eq!(radii, [20.0, 12.0]);
+    }
+
+    #[test]
+    fn focused_tile_draws_only_its_ring() {
         let style = THEME.resolve(&THEME.tile, StateFlags::FOCUS);
         let mut list = DisplayList::new();
         let base = Rect::new(100.0, 100.0, 211.0, 119.0);
@@ -288,11 +318,12 @@ mod tests {
                 _ => "other",
             })
             .collect();
-        // The tile has no background of its own in the theme: its color comes from the app.
-        assert_eq!(kinds, ["shadow", "ring"]);
+        // The tile has no background of its own in the theme (its color comes from the app) and no
+        // shadow: the focus is the ring and the scale.
+        assert_eq!(kinds, ["ring"]);
 
         // The ring surrounds the scaled box by outline-offset + width.
-        let Cmd::Rect(ring) = list.cmds()[1] else {
+        let Cmd::Rect(ring) = list.cmds()[0] else {
             panic!()
         };
         let scaled = base.scaled_about_center(1.05);

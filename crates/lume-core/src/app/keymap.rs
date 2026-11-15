@@ -67,21 +67,22 @@ const BOTTOM_PADDING: f32 = 96.0;
 const ADD_GLYPH: f32 = 24.0;
 const ADD_GAP: f32 = 8.0;
 
-/// The light cards. Listening: 560x188 at (360, 264). Confirmation: 560x260 at (360, 232).
+/// The light cards. Listening: 560x188 at (360, 264). Confirmation: 560x244 at (360, 240).
 const CARD_X: f32 = 360.0;
 const CARD_WIDTH: f32 = 560.0;
 const CARD_PADDING: f32 = 32.0;
 const LISTEN_Y: f32 = 264.0;
 const LISTEN_HEIGHT: f32 = 188.0;
-const CONFIRM_Y: f32 = 232.0;
-const CONFIRM_HEIGHT: f32 = 260.0;
+const CONFIRM_Y: f32 = 240.0;
+const CONFIRM_HEIGHT: f32 = 244.0;
 /// Inside a card: the title (28/800), the second line and the strip of the hint or the warning.
 const TITLE_TOP: f32 = 32.0;
 const TITLE_HEIGHT: f32 = 44.0;
 const LINE_TOP: f32 = 76.0;
 const LINE_HEIGHT: f32 = 40.0;
 const STRIP_TOP: f32 = 116.0;
-const BUTTONS_TOP: f32 = 180.0;
+/// The confirmation's buttons: 24 under its body of up to two lines (`--line-label` apart).
+const BUTTONS_TOP: f32 = 164.0;
 const CARD_BUTTON_GAP: f32 = 16.0;
 const CARD_BUTTON_MIN_WIDTH: f32 = 140.0;
 const CARD_BUTTON_PADDING: f32 = 56.0;
@@ -872,7 +873,7 @@ impl LumeApp {
         {
             p.text_with(
                 line,
-                inner(LINE_TOP + index as f32 * LINE_HEIGHT, LINE_HEIGHT),
+                inner(LINE_TOP + index as f32 * vars::LINE_LABEL, LINE_HEIGHT),
                 Align::Start,
                 &body_style,
                 vars::MENU_TEXT_MUTED,

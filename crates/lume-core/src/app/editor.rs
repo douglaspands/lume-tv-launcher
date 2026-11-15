@@ -571,7 +571,7 @@ impl LumeApp {
                         },
                     ],
                 ));
-                p.list.fill(left_edge, 12.0, edge_scrim);
+                p.list.fill(left_edge, vars::SHAPE_MD, edge_scrim);
                 let chevron_rect = Rect::new(
                     inner_left + 6.0,
                     cards_y - scroll_y + (WALLPAPER_CARD_HEIGHT - 24.0) / 2.0,
@@ -605,7 +605,7 @@ impl LumeApp {
                         },
                     ],
                 ));
-                p.list.fill(right_edge, 12.0, edge_scrim);
+                p.list.fill(right_edge, vars::SHAPE_MD, edge_scrim);
                 let chevron_rect = Rect::new(
                     inner_left + inner_width - 30.0,
                     cards_y - scroll_y + (WALLPAPER_CARD_HEIGHT - 24.0) / 2.0,
@@ -635,22 +635,10 @@ impl LumeApp {
             rect
         };
 
-        if is_focused {
-            p.list.shadow(
-                target_rect,
-                12.0,
-                Color {
-                    r: 0,
-                    g: 0,
-                    b: 0,
-                    a: 160,
-                },
-                16.0,
-            );
-        }
-
+        // No shadow: the mini-card does not float; the focus is the ring and the scale.
         // Real thumbnail preview!
-        p.list.wallpaper_thumb(target_rect, id.thumb_uv(), 12.0);
+        p.list
+            .wallpaper_thumb(target_rect, id.thumb_uv(), vars::SHAPE_MD);
 
         // Scrim at the bottom for text legibility
         let scrim_rect = Rect::new(
@@ -677,15 +665,15 @@ impl LumeApp {
                 },
             ],
         ));
-        p.list.fill(scrim_rect, 12.0, scrim_paint);
+        p.list.fill(scrim_rect, vars::SHAPE_MD, scrim_paint);
 
         // Outline / focus ring
         if is_focused {
-            p.list.ring(target_rect, 12.0, 3.0, vars::PRIMARY);
+            p.list.ring(target_rect, vars::SHAPE_MD, 3.0, vars::PRIMARY);
         } else if is_active {
-            p.list.ring(target_rect, 12.0, 2.0, vars::PRIMARY);
+            p.list.ring(target_rect, vars::SHAPE_MD, 2.0, vars::PRIMARY);
         } else {
-            p.list.ring(target_rect, 12.0, 1.0, vars::CONTROL);
+            p.list.ring(target_rect, vars::SHAPE_MD, 1.0, vars::CONTROL);
         }
 
         // Active indicator badge if currently selected
@@ -697,9 +685,11 @@ impl LumeApp {
                 badge_size,
                 badge_size,
             );
-            p.list.fill(badge_rect, 9.0, Paint::Solid(vars::PRIMARY));
+            p.list
+                .fill(badge_rect, vars::SHAPE_FULL, Paint::Solid(vars::PRIMARY));
             let dot_rect = Rect::new(badge_rect.x + 5.0, badge_rect.y + 5.0, 8.0, 8.0);
-            p.list.fill(dot_rect, 4.0, Paint::Solid(Color::WHITE));
+            p.list
+                .fill(dot_rect, vars::SHAPE_FULL, Paint::Solid(Color::WHITE));
         }
 
         // Name label
@@ -737,7 +727,7 @@ impl LumeApp {
         } else {
             Paint::Solid(vars::CONTROL)
         };
-        p.list.fill(switch_rect, 14.0, track_paint);
+        p.list.fill(switch_rect, vars::SHAPE_FULL, track_paint);
 
         let knob_x = if self.config.round_favorites {
             switch_x + 24.0
@@ -751,7 +741,8 @@ impl LumeApp {
         } else {
             vars::TEXT_MUTED
         };
-        p.list.fill(knob_rect, 10.0, Paint::Solid(knob_color));
+        p.list
+            .fill(knob_rect, vars::SHAPE_FULL, Paint::Solid(knob_color));
     }
 
     /// A button of the design system: `kind` picks the component of the theme.
@@ -793,7 +784,7 @@ impl LumeApp {
         } else {
             p.focus_style(&THEME.icon_button, progress)
         };
-        style.border_radius = rect.w / 2.0;
+        style.border_radius = vars::SHAPE_FULL;
         style.background = Some(Paint::Solid(match (disabled, danger) {
             (true, _) => vars::CONTROL_DISABLED,
             (false, true) => vars::DANGER_BG,
@@ -816,7 +807,7 @@ impl LumeApp {
         progress: f32,
         disabled: bool,
     ) {
-        let radius = rect.h / 2.0;
+        let radius = vars::SHAPE_FULL;
         let opacity = if disabled { 0.4 } else { 1.0 };
         p.list
             .fill(rect, radius, Paint::Solid(fade(vars::SURFACE, opacity)));
@@ -876,7 +867,7 @@ impl LumeApp {
         scroll_y: f32,
     ) {
         let name = Rect::new(card.x, card.y, card.w, CARD_NAME_HEIGHT);
-        p.list.fill(name, 12.0, Paint::Solid(color));
+        p.list.fill(name, vars::SHAPE_MD, Paint::Solid(color));
         // Square off the bottom of the colored part where it meets the controls.
         p.list.fill(
             Rect::new(card.x, name.bottom() - 12.0, card.w, 12.0),
@@ -884,7 +875,8 @@ impl LumeApp {
             Paint::Solid(color),
         );
         let controls = Rect::new(card.x, name.bottom(), card.w, CARD_CONTROLS_HEIGHT);
-        p.list.fill(controls, 12.0, Paint::Solid(vars::SURFACE_ROW));
+        p.list
+            .fill(controls, vars::SHAPE_MD, Paint::Solid(vars::SURFACE_ROW));
         p.list.fill(
             Rect::new(card.x, controls.y, card.w, 12.0),
             0.0,
@@ -950,8 +942,9 @@ impl LumeApp {
                     a: 60,
                 }),
             );
-            p.list.fill(dialog, 20.0, Paint::Solid(vars::SURFACE_ROW));
-            p.list.ring(dialog, 20.0, 2.0, vars::BORDER);
+            p.list
+                .fill(dialog, vars::SHAPE_LG, Paint::Solid(vars::SURFACE_ROW));
+            p.list.ring(dialog, vars::SHAPE_LG, 2.0, vars::BORDER);
             let title_style = TextStyle::new(28.0, 800);
             let title = p
                 .text
@@ -981,7 +974,7 @@ impl LumeApp {
                     &body_style,
                     vars::TEXT_MUTED,
                 );
-                line_y += 26.0;
+                line_y += vars::LINE_LABEL;
             }
             self.draw_button(
                 p,

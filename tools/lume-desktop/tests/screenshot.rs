@@ -29,9 +29,9 @@ fn empty_screen_at_720p_and_1080p() {
         }
         let (info, pixels) = decode(&path);
         assert_eq!((info.width, info.height), (w, h));
-        // Every pixel is the theme background (#0F171E).
+        // Every pixel is the theme background (#0C171F).
         assert!(
-            pixels.chunks(4).all(|p| p == [0x0F, 0x17, 0x1E, 255]),
+            pixels.chunks(4).all(|p| p == [0x0C, 0x17, 0x1F, 255]),
             "{w}x{h} is not a flat background"
         );
         std::fs::remove_file(path).unwrap();

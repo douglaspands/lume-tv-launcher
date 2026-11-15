@@ -33,10 +33,8 @@ pub const MOVE_ROOM: f32 = 24.0;
 const ARROW_SIZE: f32 = 24.0;
 /// How long the icons take to slide to their new places when the favorites change, and the
 /// neighbors of a favorite being moved to make room for its arrows.
-const SLIDE: crate::theme::Transition = crate::theme::Transition {
-    duration_ms: 240.0,
-    curve: crate::theme::Curve::EaseInOut,
-};
+/// (`--dock-reorder`).
+const SLIDE: crate::theme::Transition = crate::theme::vars::DOCK_REORDER;
 /// Space between the top of the focused icon and the name bubble.
 pub(super) const LABEL_GAP: f32 = 12.0;
 pub(super) const LABEL_HEIGHT: f32 = 40.0;

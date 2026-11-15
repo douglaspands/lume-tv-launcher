@@ -166,6 +166,7 @@ pub struct Style {
     pub font_size: Option<f32>,
     pub font_weight: Option<u16>,
     pub letter_spacing: Option<f32>,
+    pub line_height: Option<f32>,
     /// Top, right, bottom, left.
     pub padding: Option<[f32; 4]>,
     pub gap: Option<f32>,
@@ -187,6 +188,7 @@ impl Style {
         font_size: None,
         font_weight: None,
         letter_spacing: None,
+        line_height: None,
         padding: None,
         gap: None,
         width: None,
@@ -211,6 +213,8 @@ pub struct ComputedStyle {
     pub font_size: f32,
     pub font_weight: u16,
     pub letter_spacing: f32,
+    /// Distance between the baselines of two lines of text; 0 is the font's own line spacing.
+    pub line_height: f32,
     pub padding: [f32; 4],
     pub gap: f32,
     pub width: Option<f32>,
@@ -231,6 +235,7 @@ impl ComputedStyle {
         font_size: 20.0,
         font_weight: 500,
         letter_spacing: 0.0,
+        line_height: 0.0,
         padding: [0.0; 4],
         gap: 0.0,
         width: None,
@@ -271,6 +276,9 @@ impl ComputedStyle {
         }
         if let Some(v) = style.letter_spacing {
             self.letter_spacing = v;
+        }
+        if let Some(v) = style.line_height {
+            self.line_height = v;
         }
         if let Some(v) = style.padding {
             self.padding = v;
@@ -367,6 +375,7 @@ impl Theme {
             font_size: root.font_size,
             font_weight: root.font_weight,
             letter_spacing: root.letter_spacing,
+            line_height: root.line_height,
             ..ComputedStyle::DEFAULT
         };
         component.resolve_over(inherited, state)
@@ -395,7 +404,8 @@ mod tests {
         let ring = focused.outline.expect("focus ring");
         assert_eq!(ring.width, 4.0);
         assert_eq!(ring.color, vars::PRIMARY);
-        assert!(focused.box_shadow.is_some());
+        // The ring and the scale tell the focus; the tile does not float, so it has no shadow.
+        assert!(focused.box_shadow.is_none());
         // Properties the focus rule does not set come from the base rule.
         assert_eq!(focused.border_radius, 12.0);
     }
@@ -519,7 +529,19 @@ mod tests {
             if name != "tile" {
                 on_ruler(name, "height", style.height.unwrap_or(0.0));
             }
-            on_ruler(name, "radius", style.border_radius);
+            // Corners come from the shape scale (or are square).
+            let shapes = [
+                0.0,
+                vars::SHAPE_MD,
+                vars::SHAPE_LG,
+                vars::SHAPE_XL,
+                vars::SHAPE_FULL,
+            ];
+            assert!(
+                shapes.contains(&style.border_radius),
+                "{name} radius = {} is off the shape scale",
+                style.border_radius
+            );
             on_ruler(name, "gap", style.gap);
             for side in style.padding {
                 on_ruler(name, "padding", side);
@@ -609,13 +631,176 @@ mod tests {
     #[test]
     fn the_color_roles_are_the_primary_blue_and_the_secondary_light_neutral() {
         assert_eq!(vars::PRIMARY, Color::rgb(0x4D, 0xB3, 0xFF));
-        assert_eq!(vars::ON_PRIMARY, Color::rgb(0x0F, 0x17, 0x1E));
-        assert_eq!(vars::SECONDARY, Color::rgb(0xF2, 0xF5, 0xF7));
+        assert_eq!(vars::ON_PRIMARY, vars::BG);
+        assert_eq!(vars::SECONDARY, Color::rgb(0xF1, 0xF4, 0xF9));
         // The old names are aliases of the roles, so older themes and code keep working.
         assert_eq!(vars::ACCENT, vars::PRIMARY);
         assert_eq!(vars::ON_ACCENT, vars::ON_PRIMARY);
         // The text is the secondary color.
         assert_eq!(vars::TEXT, vars::SECONDARY);
+    }
+
+    #[test]
+    fn the_m3_color_roles_are_aliases_of_the_lume_tokens() {
+        for (role, alias, token) in [
+            (
+                "surface-container-lowest",
+                vars::SURFACE_CONTAINER_LOWEST,
+                vars::BG,
+            ),
+            (
+                "surface-container-low",
+                vars::SURFACE_CONTAINER_LOW,
+                vars::SURFACE,
+            ),
+            (
+                "surface-container",
+                vars::SURFACE_CONTAINER,
+                vars::SURFACE_ROW,
+            ),
+            (
+                "surface-container-high",
+                vars::SURFACE_CONTAINER_HIGH,
+                vars::SURFACE_FOCUS,
+            ),
+            ("on-surface", vars::ON_SURFACE, vars::TEXT),
+            (
+                "on-surface-variant",
+                vars::ON_SURFACE_VARIANT,
+                vars::TEXT_MUTED,
+            ),
+            ("outline", vars::OUTLINE, vars::BORDER),
+            ("error", vars::ERROR, vars::MENU_DANGER),
+            ("error-container", vars::ERROR_CONTAINER, vars::DANGER_BG),
+            (
+                "on-error-container",
+                vars::ON_ERROR_CONTAINER,
+                vars::DANGER_FG,
+            ),
+            ("inverse-surface", vars::INVERSE_SURFACE, vars::MENU_SURFACE),
+            (
+                "inverse-on-surface",
+                vars::INVERSE_ON_SURFACE,
+                vars::MENU_TEXT,
+            ),
+        ] {
+            assert_eq!(alias, token, "--{role}");
+        }
+    }
+
+    /// HCT tone of a color: its CIELAB lightness L*, from 0 to 100.
+    fn tone(c: Color) -> f32 {
+        let y = crate::catalog::color::luminance(c);
+        if y <= 216.0 / 24389.0 {
+            y * 24389.0 / 27.0
+        } else {
+            116.0 * y.cbrt() - 16.0
+        }
+    }
+
+    fn contrast_ratio(a: Color, b: Color) -> f32 {
+        let (a, b) = (
+            crate::catalog::color::luminance(a) + 0.05,
+            crate::catalog::color::luminance(b) + 0.05,
+        );
+        a.max(b) / a.min(b)
+    }
+
+    /// The tone rule of the design system: a text is at least 50 tones away from its background
+    /// (4.5:1), an outline or graphic at least 40 (3:1). Half a tone of slack absorbs the rounding of
+    /// the hex. Left out: `--text-disabled`, the top bar over the wallpaper (not a palette, author's
+    /// decision) and the 2 px `--border` of `.button-secondary`, which is decorative (the button is
+    /// told by its text, as in WCAG 1.4.11).
+    #[test]
+    fn the_pairs_of_the_components_keep_the_tone_distance() {
+        let dark = [
+            ("bg", vars::BG),
+            ("surface", vars::SURFACE),
+            ("surface-row", vars::SURFACE_ROW),
+            ("surface-focus", vars::SURFACE_FOCUS),
+            ("control", vars::CONTROL),
+        ];
+        let mut texts = vec![];
+        for (fg_name, fg) in [
+            ("text", vars::TEXT),
+            ("text-soft", vars::TEXT_SOFT),
+            ("text-muted", vars::TEXT_MUTED),
+        ] {
+            for (bg_name, bg) in dark {
+                texts.push((fg_name, fg, bg_name, bg));
+            }
+        }
+        texts.extend([
+            ("danger-fg", vars::DANGER_FG, "danger-bg", vars::DANGER_BG),
+            (
+                "menu-text",
+                vars::MENU_TEXT,
+                "menu-surface",
+                vars::MENU_SURFACE,
+            ),
+            (
+                "menu-text-muted",
+                vars::MENU_TEXT_MUTED,
+                "menu-surface",
+                vars::MENU_SURFACE,
+            ),
+            (
+                "menu-danger",
+                vars::MENU_DANGER,
+                "menu-surface",
+                vars::MENU_SURFACE,
+            ),
+            ("on-primary", vars::ON_PRIMARY, "primary", vars::PRIMARY),
+        ]);
+        for (fg_name, fg, bg_name, bg) in texts {
+            let distance = (tone(fg) - tone(bg)).abs();
+            assert!(
+                distance >= 49.5,
+                "--{fg_name} on --{bg_name}: {distance:.1} tones"
+            );
+            let ratio = contrast_ratio(fg, bg);
+            assert!(ratio >= 4.5, "--{fg_name} on --{bg_name}: {ratio:.2}:1");
+        }
+
+        let mut outlines: Vec<_> = dark
+            .iter()
+            .map(|&(bg_name, bg)| ("primary", vars::PRIMARY, bg_name, bg))
+            .collect();
+        outlines.extend([
+            (
+                "menu-text-muted",
+                vars::MENU_TEXT_MUTED,
+                "menu-surface",
+                vars::MENU_SURFACE,
+            ),
+            (
+                "menu-danger",
+                vars::MENU_DANGER,
+                "menu-surface",
+                vars::MENU_SURFACE,
+            ),
+        ]);
+        for (fg_name, fg, bg_name, bg) in outlines {
+            let distance = (tone(fg) - tone(bg)).abs();
+            assert!(
+                distance >= 39.5,
+                "outline --{fg_name} on --{bg_name}: {distance:.1} tones"
+            );
+            let ratio = contrast_ratio(fg, bg);
+            assert!(
+                ratio >= 3.0,
+                "outline --{fg_name} on --{bg_name}: {ratio:.2}:1"
+            );
+        }
+    }
+
+    #[test]
+    fn the_tone_of_a_color_is_its_lightness() {
+        assert!(tone(Color::rgb(0, 0, 0)).abs() < 0.01);
+        assert!((tone(Color::rgb(255, 255, 255)) - 100.0).abs() < 0.01);
+        // The palette comments in the theme name the tone each hex was generated for.
+        assert!((tone(vars::SURFACE) - 10.0).abs() < 0.5);
+        assert!((tone(vars::TEXT_MUTED) - 75.0).abs() < 0.5);
     }
 
     #[test]
@@ -656,6 +841,174 @@ mod tests {
         assert_eq!(vars::BRAND_NETFLIX, Color::rgb(0xB3, 0x12, 0x1C));
         assert_eq!(vars::TAB_UNDERLINE, 2.0);
         assert_eq!(vars::RADIUS, 12.0);
+    }
+
+    #[test]
+    fn only_the_floating_layers_cast_a_shadow_one_elevation_each() {
+        // (offset y, blur, alpha) of --elevation-1, -2 and -3.
+        let level =
+            |s: Option<Shadow>| s.map(|s| (s.offset_x, s.offset_y, s.blur, s.spread, s.color));
+        let black = |a: f32| Color {
+            a: (a * 255.0).round() as u8,
+            ..Color::rgb(0, 0, 0)
+        };
+        let elevation_1 = Some((0.0, 4.0, 24.0, 0.0, black(0.45)));
+        let elevation_2 = Some((0.0, 8.0, 24.0, 0.0, black(0.4)));
+        let elevation_3 = Some((0.0, 16.0, 40.0, 0.0, black(0.45)));
+        let floating = [
+            ("menu", &THEME.menu, elevation_1),
+            ("toast", &THEME.toast, elevation_2),
+            ("dock", &THEME.dock, elevation_3),
+        ];
+        for (name, component, want) in floating {
+            let style = THEME.resolve(component, StateFlags::NONE);
+            assert_eq!(level(style.box_shadow), want, "{name}");
+        }
+        for (name, component) in [
+            ("tile", &THEME.tile),
+            ("tile-label", &THEME.tile_label),
+            ("settings-item", &THEME.settings_item),
+            ("editor-row", &THEME.editor_row),
+            ("panel", &THEME.panel),
+            ("menu-item", &THEME.menu_item),
+            ("button", &THEME.button),
+            ("chip", &THEME.chip),
+            ("icon-button", &THEME.icon_button),
+            ("dock-label", &THEME.dock_label),
+        ] {
+            for state in [StateFlags::NONE, StateFlags::FOCUS, StateFlags::ACTIVE] {
+                let style = THEME.resolve(component, state);
+                assert!(style.box_shadow.is_none(), "{name} {state:?} has a shadow");
+            }
+        }
+    }
+
+    #[test]
+    fn the_transitions_use_the_m3_motion_tokens() {
+        let standard_decelerate = Curve::CubicBezier(0.0, 0.0, 0.0, 1.0);
+        let emphasized_decelerate = Curve::CubicBezier(0.05, 0.7, 0.1, 1.0);
+        // The scale: 50 to 600 ms in steps of 50.
+        let scale = [
+            vars::DURATION_SHORT1,
+            vars::DURATION_SHORT2,
+            vars::DURATION_SHORT3,
+            vars::DURATION_SHORT4,
+            vars::DURATION_MEDIUM1,
+            vars::DURATION_MEDIUM2,
+            vars::DURATION_MEDIUM3,
+            vars::DURATION_MEDIUM4,
+            vars::DURATION_LONG1,
+            vars::DURATION_LONG2,
+            vars::DURATION_LONG3,
+            vars::DURATION_LONG4,
+        ];
+        for (i, step) in scale.iter().enumerate() {
+            assert_eq!(step.duration_ms, 50.0 * (i + 1) as f32);
+        }
+        // A response to the remote decelerates; what comes in decelerates with emphasis.
+        assert_eq!(
+            vars::FOCUS_TIME.duration_ms,
+            vars::DURATION_SHORT3.duration_ms
+        );
+        assert_eq!(vars::FOCUS_TIME.curve, standard_decelerate);
+        for (name, t) in [
+            ("menu-in", vars::MENU_IN),
+            ("icon-in", vars::ICON_IN),
+            ("splash-logo-in", vars::SPLASH_LOGO_IN),
+        ] {
+            assert_eq!(t.curve, emphasized_decelerate, "--{name}");
+        }
+        assert_eq!(vars::SPLASH_REVEAL_WARM.duration_ms, 350.0);
+        // The author's exceptions.
+        assert_eq!(vars::TAB_FADE.duration_ms, 180.0);
+        assert_eq!(
+            (vars::DOCK_REORDER.duration_ms, vars::DOCK_REORDER.curve),
+            (240.0, Curve::EaseInOut)
+        );
+        // Every focus transition of the components is --focus-time.
+        let tile = THEME.resolve(&THEME.tile, StateFlags::NONE);
+        assert_eq!(tile.transition, Some(vars::FOCUS_TIME));
+    }
+
+    #[test]
+    fn every_type_level_is_a_package_of_size_line_height_and_tracking() {
+        let levels = [
+            (vars::FONT_TITLE, vars::LINE_TITLE, vars::TRACKING_TITLE),
+            (vars::FONT_BRAND, vars::LINE_BRAND, vars::TRACKING_BRAND),
+            (
+                vars::FONT_PRIMARY,
+                vars::LINE_PRIMARY,
+                vars::TRACKING_PRIMARY,
+            ),
+            (vars::FONT_BODY, vars::LINE_BODY, vars::TRACKING_BODY),
+            (vars::FONT_LABEL, vars::LINE_LABEL, vars::TRACKING_LABEL),
+            (
+                vars::FONT_CAPTION,
+                vars::LINE_CAPTION,
+                vars::TRACKING_CAPTION,
+            ),
+        ];
+        assert_eq!(
+            levels.map(|(size, line, _)| (size, line)),
+            [
+                (40.0, 48.0),
+                (28.0, 36.0),
+                (22.0, 28.0),
+                (20.0, 28.0),
+                (18.0, 24.0),
+                (16.0, 24.0)
+            ]
+        );
+        for (size, line, _) in levels {
+            assert!(line % 4.0 == 0.0 && line > size, "{size}/{line}");
+        }
+        // Every text component takes the line height of its level; the spacing it had is kept.
+        let line_of = |size: f32| levels.iter().find(|l| l.0 == size).unwrap().1;
+        for (name, component) in [
+            ("app", &THEME.app),
+            ("brand", &THEME.brand),
+            ("clock", &THEME.clock),
+            ("tab", &THEME.tab),
+            ("tile-label", &THEME.tile_label),
+            ("page-title", &THEME.page_title),
+            ("card-heading", &THEME.card_heading),
+            ("about-body", &THEME.about_body),
+            ("about-license", &THEME.about_license),
+            ("toast", &THEME.toast),
+        ] {
+            let style = THEME.resolve(component, StateFlags::NONE);
+            assert_eq!(style.line_height, line_of(style.font_size), "{name}");
+        }
+        let tracking = |c| THEME.resolve(c, StateFlags::NONE).letter_spacing;
+        assert_eq!(tracking(&THEME.brand), -0.5);
+        assert_eq!(tracking(&THEME.page_title), -0.8);
+        assert_eq!(tracking(&THEME.card_heading), vars::TRACKING_CAPS);
+        assert_eq!(tracking(&THEME.clock), 0.0);
+    }
+
+    #[test]
+    fn the_corners_follow_the_m3_shape_scale() {
+        assert_eq!(
+            (vars::SHAPE_MD, vars::SHAPE_LG, vars::SHAPE_XL),
+            (12.0, 20.0, 28.0)
+        );
+        assert_eq!(vars::RADIUS, vars::SHAPE_MD);
+        const { assert!(vars::SHAPE_FULL >= 1000.0, "a pill: drawn as half the box") };
+        // The context menu is a large card; its items are medium.
+        let menu = THEME.resolve(&THEME.menu, StateFlags::NONE);
+        let item = THEME.resolve(&THEME.menu_item, StateFlags::FOCUS);
+        assert_eq!(menu.border_radius, vars::SHAPE_LG);
+        assert_eq!(item.border_radius, vars::SHAPE_MD);
+        assert_eq!(
+            THEME.resolve(&THEME.dock, StateFlags::NONE).border_radius,
+            vars::SHAPE_XL
+        );
+        for chip in [&THEME.chip, &THEME.keycap, &THEME.icon_button] {
+            assert_eq!(
+                THEME.resolve(chip, StateFlags::NONE).border_radius,
+                vars::SHAPE_FULL
+            );
+        }
     }
 
     #[test]

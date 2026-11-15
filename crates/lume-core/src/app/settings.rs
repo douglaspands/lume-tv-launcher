@@ -42,9 +42,10 @@ pub(super) const ITEM_KEY_MAPPING: u32 = ids::SETTINGS_BASE + 1;
 pub(super) const ITEM_TV_INFO: u32 = ids::SETTINGS_BASE + 2;
 pub(super) const ITEM_ABOUT: u32 = ids::SETTINGS_BASE + 3;
 
-/// The line height of running text on the ruler (see the `design-system` spec): 32 for captions,
-/// 40 for body and labels, 44 for the primary size and above.
-fn line_height(font_size: f32) -> f32 {
+/// The pitch of a paragraph or a list row of running text on the ruler (see the `design-system`
+/// spec): 32 for captions, 40 for body and labels, 44 for the primary size and above. The lines a
+/// paragraph wraps into are closer: the line height of its type level (`--line-*`).
+fn paragraph_pitch(font_size: f32) -> f32 {
     if font_size <= 16.0 {
         32.0
     } else if font_size <= 20.0 {
@@ -184,10 +185,12 @@ impl LumeApp {
             let value = value.unwrap_or_else(|| "—".to_string());
             p.text(&value, line, Align::End, &value_style);
             let bar = Rect::new(inner.x, top + 36.0, inner.w, 8.0);
-            p.list.fill(bar, 4.0, Paint::Solid(vars::CONTROL));
+            p.list
+                .fill(bar, vars::SHAPE_FULL, Paint::Solid(vars::CONTROL));
             if let Some(fraction) = fraction {
                 let filled = Rect::new(bar.x, bar.y, (bar.w * fraction).max(8.0), bar.h);
-                p.list.fill(filled, 4.0, Paint::Solid(vars::PRIMARY));
+                p.list
+                    .fill(filled, vars::SHAPE_FULL, Paint::Solid(vars::PRIMARY));
             }
         }
     }
@@ -342,16 +345,23 @@ impl LumeApp {
             (std::borrow::Cow::Borrowed(""), &license),
             (t.get(StringId::AboutThirdParty), &heading),
         ];
+        // The paragraphs wrap when they do not fit; the third-party list is one short row per
+        // component, kept on one line (and never measured, so the long list costs nothing per frame).
+        let paragraphs = blocks.len();
         blocks.extend(
             lines
                 .iter()
                 .map(|line| (std::borrow::Cow::Borrowed(line.as_str()), &license)),
         );
-        let heights: Vec<f32> = blocks
-            .iter()
-            .map(|(_, style)| line_height(style.font_size))
-            .collect();
-        let total: f32 = heights.iter().sum();
+        let rows = about_rows(blocks, |index, text, style| {
+            if index >= paragraphs || text.is_empty() {
+                return None;
+            }
+            let text_style = Painter::text_style(style);
+            (p.text.measure(text, &text_style) > WIDTH)
+                .then(|| super::editor::wrap(p, text, &text_style, WIDTH))
+        });
+        let total: f32 = rows.iter().map(|row| row.pitch).sum();
         let view = (visible.bottom() - ABOUT_VIEW_TOP).max(1.0);
         let max_scroll = (ABOUT_TEXT_TOP + total + 40.0 - ABOUT_VIEW_TOP - view).max(0.0);
         self.about_scroll = self.about_scroll.min(max_scroll);
@@ -365,12 +375,15 @@ impl LumeApp {
         ));
         let view_bottom = visible.bottom();
         let mut y = ABOUT_TEXT_TOP - scroll;
-        for ((text, style), height) in blocks.iter().zip(&heights) {
-            let rect = Rect::new(LEFT, y, WIDTH, *height);
-            if y + *height >= ABOUT_VIEW_TOP && y <= view_bottom && !text.is_empty() {
-                p.text(text, rect, Align::Start, style);
+        for row in &rows {
+            // Every line is placed in a box of its paragraph's pitch, so a wrapped line keeps the
+            // baseline offset of the first one and the baselines are `--line-*` apart.
+            let height = paragraph_pitch(row.style.font_size);
+            let rect = Rect::new(LEFT, y, WIDTH, height);
+            if y + height >= ABOUT_VIEW_TOP && y <= view_bottom && !row.text.is_empty() {
+                p.text(&row.text, rect, Align::Start, row.style);
             }
-            y += height;
+            y += row.pitch;
         }
         p.list.pop_clip();
 
@@ -388,9 +401,68 @@ impl LumeApp {
     }
 }
 
+/// A line of the About text and how far down the next one starts.
+struct AboutRow<'a> {
+    text: std::borrow::Cow<'a, str>,
+    style: &'a ComputedStyle,
+    pitch: f32,
+}
+
+/// Lays the About blocks out in lines: `wrap` gives the lines of a block that does not fit (or
+/// `None`). Between the lines of a block the pitch is its line height; after a block, the paragraph
+/// pitch, so text that fits is placed as it always was.
+fn about_rows<'a>(
+    blocks: Vec<(std::borrow::Cow<'a, str>, &'a ComputedStyle)>,
+    mut wrap: impl FnMut(usize, &str, &ComputedStyle) -> Option<Vec<String>>,
+) -> Vec<AboutRow<'a>> {
+    let mut rows = Vec::with_capacity(blocks.len());
+    for (index, (text, style)) in blocks.into_iter().enumerate() {
+        let after = paragraph_pitch(style.font_size);
+        match wrap(index, &text, style).filter(|lines| lines.len() > 1) {
+            Some(lines) => {
+                let last = lines.len() - 1;
+                for (i, line) in lines.into_iter().enumerate() {
+                    rows.push(AboutRow {
+                        text: std::borrow::Cow::Owned(line),
+                        style,
+                        pitch: if i == last { after } else { style.line_height },
+                    });
+                }
+            }
+            None => rows.push(AboutRow {
+                text,
+                style,
+                pitch: after,
+            }),
+        }
+    }
+    rows
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_wrapped_about_paragraph_has_its_baselines_one_line_height_apart() {
+        let body = THEME.resolve(&THEME.about_body, StateFlags::NONE);
+        let heading = THEME.resolve(&THEME.about_heading, StateFlags::NONE);
+        let blocks = vec![
+            ("Version".into(), &heading),
+            ("a long paragraph".into(), &body),
+            ("Source".into(), &body),
+        ];
+        let rows = about_rows(blocks, |index, text, _| {
+            (index == 1).then(|| text.splitn(2, ' ').map(String::from).collect())
+        });
+        let texts: Vec<&str> = rows.iter().map(|r| r.text.as_ref()).collect();
+        assert_eq!(texts, ["Version", "a", "long paragraph", "Source"]);
+        // Text that fits keeps the paragraph pitch; the second line of the body is 28 below the
+        // first (`--line-body`), and the next paragraph starts a paragraph pitch after it.
+        let pitches: Vec<f32> = rows.iter().map(|r| r.pitch).collect();
+        assert_eq!(pitches, [44.0, vars::LINE_BODY, 40.0, 40.0]);
+        assert_eq!(vars::LINE_BODY, 28.0);
+    }
 
     #[test]
     fn the_layout_is_on_the_ruler() {
@@ -411,7 +483,7 @@ mod tests {
             ("PANEL_HEIGHT", PANEL_HEIGHT),
         ]);
         for size in crate::theme::FONT_SCALE {
-            super::super::assert_on_ruler(&[("line_height", line_height(size))]);
+            super::super::assert_on_ruler(&[("paragraph_pitch", paragraph_pitch(size))]);
         }
     }
 }

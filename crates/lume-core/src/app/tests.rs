@@ -3802,20 +3802,20 @@ mod keymap {
         // The card, and its shadow a few units lower.
         let card = list.cmds().iter().find_map(|cmd| match cmd {
             crate::render::Cmd::Rect(r)
-                if (r.rect.w - 560.0).abs() < 0.5 && (r.rect.y - 232.0).abs() < 0.5 =>
+                if (r.rect.w - 560.0).abs() < 0.5 && (r.rect.y - 240.0).abs() < 0.5 =>
             {
                 Some(r.rect)
             }
             _ => None,
         });
-        let card = card.expect("a 560 wide card at y = 232");
-        assert_eq!((card.x, card.y, card.h), (360.0, 232.0, 260.0));
+        let card = card.expect("a 560 wide card at y = 240");
+        assert_eq!((card.x, card.y, card.h), (360.0, 240.0, 244.0));
         let (restore, cancel) = {
             let row = &rig.app.focus.rows()[0];
             (row.items[0].rect, row.items[1].rect)
         };
         assert_eq!((restore.h, cancel.h), (48.0, 48.0));
-        assert_eq!(cancel.y, 232.0 + 180.0);
+        assert_eq!(cancel.y, 240.0 + 164.0);
         assert_eq!(cancel.right(), 888.0, "right-aligned inside the padding");
         assert_eq!(cancel.x - restore.right(), 16.0, "16 between the buttons");
     }
