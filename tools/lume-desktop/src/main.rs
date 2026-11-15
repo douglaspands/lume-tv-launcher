@@ -79,7 +79,7 @@ fn main() {
         "logo" => screenshot::save(path, width, height, screenshot::draw_logo),
         "banner" => screenshot::save(path, width, height, screenshot::draw_banner),
         "home" | "apps" | "settings" | "tvinfo" | "about" | "editor" | "tools" | "tool-display"
-        | "tool-picture" | "tool-remote" | "tool-audio" | "tool-network" | "tool-storage" => {
+        | "tool-picture" | "tool-remote" | "tool-audio" | "tool-storage" => {
             let setup = Setup {
                 locale: options.locale.clone(),
                 pseudo_locale: options.pseudo_locale,
@@ -101,11 +101,8 @@ fn main() {
                 "tool-picture" => "up,right,down,down,right,ok,down,down,down,ok,down,ok",
                 "tool-remote" => "up,right,down,down,right,ok,down,down,down,ok,down,down,ok",
                 "tool-audio" => "up,right,down,down,right,ok,down,down,down,ok,down,down,down,ok",
-                "tool-network" => {
-                    "up,right,down,down,right,ok,down,down,down,ok,down,down,down,down,ok"
-                }
                 "tool-storage" => {
-                    "up,right,down,down,right,ok,down,down,down,ok,down,down,down,down,down,ok"
+                    "up,right,down,down,right,ok,down,down,down,ok,down,down,down,down,ok"
                 }
                 _ => "",
             };
@@ -140,7 +137,7 @@ fn main() {
                 .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
         }
         other => fail(&format!(
-            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor, keymap, tools, tool-display, tool-picture, tool-remote, tool-audio, tool-network, tool-storage)"
+            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor, keymap, tools, tool-display, tool-picture, tool-remote, tool-audio, tool-storage)"
         )),
     };
     match result {

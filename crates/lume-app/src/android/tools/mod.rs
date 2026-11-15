@@ -3,10 +3,8 @@
 //! exists until a tool asks for it, and everything goes when the tool closes.
 
 mod audio;
-mod network;
 mod storage;
 
-use super::bridge::Bridge;
 use android_activity::{AndroidApp, WindowManagerFlags};
 use lume_core::app::tools::{AudioCommand, ReadingKind, TestKind, ToolEvent, ToolReading};
 use std::path::PathBuf;
@@ -142,9 +140,8 @@ impl Tools {
     }
 
     /// Makes a periodic reading for the open tool.
-    pub fn read(&mut self, kind: ReadingKind, bridge: &Bridge) -> ToolEvent {
+    pub fn read(&mut self, kind: ReadingKind) -> ToolEvent {
         match kind {
-            ReadingKind::Network => ToolEvent::Reading(ToolReading::Network(network::read(bridge))),
             ReadingKind::Storage => {
                 ToolEvent::Reading(ToolReading::Storage(storage::space(&self.files)))
             }

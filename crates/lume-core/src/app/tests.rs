@@ -3911,7 +3911,7 @@ mod tools_base {
     use crate::app::tools::{AudioCommand, ToolKind};
 
     #[test]
-    fn the_menu_lists_the_six_tools_in_order_with_the_focus_on_the_first() {
+    fn the_menu_lists_the_five_tools_in_order_with_the_focus_on_the_first() {
         let mut rig = Rig::new();
         open_tools(&mut rig);
         assert_eq!(rig.focused(), Some(ToolKind::Display.menu_id()));
@@ -3919,17 +3919,20 @@ mod tools_base {
             rig.press(Key::Down);
             assert_eq!(rig.focused(), Some(kind.menu_id()));
         }
-        assert!(!rig.app.focus.move_focus(Direction::Down), "six tools only");
+        assert!(
+            !rig.app.focus.move_focus(Direction::Down),
+            "five tools only"
+        );
     }
 
     #[test]
-    fn the_six_tools_fit_the_safe_area_without_scrolling() {
+    fn the_five_tools_fit_the_safe_area_without_scrolling() {
         let mut rig = Rig::new();
         open_tools(&mut rig);
-        rig.press_all(&[Key::Down; 5]);
+        rig.press_all(&[Key::Down; 4]);
         rig.advance(1000);
         assert_eq!(rig.app.scroll_y, 0.0, "the list does not move");
-        let bottom = super::super::tools::common::item_rect(5).bottom();
+        let bottom = super::super::tools::common::item_rect(4).bottom();
         let safe = crate::display::Display::new(1280, 720).safe_area().bottom();
         assert!(
             bottom <= safe,

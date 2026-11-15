@@ -31,8 +31,6 @@
     <string name="tool_remote_desc">Показывает нажатую кнопку, её код и повтор</string>
     <string name="tool_audio">Звук</string>
     <string name="tool_audio_desc">Левый и правый каналы, свип и синхронизация</string>
-    <string name="tool_network">Сеть</string>
-    <string name="tool_network_desc">Подключение, шлюз и сигнал Wi-Fi</string>
     <string name="tool_storage">Хранилище</string>
     <string name="tool_storage_desc">Скорость записи и чтения внутренней памяти</string>
     <string name="tools_flash_title">Мигающие цвета</string>
@@ -255,16 +253,6 @@
     <string name="tool_audio_sync_zero">0 мс: настройте кнопками Влево и Вправо, пока сигнал и квадрат не совпадут</string>
     <string name="tool_audio_sync_late">+%1$d мс: звук отстаёт на %1$d мс</string>
     <string name="tool_audio_sync_early">−%1$d мс: звук опережает на %1$d мс</string>
-    <!-- Tools: network -->
-    <string name="tool_network_section_connection">ПОДКЛЮЧЕНИЕ</string>
-    <string name="tool_network_no_connection">Нет подключения</string>
-    <string name="tool_network_gateway">Шлюз</string>
-    <string name="tool_network_signal">Сигнал Wi-Fi</string>
-    <string name="tool_network_link">Скорость и диапазон</string>
-    <string name="tool_network_excellent">Отличный</string>
-    <string name="tool_network_good">Хороший</string>
-    <string name="tool_network_fair">Средний</string>
-    <string name="tool_network_weak">Слабый</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Вверх</string>
     <string name="tool_remote_key_down">Вниз</string>

@@ -36,8 +36,6 @@
     <string name="tool_remote_desc">Shows each button pressed, its code and repeat</string>
     <string name="tool_audio">Audio</string>
     <string name="tool_audio_desc">Left and right channels, sweep and audio sync</string>
-    <string name="tool_network">Network</string>
-    <string name="tool_network_desc">Connection, gateway and Wi-Fi signal</string>
     <string name="tool_storage">Storage</string>
     <string name="tool_storage_desc">Write and read speed of the internal storage</string>
     <string name="tools_flash_title">Flashing colors</string>
@@ -257,16 +255,6 @@
     <string name="tool_audio_sync_zero">0 ms: use Left and Right until the beep and the square are together</string>
     <string name="tool_audio_sync_late">+%1$d ms: the sound is %1$d ms late</string>
     <string name="tool_audio_sync_early">−%1$d ms: the sound is %1$d ms early</string>
-    <!-- Tools: network -->
-    <string name="tool_network_section_connection">CONNECTION</string>
-    <string name="tool_network_no_connection">No connection</string>
-    <string name="tool_network_gateway">Gateway</string>
-    <string name="tool_network_signal">Wi-Fi signal</string>
-    <string name="tool_network_link">Link and band</string>
-    <string name="tool_network_excellent">Excellent</string>
-    <string name="tool_network_good">Good</string>
-    <string name="tool_network_fair">Fair</string>
-    <string name="tool_network_weak">Weak</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Up</string>
     <string name="tool_remote_key_down">Down</string>

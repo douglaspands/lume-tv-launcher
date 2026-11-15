@@ -2,7 +2,7 @@
 //!
 //! Everything here exists only while it is used (D1 in the `ferramentas` design): the state of the
 //! open tool lives in [`LumeApp::tool`] and is dropped when the tool closes; the heavy resources
-//! (audio stream, test thread, network, temporary file) live on the platform side and are asked
+//! (audio stream, test thread, temporary file) live on the platform side and are asked
 //! for with an [`Effect`] (D2).
 //!
 //! Every tool lives in its own file, with the same hooks on [`LumeApp`] (`<tool>_open`,
@@ -13,7 +13,6 @@ pub mod audio;
 pub(super) mod common;
 pub mod display;
 mod menu;
-pub mod network;
 pub mod picture;
 pub mod remote;
 pub mod storage;
@@ -33,19 +32,16 @@ pub enum ToolKind {
     Remote,
     /// "Áudio": channels, sweep and audio/video sync.
     Audio,
-    /// "Rede": connection, gateway and Wi-Fi signal.
-    Network,
     /// "Armazenamento": sequential write and read speed.
     Storage,
 }
 
 impl ToolKind {
-    pub const ALL: [ToolKind; 6] = [
+    pub const ALL: [ToolKind; 5] = [
         ToolKind::Display,
         ToolKind::Picture,
         ToolKind::Remote,
         ToolKind::Audio,
-        ToolKind::Network,
         ToolKind::Storage,
     ];
 
@@ -55,7 +51,6 @@ impl ToolKind {
             ToolKind::Picture => StringId::ToolPicture,
             ToolKind::Remote => StringId::ToolRemote,
             ToolKind::Audio => StringId::ToolAudio,
-            ToolKind::Network => StringId::ToolNetwork,
             ToolKind::Storage => StringId::ToolStorage,
         }
     }
@@ -66,7 +61,6 @@ impl ToolKind {
             ToolKind::Picture => StringId::ToolPictureDesc,
             ToolKind::Remote => StringId::ToolRemoteDesc,
             ToolKind::Audio => StringId::ToolAudioDesc,
-            ToolKind::Network => StringId::ToolNetworkDesc,
             ToolKind::Storage => StringId::ToolStorageDesc,
         }
     }
@@ -143,8 +137,6 @@ pub enum TestUpdate {
 /// interface at rest).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ReadingKind {
-    /// Connection type, address, gateway and Wi-Fi signal.
-    Network,
     /// Free and total space of the data partition.
     Storage,
 }
@@ -152,7 +144,6 @@ pub enum ReadingKind {
 /// The answer to a [`ReadingKind`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum ToolReading {
-    Network(network::NetworkReading),
     /// `None`: the system would not tell.
     Storage(Option<storage::StorageSpace>),
 }
@@ -163,7 +154,6 @@ pub(super) enum ToolState {
     Picture(picture::PictureTool),
     Remote(remote::RemoteTool),
     Audio(audio::AudioTool),
-    Network(network::NetworkTool),
     Storage(storage::StorageTool),
 }
 
@@ -174,7 +164,6 @@ impl ToolState {
             ToolKind::Picture => ToolState::Picture(picture::PictureTool::new(now_ms)),
             ToolKind::Remote => ToolState::Remote(remote::RemoteTool::new(now_ms)),
             ToolKind::Audio => ToolState::Audio(audio::AudioTool::new(now_ms)),
-            ToolKind::Network => ToolState::Network(network::NetworkTool::new(now_ms)),
             ToolKind::Storage => ToolState::Storage(storage::StorageTool::new(now_ms)),
         }
     }
@@ -185,7 +174,6 @@ impl ToolState {
             ToolState::Picture(_) => ToolKind::Picture,
             ToolState::Remote(_) => ToolKind::Remote,
             ToolState::Audio(_) => ToolKind::Audio,
-            ToolState::Network(_) => ToolKind::Network,
             ToolState::Storage(_) => ToolKind::Storage,
         }
     }
@@ -229,7 +217,6 @@ impl LumeApp {
             ToolKind::Picture => self.picture_open(),
             ToolKind::Remote => self.remote_open(),
             ToolKind::Audio => self.audio_open(),
-            ToolKind::Network => self.network_open(),
             ToolKind::Storage => self.storage_open(),
         }
     }
@@ -280,7 +267,6 @@ impl LumeApp {
             ToolKind::Picture => self.picture_key(key),
             ToolKind::Remote => self.remote_key(key),
             ToolKind::Audio => self.audio_key(key),
-            ToolKind::Network => self.network_key(key),
             ToolKind::Storage => self.storage_key(key),
         };
         match result {
@@ -299,7 +285,6 @@ impl LumeApp {
             ToolKind::Picture => self.draw_picture(p),
             ToolKind::Remote => self.draw_remote(p),
             ToolKind::Audio => self.draw_audio(p),
-            ToolKind::Network => self.draw_network(p),
             ToolKind::Storage => self.draw_storage(p),
         }
     }
@@ -318,7 +303,6 @@ impl LumeApp {
             ToolKind::Picture => self.picture_deadline(now_ms),
             ToolKind::Remote => self.remote_deadline(now_ms),
             ToolKind::Audio => self.audio_deadline(now_ms),
-            ToolKind::Network => self.network_deadline(now_ms),
             ToolKind::Storage => self.storage_deadline(now_ms),
         }
     }
@@ -330,7 +314,6 @@ impl LumeApp {
             Screen::Tool(ToolKind::Picture) => self.picture_fullscreen(),
             Screen::Tool(ToolKind::Remote) => self.remote_fullscreen(),
             Screen::Tool(ToolKind::Audio) => self.audio_fullscreen(),
-            Screen::Tool(ToolKind::Network) => self.network_fullscreen(),
             Screen::Tool(ToolKind::Storage) => self.storage_fullscreen(),
             _ => false,
         }
@@ -347,7 +330,6 @@ impl LumeApp {
             ToolKind::Picture => self.picture_event(event),
             ToolKind::Remote => self.remote_event(event),
             ToolKind::Audio => self.audio_event(event),
-            ToolKind::Network => self.network_event(event),
             ToolKind::Storage => match event {
                 ToolEvent::Reading(ToolReading::Storage(space)) => self.storage_space(space),
                 other => self.storage_event(other),
@@ -361,9 +343,6 @@ impl LumeApp {
             return None;
         }
         match self.screen {
-            Screen::Tool(ToolKind::Network) => self
-                .network_reading_deadline(now_ms)
-                .map(|at| (ReadingKind::Network, at)),
             Screen::Tool(ToolKind::Storage) => self
                 .storage_reading_deadline(now_ms)
                 .map(|at| (ReadingKind::Storage, at)),

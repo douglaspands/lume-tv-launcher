@@ -19,8 +19,6 @@ import android.graphics.PaintFlagsDrawFilter;
 import android.graphics.drawable.AdaptiveIconDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Environment;
 import android.os.LocaleList;
@@ -113,8 +111,6 @@ public final class LumeBridge {
                     return clock(context);
                 case "display":
                     return display(context);
-                case "wifi-signal":
-                    return wifiSignal(context);
                 default:
                     return "";
             }
@@ -971,26 +967,5 @@ public final class LumeBridge {
         WindowManager windows = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         float hertz = windows.getDefaultDisplay().getRefreshRate();
         return metrics.widthPixels + "\t" + metrics.heightPixels + "\t" + hertz + "\t" + metrics.densityDpi;
-    }
-
-    /**
-     * `rssi TAB linkMbps TAB freqMHz` of the Wi-Fi connection, or empty without one. The network
-     * name (SSID) is never read, so no location permission is needed. `getConnectionInfo` is
-     * deprecated from API 31 but is what both reference TVs (API 28 and 30) answer.
-     */
-    @SuppressWarnings("deprecation")
-    private static String wifiSignal(Context context) {
-        WifiManager wifi = (WifiManager) context.getApplicationContext()
-                .getSystemService(Context.WIFI_SERVICE);
-        if (wifi == null) {
-            return "";
-        }
-        WifiInfo info = wifi.getConnectionInfo();
-        // No network id test: without the location permission Android 10+ hides it (-1) even
-        // when connected. A disconnected interface reports the invalid RSSI (-127).
-        if (info == null || info.getRssi() <= -127) {
-            return "";
-        }
-        return info.getRssi() + "\t" + info.getLinkSpeed() + "\t" + info.getFrequency();
     }
 }

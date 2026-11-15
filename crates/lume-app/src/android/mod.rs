@@ -259,7 +259,7 @@ impl Runtime {
                 }
             }
             if let Some(kind) = self.shell.tool_reading_due(now) {
-                let event = self.tools.read(kind, &self.bridge);
+                let event = self.tools.read(kind);
                 self.shell.tool_event(event, self.now_ms());
             }
             if self.shell.device_info_due(now) {

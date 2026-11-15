@@ -31,8 +31,6 @@
     <string name="tool_remote_desc">Muestra cada botón pulsado, su código y repetición</string>
     <string name="tool_audio">Audio</string>
     <string name="tool_audio_desc">Canales izquierdo y derecho, barrido y sincronía</string>
-    <string name="tool_network">Red</string>
-    <string name="tool_network_desc">Conexión, puerta de enlace y señal Wi-Fi</string>
     <string name="tool_storage">Almacenamiento</string>
     <string name="tool_storage_desc">Velocidad de escritura y lectura del almacenamiento interno</string>
     <string name="tools_flash_title">Colores parpadeantes</string>
@@ -253,16 +251,6 @@
     <string name="tool_audio_sync_zero">0 ms: ajusta con Izquierda y Derecha hasta que el pitido y el cuadrado vayan juntos</string>
     <string name="tool_audio_sync_late">+%1$d ms: el sonido va %1$d ms atrasado</string>
     <string name="tool_audio_sync_early">−%1$d ms: el sonido va %1$d ms adelantado</string>
-    <!-- Tools: network -->
-    <string name="tool_network_section_connection">CONEXIÓN</string>
-    <string name="tool_network_no_connection">Sin conexión</string>
-    <string name="tool_network_gateway">Puerta de enlace</string>
-    <string name="tool_network_signal">Señal Wi-Fi</string>
-    <string name="tool_network_link">Enlace y banda</string>
-    <string name="tool_network_excellent">Excelente</string>
-    <string name="tool_network_good">Buena</string>
-    <string name="tool_network_fair">Regular</string>
-    <string name="tool_network_weak">Débil</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Arriba</string>
     <string name="tool_remote_key_down">Abajo</string>

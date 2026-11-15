@@ -31,8 +31,6 @@
     <string name="tool_remote_desc">Menampilkan tombol yang ditekan, kode, dan pengulangan</string>
     <string name="tool_audio">Audio</string>
     <string name="tool_audio_desc">Kanal kiri dan kanan, sapuan, dan sinkronisasi</string>
-    <string name="tool_network">Jaringan</string>
-    <string name="tool_network_desc">Koneksi, gateway, dan sinyal Wi-Fi</string>
     <string name="tool_storage">Penyimpanan</string>
     <string name="tool_storage_desc">Kecepatan tulis dan baca penyimpanan internal</string>
     <string name="tools_flash_title">Warna berkedip</string>
@@ -252,16 +250,6 @@
     <string name="tool_audio_sync_zero">0 ms: atur dengan Kiri dan Kanan sampai bip dan kotak bersamaan</string>
     <string name="tool_audio_sync_late">+%1$d ms: suara terlambat %1$d ms</string>
     <string name="tool_audio_sync_early">−%1$d ms: suara lebih cepat %1$d ms</string>
-    <!-- Tools: network -->
-    <string name="tool_network_section_connection">KONEKSI</string>
-    <string name="tool_network_no_connection">Tidak ada koneksi</string>
-    <string name="tool_network_gateway">Gateway</string>
-    <string name="tool_network_signal">Sinyal Wi-Fi</string>
-    <string name="tool_network_link">Tautan dan pita</string>
-    <string name="tool_network_excellent">Sangat baik</string>
-    <string name="tool_network_good">Baik</string>
-    <string name="tool_network_fair">Cukup</string>
-    <string name="tool_network_weak">Lemah</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Atas</string>
     <string name="tool_remote_key_down">Bawah</string>
