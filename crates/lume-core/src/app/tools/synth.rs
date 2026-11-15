@@ -82,6 +82,10 @@ struct Voice {
     frame: u64,
     /// The position in the wave's cycle, from 0 to 1.
     phase: f64,
+    /// The current frequency (the sweep's moves on every frame).
+    hz: f64,
+    /// The frames between two sync beeps (0 for the other sounds).
+    period: u64,
     /// Frames left of the fade out, once it was asked to stop.
     release: Option<u64>,
 }
@@ -90,34 +94,70 @@ struct Voice {
 #[derive(Clone, Debug)]
 pub struct Synth {
     rate: u32,
+    /// The durations in frames at this rate, worked out once: [`Synth::fill`] runs per sample.
+    ramp: u64,
+    beep_frames: u64,
+    beep_ramp: u64,
+    sweep_frames: u64,
+    /// The factor the sweep's frequency is multiplied by on every frame, so a 30 s sweep needs no
+    /// `powf` per sample.
+    sweep_step: f64,
     voice: Option<Voice>,
     /// What plays once the current voice faded out (`None`: silence).
     next: Option<AudioCommand>,
 }
 
+/// `ms` in frames at `rate`.
+fn frames(rate: u32, ms: u32) -> u64 {
+    rate as u64 * ms as u64 / 1000
+}
+
 impl Synth {
     pub fn new(rate: u32) -> Synth {
+        let rate = rate.max(1);
+        let sweep_frames = frames(rate, SWEEP_MS).max(1);
         Synth {
-            rate: rate.max(1),
+            rate,
+            ramp: frames(rate, RAMP_MS).max(1),
+            beep_frames: frames(rate, BEEP_MS),
+            beep_ramp: frames(rate, BEEP_RAMP_MS),
+            sweep_frames,
+            sweep_step: (SWEEP_TO_HZ / SWEEP_FROM_HZ).powf(1.0 / sweep_frames as f64),
             voice: None,
             next: None,
         }
     }
 
-    fn frames(&self, ms: u32) -> u64 {
-        self.rate as u64 * ms as u64 / 1000
+    fn start(&self, command: AudioCommand) -> Voice {
+        let (hz, period) = match command {
+            AudioCommand::Tone { hz, .. } => (hz as f64, 0),
+            AudioCommand::Sweep => (SWEEP_FROM_HZ, 0),
+            // At least one frame, so the modulo never divides by zero.
+            AudioCommand::SyncBeep { period_ms } => {
+                (BEEP_HZ, frames(self.rate, period_ms.max(BEEP_MS)).max(1))
+            }
+            AudioCommand::Stop => (0.0, 0),
+        };
+        Voice {
+            command,
+            frame: 0,
+            phase: 0.0,
+            hz,
+            period,
+            release: None,
+        }
     }
 
     /// Asks for a sound ([`AudioCommand::Stop`]: silence). What plays fades out first.
     pub fn play(&mut self, command: AudioCommand) {
         let next = (command != AudioCommand::Stop).then_some(command);
-        let ramp = self.frames(RAMP_MS);
+        let ramp = self.ramp;
         match self.voice.as_mut() {
             Some(voice) => {
                 voice.release.get_or_insert(ramp);
                 self.next = next;
             }
-            None => self.voice = next.map(Voice::new),
+            None => self.voice = next.map(|c| self.start(c)),
         }
     }
 
@@ -143,45 +183,41 @@ impl Synth {
 
     /// One frame: left, right, and whether a beep starts at it.
     fn next_frame(&mut self) -> (f32, f32, bool) {
-        let ramp = self.frames(RAMP_MS);
-        let beep_frames = self.frames(BEEP_MS);
-        let beep_ramp = self.frames(BEEP_RAMP_MS);
-        let sweep_frames = self.frames(SWEEP_MS);
-        let rate = self.rate as f64;
+        let (ramp, rate) = (self.ramp, self.rate as f64);
         let Some(voice) = self.voice.as_mut() else {
             return (0.0, 0.0, false);
         };
+        let hz = voice.hz;
         let mut starts_beep = false;
-        let (hz, gain, channel) = match voice.command {
-            AudioCommand::Tone { channel, hz } => {
-                (hz as f64, envelope(voice.frame, None, ramp), channel)
-            }
+        let (gain, channel) = match voice.command {
+            AudioCommand::Tone { channel, .. } => (envelope(voice.frame, None, ramp), channel),
             AudioCommand::Sweep => {
-                let elapsed_ms = voice.frame as f64 * 1000.0 / rate;
-                let gain = envelope(voice.frame, Some(sweep_frames), ramp);
-                (sweep_hz(elapsed_ms), gain, Channel::Both)
+                voice.hz = (voice.hz * self.sweep_step).min(SWEEP_TO_HZ);
+                let gain = envelope(voice.frame, Some(self.sweep_frames), ramp);
+                (gain, Channel::Both)
             }
-            AudioCommand::SyncBeep { period_ms } => {
-                let period = self.rate as u64 * period_ms.max(BEEP_MS) as u64 / 1000;
-                let in_period = voice.frame % period;
+            AudioCommand::SyncBeep { .. } => {
+                let in_period = voice.frame % voice.period;
                 if in_period == 0 {
                     // Every beep starts at the top of a cycle, the same at every repetition.
                     voice.phase = 0.0;
                     starts_beep = voice.release.is_none();
                 }
-                let gain = if in_period < beep_frames {
-                    envelope(in_period, Some(beep_frames), beep_ramp)
+                let gain = if in_period < self.beep_frames {
+                    envelope(in_period, Some(self.beep_frames), self.beep_ramp)
                 } else {
                     0.0
                 };
-                (BEEP_HZ, gain, Channel::Both)
+                (gain, Channel::Both)
             }
-            AudioCommand::Stop => (0.0, 0.0, Channel::Both),
+            AudioCommand::Stop => (0.0, Channel::Both),
         };
-        let release = voice
-            .release
-            .map_or(1.0, |left| left as f32 / ramp.max(1) as f32);
-        let sample = (voice.phase * TAU).sin() as f32 * PEAK * gain * release;
+        let release = voice.release.map_or(1.0, |left| left as f32 / ramp as f32);
+        let sample = if gain == 0.0 {
+            0.0
+        } else {
+            (voice.phase * TAU).sin() as f32 * PEAK * gain * release
+        };
         voice.phase = (voice.phase + hz / rate).fract();
         voice.frame += 1;
         let ended = match voice.release.as_mut() {
@@ -189,26 +225,17 @@ impl Synth {
                 *left = left.saturating_sub(1);
                 *left == 0
             }
-            None => matches!(voice.command, AudioCommand::Sweep) && voice.frame >= sweep_frames,
+            None => {
+                matches!(voice.command, AudioCommand::Sweep) && voice.frame >= self.sweep_frames
+            }
         };
         if ended {
-            self.voice = self.next.take().map(Voice::new);
+            self.voice = self.next.take().map(|c| self.start(c));
         }
         match channel {
             Channel::Left => (sample, 0.0, starts_beep),
             Channel::Right => (0.0, sample, starts_beep),
             Channel::Both => (sample, sample, starts_beep),
-        }
-    }
-}
-
-impl Voice {
-    fn new(command: AudioCommand) -> Voice {
-        Voice {
-            command,
-            frame: 0,
-            phase: 0.0,
-            release: None,
         }
     }
 }
