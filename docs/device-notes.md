@@ -819,3 +819,107 @@ e Início de novo (PSS / privada, MB). `main` = `a30f8cc`, branch = `b539131-dir
   ativo" (`stay_on_while_plugged_in`) desligado só durante o teste, para valer o desligamento por inatividade de 5 min
   (`screen_off_timeout` = 300000): `mWakefulness=Awake` e o Lume em foco nas 12 leituras, a cada minuto, das 13:12 às 13:23.
   Ao fim, a tela Tela voltou sozinha com o foco em "Iniciar", e o `stay_on_while_plugged_in` voltou a 3.
+
+## Papel de parede pelo celular (change `papel-de-parede-do-celular`, 2026-11-15)
+
+### Android TV 9 no emulador `tv_api28` (tarefa 10.18, build de debug `03dd162-dirty`)
+
+Fluxo inteiro no Android 9 (API 28, x86), com o Chrome sem janela do computador fazendo o papel do celular
+(`node scripts/companion-page-test.mjs --live ...`):
+
+- A tela Receber imagem escolheu `wlan0` (192.168.232.2) pelo `SIOCGIFCONF` e escutou na 8642. O endereço não é alcançável
+  do computador, e o `adb forward` entrega no `localhost` do emulador, onde o Lume não escuta (ele escuta só no IP
+  escolhido). Funcionou com um repasse dentro do emulador: `adb shell "toybox nc -p 8643 -L toybox nc 192.168.232.2 8642"`
+  e `adb forward tcp:8642 tcp:8643` (o `nc` comum do Android 9 é o do OpenBSD, sem repasse; o `toybox nc` tem).
+- `GET /wallpaper/` 200 e `GET /lib/heic.wasm` 200 com `application/wasm` e os 1.244.473 bytes do arquivo, lido dos assets
+  do APK pelo `AAssetManager`.
+- Três envios seguidos aceitos (retrato em Ajustar, o mesmo em Preencher a 130% e um HEIC 4032x3024 decodificado pelo wasm
+  da TV): a tela Confirmar abriu com o foco em Aplicar e trocou a imagem a cada envio, sem tecla. O `custom ready` de cada
+  troca levou 159 a 196 ms.
+- Aplicar: `custom wallpaper applied in 258 ms`, servidor parado (a porta deixou de responder dentro do emulador),
+  `config.v1` com só `wallpaper=custom` e `custom_rev=1`, `files/wallpaper/custom.qoi` (38.831 bytes, a foto de teste é
+  lisa) e `custom-thumb.rgb` (27.648 bytes). O editor voltou com o foco em "Minha imagem", ativa.
+- Reiniciado o app: `from the cache in 2 ms`; com `cache/wallpaper-custom-*` apagado: `decoded again in 14 ms`.
+- Em russo (`persist.sys.locale ru-RU`): OK em "Minha imagem" ativa abre o menu (Usar, Trocar, Remover); as telas Receber
+  imagem (com "Телефон подключён · редактирование…" depois de um `/ping`) e Confirmar sem texto cortado. Voltar na
+  Confirmar volta à Receber imagem com o mesmo código; Voltar de novo para o servidor; a imagem aplicada continua.
+- Observação: num quadro de transição para as Configurações, o texto apareceu embaralhado numa captura e normal dois
+  segundos depois (o atlas de glifos sendo montado no quadro da troca; não parece ligado a esta change).
+
+### Memória do fluxo nas TVs (tarefa 10.12, build de release `03dd162-dirty`, 2026-11-15)
+
+Roteiro igual nas duas: instalação limpa, editor aberto (antes), tela Receber imagem, dois envios do computador pela rede
+(`companion-page-test.mjs --live`, um retrato em Ajustar e o mesmo em Preencher a 130%), tela Confirmar (durante),
+Aplicar e 30 s no editor (depois). `dumpsys meminfo`, linha `TOTAL`.
+
+| PSS (privada suja) | Antes, no editor | Durante a confirmação | Depois de aplicar | Orçamento |
+|---|---|---|---|---|
+| TCL 55C715 (Android 11) | 23,6 MB (13,1) | 29,3 MB (18,8) | 23,7 MB (13,2) | < 64 MB; até +2 MB depois |
+| AIWA (KTC, `low_ram`, **Android 14**), sem devolver memória | 62,8 MB (27,3) | 74,6 MB (39,2) | 75,0 MB (39,6) | idem |
+| AIWA, com `memory::release_freed` | 64,3 MB (26,9) | 69,7 MB (32,3) | 69,9 MB (32,5) | idem |
+
+- A AIWA está agora no **Android 14** (API 34, aparelho `stanford`, 1280x720), não mais no 11. O PSS dela no editor, sem
+  nada desta change aberto, já fica em 63 a 64 MB (antes, no Android 11: 39 a 43 MB em primeiro plano): `Code` ~20 MB
+  (`.so mmap` 14,7 MB, quase tudo compartilhado e limpo), `GL mtrack` 13,6 MB, heap nativo 11 MB.
+- A imagem recebida (6,2 MB em RGB) explica a subida durante a confirmação (+5,5 MB de privada nas duas TVs). Na AIWA,
+  sem devolver memória, o alocador guardava a primeira imagem descartada e mais (+12 MB, 22 MB livres no heap depois de
+  aplicar).
+- `memory::release_freed` (`mallopt(M_PURGE_ALL)`, ou `M_PURGE` antes do Android 14) depois de cada papel de parede
+  enviado à GPU e ao fim da confirmação: na TCL o `logcat` mostra `purge all 0, purge 1` em 0 ms, e o PSS volta ao valor de
+  antes. Na AIWA a subida durante caiu de +11,8 para +5,4 MB, mas depois de aplicar ficam 5,6 MB (7,8 MB livres no heap,
+  a memória alocada é a mesma de antes), também minutos depois. O `logcat` da AIWA não mostra as linhas do Lume (buffer
+  de 64 KB), então não se vê o que o `mallopt` respondeu lá.
+- O QR da tela em 1280x720 foi lido pelo `zxing-cpp` (`http://192.168.0.2:8642/wallpaper/?c=...`); o detector do OpenCV
+  não o leu nessa resolução (leu em 1920x1080 e no desktop).
+
+### AIWA: de onde vem a memória (investigação, 2026-11-15, release `03dd162-dirty`)
+
+Lume parado na tela Início, logo depois de instalado (`dumpsys meminfo`, PSS em MB):
+
+| | TCL (Android 11, Mali-470) | AIWA (Android 14, Mali-G31) |
+|---|---|---|
+| Total | 24,8 | 65,0 |
+| `.so mmap` | 3,7 (privada limpa 0,7) | 15,8 (privada limpa 14,0) |
+| `GL mtrack` (memória da GPU) | não informado | 13,8 |
+| `.jar`, `.art`, `.oat`, `.apk mmap` | 7,8 | 14,6 |
+| Heap nativo | 8,9 | 12,4 |
+| Privada suja (total) | 13,9 | 28,8 |
+
+- A `liblume.so` (armeabi-v7a, nas duas TVs) tem 1,5 MB. Os 14 MB de `.so` privada limpa da AIWA são do driver gráfico
+  (Bifrost), que na AIWA só o processo do Lume carrega; são páginas de arquivo, que o sistema descarta sob pressão.
+- `GL mtrack` é a memória da GPU contada no processo: o driver da AIWA a informa, o da TCL não (lá ela existe mas fica de
+  fora do PSS). Do Lume: papel de parede (1280x720, ~3,7 MB), ícones e banners em RGBA, atlas de glifos (1024 de largura,
+  1 byte por pixel) e miniaturas, uns 8 MB; o resto é do driver.
+- Do aumento de 40 MB entre as TVs, uns 34 MB são da pilha gráfica e do framework do Android 14 `low_ram`. A parte do Lume
+  (heap nativo e Java) é parecida nas duas.
+- **A sobra de 5,6 MB depois do fluxo não cresce:** três rodadas seguidas de dois envios e Cancelar (a imagem aplicada
+  do autor ficou intacta) deram PSS 68,4, 68,9 e 68,9 MB; durante a confirmação o heap livre cai a 1,6 MB, e depois volta
+  a 7,8 MB. O alocador guarda o bloco da imagem (6,2 MB) como espaço livre e o reaproveita no uso seguinte; o
+  `mallopt(M_PURGE_ALL)` não o devolve nessa TV. Num processo novo (a TV encerra o Lume em segundo plano com frequência), a
+  memória volta: com "Minha imagem" aplicada e o app reiniciado, 63,3 MB.
+
+### Memória devolvida ao sistema (`memory::Buffer`, release `03dd162-dirty`, 2026-11-15)
+
+Orçamento revisto pela memória privada suja sem a GPU (`Private Dirty` do `TOTAL` menos `GL mtrack`), 32 MB em
+primeiro plano; o PSS fica como referência. As imagens grandes (papel de parede, corpo do envio, QOI ao Aplicar, assets)
+passaram a ter um mapeamento próprio, devolvido ao sistema quando soltas. Mesmo roteiro da tarefa 10.12 (dois envios,
+Aplicar) e mais cinco trocas de papel de parede no editor:
+
+| Privada sem a GPU (PSS) | Antes, no editor | Confirmar | Depois de Aplicar | 5 trocas |
+|---|---|---|---|---|
+| TCL (Android 11) | 13,2 MB (24,0) | 19,1 MB (30,0) | 13,3 MB (24,1) | 13,2–13,3 MB |
+| AIWA (Android 14) | 13,3 MB (67,1, GPU 18,9) | 18,6 MB (67,1) | 12,9 MB (61,8) | 12,9–12,9 MB |
+| Emulador `tv_api28`, duas rodadas com Cancelar | 22,5 MB | 29,0 / 28,4 MB | 23,3 / 23,1 MB | — |
+
+- Na AIWA a sobra de 5,6 MB sumiu: o heap nativo fica em 10,2–10,9 MB durante e depois do fluxo (antes ia a 17 MB, com
+  7,8 MB livres presos), e o PSS depois de Aplicar ficou abaixo do de antes (61,8 contra 67,1, que tinha a GPU ainda com
+  o papel de parede em troca).
+- Tudo dentro do orçamento novo nas duas TVs, com folga: 19,1 MB no pior caso (a confirmação), contra 32 MB.
+- O envio ao vivo pela rede falhou uma vez na primeira rodada logo depois de abrir a tela na AIWA (a página não confirmou
+  o envio a tempo); três repetições seguidas passaram.
+
+### Fluxo com o celular do autor (tarefa 9.2, 2026-11-15)
+
+O autor fez o fluxo completo com o próprio celular (QR, edição na página, envio, Aplicar na TV) e confirmou que funciona;
+uma foto real dele ficou aplicada como "Minha imagem" na AIWA. O fluxo pelo computador (Chrome) foi feito nas duas TVs
+(`companion-page-test.mjs --live`), inclusive com HEIC decodificado pelo wasm servido pela TV.

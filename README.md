@@ -18,7 +18,8 @@ English | [Português (Brasil)](README.pt-BR.md) | [Español](README.es.md) | [B
 **What you get**
 
 - A home screen with a floating dock for your favorite apps: the icon under the focus grows, and the neighbors make room. The favorites are round, or square if you prefer.
-- Six wallpapers to choose from (the northern-lights Aurora is the default), made for this project.
+- Six wallpapers to choose from (the northern-lights Aurora is the default), made for this project, or your own picture
+  sent from the phone over the local network (a QR code on the TV, no app on the phone).
 - An "Apps" screen with everything installed on your TV.
 - Everything works with the normal TV remote (arrows, OK, Back, Home).
 - English, Portuguese (Brazil), Spanish, Indonesian and Russian, following your TV's language.
@@ -230,7 +231,8 @@ scripts/container-build.sh release    # dist/lume-<version>-release-debugsigned.
 
 Keep the keystore outside the repository and back it up: the same key must sign every update. The version comes from the build, not from a file: a release tag `v0.3.0` gives `0.3.0` (`LUME_VERSION_NAME=v0.3.0` does the same), and a local build uses the short git commit (`4d8438b`, with `-dirty` for uncommitted changes to tracked files; `dev` without git), so the file is named `dist/lume-4d8438b-release-debugsigned.apk`.
 
-**Checking an APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` checks the size (40 MB), the ABIs, the 16 KB alignment of the native libraries, that each wallpaper is stored once in `assets/` and not inside a library, and that the app asks for neither `INTERNET` nor `QUERY_ALL_PACKAGES`.
+**Checking an APK.** `scripts/verify-apk.py dist/lume-<version>-release-debugsigned.apk` checks the size (40 MB), the ABIs, the 16 KB alignment of the native libraries, that each wallpaper is stored once in `assets/` and not inside a library, and that the app does not ask for `QUERY_ALL_PACKAGES` (`INTERNET` is there: it lists the network interfaces and lets the
+Receive image screen listen on the local network while it is open).
 
 ### Build without a container
 
@@ -270,7 +272,7 @@ Translations are standard Android `strings.xml` files in `android/app/src/main/r
 
 ### Wallpaper
 
-Lume draws one of six wallpapers behind every screen, 3840x2160 images (Unsplash License), reduced to Full HD at build time. How they are processed, how to add or replace one and where their origin and license are recorded: [`docs/wallpaper.md`](docs/wallpaper.md).
+Lume draws one of six wallpapers behind every screen, 3840x2160 images (Unsplash License), reduced to Full HD at build time, or the user's own picture sent from the phone ("Minha imagem", framed on the phone and confirmed on the TV). How they are processed, how to add or replace one, where their origin and license are recorded, and how the phone companion keeps to the local network: [`docs/wallpaper.md`](docs/wallpaper.md).
 
 ### Contributing, license and trademarks
 

@@ -91,6 +91,132 @@ masters 1.8 to 3.1. The gap around the Aurora is narrow: a new very smooth maste
    There is no second layer over the screen: the image is drawn at 22% opacity over the `--bg` the frame is cleared to.
    (A full-screen translucent layer cost more than half of the frames of the Apps grid on the TV.) Home shows it as it is.
 
+## Your own image ("Minha imagem")
+
+Besides the catalog, the user can send one picture of their own from the phone. It is a single slot: a new picture
+replaces the old one only when the user presses Apply on the TV.
+
+**The flow.** In the editor (Settings › Home screen), the first mini-card is "+ From phone" (the phone icon of Lucide
+over `--surface` with a dashed outline) or, once there is an image, "Minha imagem" with its thumbnail. OK on the empty card,
+or "Replace image" in the card's menu, opens the **Receive image** screen: a QR code, the address to type
+(`<ip>:<port>/wallpaper`), a 4-character code, the steps and the state of the reception. The phone opens the Lume page (no
+app), chooses a photo, **frames it on the phone** and sends the result; the TV opens the **Confirm** screen with it in full
+screen, as the wallpaper will be, and a small card at the bottom: "Use as wallpaper?", Cancel and Apply (the focus on
+Apply). While Confirm is open the server keeps listening: the phone can frame again and send, and the TV shows the new
+picture without a key. Cancel or Back goes back to Receive image with the same code; Apply keeps the picture, makes it the
+wallpaper, switches the server off and goes back to the editor with the focus on the card. OK on "Minha imagem" when it is
+already the wallpaper opens its menu (also the Menu button, codes 82 and 174): "Use this image", "Replace image" and
+"Remove" (with a confirmation; the Aurora comes back if it was active). There is no "adjust again" on the TV: it keeps
+neither the photo nor the framing, so changing the framing is sending another picture.
+
+**The page.** Two states: without a photo, only "Choose photo" with the formats and the best size; with one, the
+choice gives way to the preview ("Change photo" in its corner), the five modes as cards showing the photo itself in each
+(Whole, Full screen, Stretch, Soft background, Mosaic in the page; Fit, Fill, Stretch, Blurred background, Repeat here),
+a sentence of the chosen mode, its controls (a zoom slider and "Center"; "Same | Mirrored" and the size of the copies)
+and "Send to the TV" held at the bottom of the phone's screen, which becomes "Send again" once sent.
+
+**The phone frames, the TV receives 1920x1080 in QOI.** The page decodes the photo itself (JPEG, PNG, WebP, HEIC), applies
+its rotation and keeps a working copy reduced by area to at most 4 MP, only in the browser. The editing is a 16:9 preview
+on a `<canvas>`, drawn again at every change by `compose(ctx, photo, params, w, h)`; sending composes 1920x1080 with the
+same function, encodes QOI in JavaScript and posts it. The page remembers the photo and the framing while it stays open,
+to send again. The TV has no JPEG, PNG or HEIC decoder and checks everything again (exactly 1920x1080, at most 9 MB,
+decoded in full). The page is built with the app (`crates/lume-core/assets/companion/index.html`, the theme's colors and
+the logo of `src/logo.rs` filled in by `build.rs`), embedded in the library, and its texts are the `companion_*` strings in
+the language of the phone's browser.
+
+**Size and shape** (on the original photo, in the page).
+
+| Smaller side | What the page allows |
+|---|---|
+| 1080 px or more | every mode |
+| 720 to 1079 px | every mode, with "It may look less sharp on the TV" |
+| 64 to 719 px | only Repeat (the editing opens in it; the other chips are off, with the reason above them) |
+| below 64 px | refused, nothing is sent |
+
+A photo from 1.70 to 1.86 wide per high (16:9 +-5%) starts in Fill; any other starts in Fit, with black bars on the sides
+(portrait) or above and below (panorama). The modes, all to 1920x1080: **Fit** (whole, centered, bars `#000`; a 1080x1920
+photo is 608 px wide with bars of 656), **Fill** (covers; zoom 100 to 200% by pinch, the zoom slider or the mouse wheel; dragging moves
+it and never leaves an empty edge), **Stretch**, **Blurred background** (Fit over the
+photo enlarged to cover, made at 1/8 with 3 box-blur passes) and **Repeat** (the whole photo in the middle as in Fit,
+copies edge to edge around it until the screen is full; side by side or mirrored, 25 to 100% in steps of 25, never larger
+than the photo's own size on a 1080-line screen; dragging moves the pattern). No shadow is added under the top bar (the
+author's decision).
+
+**HEIC.** Safari opens HEIC by itself; Chrome (Android and computer) does not. When the browser fails and the file is
+HEIC/HEIF (by type, name or the `ftyp` brand), the page loads `/lib/heic.js`, which fetches `/lib/heic.wasm` from the TV:
+libheif with libde265, compiled to WebAssembly, which decodes the primary picture with the rotation the file records
+(`irot`/`imir`). A JPEG, or a HEIC on Safari, never downloads it. If it fails too (a broken file, not enough memory), the
+page suggests saving the photo as JPEG. The two files (about 1.2 MB) are made by `scripts/build-heic-wasm.sh`: it downloads
+libheif and libde265 at fixed versions, checks their SHA-256 and compiles them with a fixed `emscripten/emsdk` image (docker
+or podman); two runs give the same bytes. They are committed in `crates/lume-core/assets/companion/heic/` with
+`SOURCES.txt` (versions, URLs, hashes, options), and the APK build copies them once into `assets/companion/`, where the
+server reads them through the `AAssetManager` (on the desktop, from the repository).
+
+**Licenses and patents of the decoder.** libheif and libde265 are LGPL-3.0, compatible with Lume's GPL-3.0-or-later; they are
+on the About screen, and `SOURCES.txt` with the script is the corresponding source. HEVC is covered by patents (the Access
+Advance and Via LA pools), which is why browsers do not ship a software decoder. Shipping this one is the author's decision
+(2026-11-15); it is only downloaded by someone who picks a HEIC in a browser that cannot open it.
+
+**Where it is kept.** Apply writes the picture received, 1920x1080, to `files/wallpaper/custom.qoi` (the system does not
+clear `files/`; at most 9 MB) and a 128x72 thumbnail (an area reduction) to `files/wallpaper/custom-thumb.rgb`;
+`config.v1` gets only `wallpaper=custom` and `custom_rev`. The RGB is cached like the catalog's, as
+`wallpaper-custom-<rev>-<version>.rgb`; `rev` goes up at every Apply and the old files are deleted. If the system clears
+the cache, the QOI in `files/` is decoded again; if it is gone, does not decode or is not 1920x1080 (the source a
+development version of this feature kept), Lume uses the Aurora, logs it and the card goes back to "+ From phone". The
+framing keys of that version (`custom_fit`, `custom_zoom`...) are ignored. An older version that reads `wallpaper=custom`
+does not know it and uses the Aurora.
+
+**Memory.** On the TV, only the picture received (6.2 MB in RGB) is in memory, while Confirm is open (or while the cache is
+made again), and it is the wallpaper texture itself: no second texture. Leaving the screen frees it. The photo never
+reaches the TV; the working copy stays in the phone's browser.
+
+### The local network
+
+`INTERNET` is used to listen on the local network only while the Receive image or the Confirm screen is open; Lume never
+opens an outgoing connection. The server (`lume_core::companion`) is a minimal HTTP/1.1 in `std::net` on one thread,
+blocked in `accept`. Each function of the page has its path: `GET /wallpaper/` (the page) and `POST /wallpaper/upload`;
+the session's `POST /ping` and the shared `GET /lib/heic.js` and `/lib/heic.wasm` stay outside; `GET /` and
+`/wallpaper` lead to `/wallpaper/` keeping `?c=`; anything else is 404.
+
+- It listens on the private IPv4 of the active interface (cable before Wi-Fi), on port 8642 or, when taken, one the system
+  chooses (the QR carries the port). Without a private IPv4 there is no server and the screen asks for the same network,
+  looking again every 3 s.
+- A new 4-character code each time (no 0/O nor 1/I/L, from `/dev/urandom`), in the QR as `?c=`; typed by hand, the page asks
+  for it. Five wrong codes (uploads or pings) switch the server off: "Too many attempts".
+- **Time and editing.** While the page is open and visible it posts `/ping?c=&idle=` every 30 s, with the seconds since the
+  last touch, click, key or file change; a hidden page does not. The TV counts as editing the page loading, an upload, or a
+  ping with `idle` under 120. The 5 minutes count from the last edit; "Phone connected · editing…" shows until 75 s after
+  it, and the clock ("The code expires in 0:45") only in the last minute. When the time runs out without editing, a new code
+  and QR come by themselves, up to 3 times; the fourth time the server stops: "Time is up" and "Make a new code". The
+  deadlines are absolute moments, so the loop does not push them away; outside the last minute, an idle screen draws no
+  frame, and a ping that changes nothing on screen asks for none.
+- It switches off 10 s after Apply and when the user leaves the screens (Back or Cancel on Receive image, Home, another
+  app in front). Then no port of Lume is open. An accepted picture does not switch it off. After a send the page asks
+  every 2 s what the TV did (the answer to `/ping` carries `"tv": "pending" | "applied" | "declined"`); for those 10 s the
+  server only answers that and refuses uploads. Applied, the page shows its end ("Done! The wallpaper is on the TV. You
+  can close this tab now.") and tries `window.close()`, which browsers allow only for tabs a script opened; declined, it
+  says so and the editing goes on.
+- Untrusted input: headers up to 8 KB, 10 s per read, a body only with `Content-Length` (no chunked) and at most 9 MB
+  (refused before it is read), the QOI checked (header, exactly 1920x1080, decoded in full). One upload at a time: a
+  second one hears that the TV is busy.
+- Plain HTTP: someone else on the same network could see the picture go by. It is the user's own picture, on their local
+  network, while the screens are open; nothing else travels. A guest network that isolates its clients keeps the phone
+  from reaching the TV; there is no way around it without an outside server, which Lume does not use.
+- **Android TV 9.** Everything above uses only what the NDK has since API 28 (sockets, `SIOCGIFCONF`, `AAssetManager`,
+  `/dev/urandom`), so it works on Android TV 9 as on 11. On the emulator `tv_api28` Lume listens on `wlan0`
+  (192.168.232.2), which the computer cannot reach, and `adb forward` alone delivers to the emulator's localhost, where
+  Lume does not listen. Relay inside the emulator and forward to the relay:
+  `adb shell "toybox nc -p 8643 -L toybox nc 192.168.232.2 8642"`, then `adb forward tcp:8642 tcp:8643`, and open
+  `http://localhost:8642/wallpaper/?c=<code>` (or `node scripts/companion-page-test.mjs --live <that URL>`).
+
+**Trying it on the computer.** `lume-desktop` serves the page for real: `cargo run -p lume-desktop -- --screenshot
+receive-live confirm.png` prints the address, waits for a picture from a phone or browser on the same network
+(`LUME_SERVE_SECS`, 120 by default) and shoots the Confirm screen it opens. `--screenshot receive` and `--screenshot confirm
+[--image photo.png]` (1920x1080) draw the screens; `LUME_NO_NETWORK=1` shows the screen without a network,
+`LUME_ADVANCE_MS=255000` the last minute, and `LUME_DATA_DIR` keeps the picture between runs. The page itself is tested in
+a headless Chrome: `cargo build -p lume-core && node scripts/companion-page-test.mjs [--heic DIR]` (the modes, the gestures,
+sending twice, the pings and the layout at 320, 360, 820 and 1440 px; screenshots in `target/companion-page/`).
+
 ## Checks
 
 - `cargo test -p lume-core wallpaper` and `cargo test -p lume-desktop --test contrast`: size 1920x1080 and the
@@ -101,6 +227,8 @@ masters 1.8 to 3.1. The gap around the Aurora is narrow: a new very smooth maste
   a run of more than 24 identical pixels.
 - `cargo test -p lume-core cover`: the covered size reaches the whole buffer in any proportion.
 - `uv run scripts/verify-apk.py dist/<apk>`: one stored copy of each wallpaper in `assets/`, none in a library, 40 MB limit.
+- `cargo test -p lume-core frame custom companion`: the framing modes and the tolerance rules, the source and its cache,
+  and the server (codes, limits, time-out, one upload at a time); `cargo test -p lume-core custom_tests`: the screens by keys.
 
 ## Where to change it
 
