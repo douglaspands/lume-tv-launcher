@@ -55,6 +55,8 @@ pub enum Cmd {
 pub struct DisplayList {
     cmds: Vec<Cmd>,
     wallpaper: Option<WallpaperId>,
+    /// The test pattern of a Tool, in device pixels (drawn before everything else).
+    pattern: Vec<super::pattern::PatternOp>,
 }
 
 /// A corner radius larger than half the shorter side is drawn as half of it, as in CSS: a pill or
@@ -72,6 +74,15 @@ impl DisplayList {
         &self.cmds
     }
 
+    /// Adds an operation to the test pattern drawn under the canvas, in device pixels.
+    pub fn pattern(&mut self, op: super::pattern::PatternOp) {
+        self.pattern.push(op);
+    }
+
+    pub fn pattern_ops(&self) -> &[super::pattern::PatternOp] {
+        &self.pattern
+    }
+
     pub fn wallpaper_id(&self) -> Option<WallpaperId> {
         self.wallpaper
     }
@@ -79,6 +90,7 @@ impl DisplayList {
     pub fn clear(&mut self) {
         self.cmds.clear();
         self.wallpaper = None;
+        self.pattern.clear();
     }
 
     pub fn len(&self) -> usize {
