@@ -60,8 +60,9 @@ Quiero instalar el launcher Lume en mi Android TV usando adb. Hazlo por mí, pas
 4. Ejecuta `adb connect <ip>:5555` y luego `adb devices`. Recuérdame aceptar el aviso "¿Permitir la depuración USB?" en la TV (Permitir siempre) y ejecuta ambos comandos otra vez hasta que mi TV aparezca como `device`.
 5. Ejecuta `adb install <ruta del APK>` y confirma que apareció `Success`.
 6. Ejecuta `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity` para hacer de Lume la pantalla de inicio.
+7. Pídeme que pulse el botón Home del control. Si todavía abre el launcher original, explica que el último recurso es desactivar el launcher original y el servicio de recomendaciones de Android TV juntos (nunca solo el launcher: el servicio de recomendaciones intenta volver a activarlo y congela Lume) y pide mi confirmación. Si digo que sí, ejecuta `adb shell pm disable-user --user 0 com.google.android.tvlauncher` y `adb shell pm disable-user --user 0 com.google.android.tvrecommendations`, y explícame cómo deshacerlo con `adb shell pm enable com.google.android.tvlauncher` y `adb shell pm enable com.google.android.tvrecommendations`.
 
-No ejecutes ningún otro comando que cambie la TV (como `pm disable-user`) sin que yo lo pida, y pregúntame antes de ejecutar algo que no esté en la lista anterior.
+Aparte del paso 7, no ejecutes ningún otro comando que cambie la TV (como `pm disable-user`) sin que yo lo pida, y pregúntame antes de ejecutar algo que no esté en la lista anterior.
 ```
 
 ### Opción 2: manualmente
@@ -132,18 +133,22 @@ Cuando veas `Success`, Lume está instalado.
    adb shell cmd package set-home-activity app.lume.tv/.LumeActivity
    ```
 
-3. Algunas TV lo ignoran y siguen abriendo su propio launcher. Como último recurso puedes desactivar el launcher original (no se borra y puedes volver a activarlo):
+3. Algunas TV lo ignoran y siguen abriendo su propio launcher. Como último recurso puedes desactivar el launcher original junto con el servicio de recomendaciones de Android TV (ninguno de los dos se borra y puedes volver a activarlos):
 
    ```
    adb shell pm disable-user --user 0 com.google.android.tvlauncher
+   adb shell pm disable-user --user 0 com.google.android.tvrecommendations
    ```
+
+   Desactiva siempre los dos: con solo el launcher desactivado, el servicio de recomendaciones intenta volver a activarlo y Lume se congela. Si tu TV no tiene uno de estos paquetes, el comando da error sin cambiar nada; puedes ignorarlo.
 
 ### Volver al launcher original
 
-Quita Lume y, si desactivaste el launcher original, vuelve a activarlo:
+Quita Lume y, si desactivaste el launcher original y el servicio de recomendaciones, vuelve a activar los dos:
 
 ```
 adb shell pm enable com.google.android.tvlauncher
+adb shell pm enable com.google.android.tvrecommendations
 adb uninstall app.lume.tv
 ```
 
@@ -195,7 +200,7 @@ cargo run -p lume-desktop -- --screenshot home home.png
 cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screenshot home focus.png
 ```
 
-`--keys` pulsa teclas antes (`up down left right ok back home`), `--locale` elige el idioma y `--pseudo-locale` alarga todos los textos un 40 % para encontrar diseños que no caben. Las imágenes de este README se hicieron con `--favorites 8`, `LUME_NO_SYNTHETIC_ICONS=1` (los bloques muestran su color y su letra) y, para el ruso, `LUME_FALLBACK_FONT` apuntando a una fuente con letras cirílicas (en la TV las aporta el sistema).
+`--keys` pulsa teclas antes (`up down left right ok back home`), `--locale` elige el idioma y `--pseudo-locale` alarga todos los textos un 40 % para encontrar diseños que no caben. Las imágenes de este README se hicieron con `--favorites 8` y `LUME_NO_SYNTHETIC_ICONS=1` (los bloques muestran su color y su letra).
 
 ### Compilar con contenedor (recomendado)
 
