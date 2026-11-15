@@ -85,6 +85,8 @@ pub enum Decl {
     FontSize(f32),
     FontWeight(u16),
     LetterSpacing(f32),
+    /// The distance between the baselines of two lines of text, in px.
+    LineHeight(f32),
     /// Top, right, bottom, left.
     Padding([f32; 4]),
     Gap(f32),
@@ -459,6 +461,7 @@ pub const PROPERTIES: &[&str] = &[
     "font-size",
     "font-weight",
     "letter-spacing",
+    "line-height",
     "padding",
     "gap",
     "width",
@@ -489,6 +492,13 @@ pub(crate) fn parse_decl(property: &str, v: &str) -> Result<Decl, String> {
             .map(|n| Decl::FontWeight(n as u16))
             .ok_or_else(|| format!("invalid font-weight: '{v}'")),
         "letter-spacing" => length(v).map(Decl::LetterSpacing),
+        "line-height" => length(v)
+            .and_then(|px| {
+                (px > 0.0)
+                    .then_some(px)
+                    .ok_or_else(|| format!("line-height must be positive: '{v}'"))
+            })
+            .map(Decl::LineHeight),
         "padding" => parse_padding(v).map(Decl::Padding),
         "gap" => length(v).map(Decl::Gap),
         "width" => length(v).map(Decl::Width),
