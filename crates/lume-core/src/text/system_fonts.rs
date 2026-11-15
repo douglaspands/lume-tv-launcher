@@ -388,16 +388,14 @@ mod tests {
     }
 
     #[test]
-    fn engine_draws_cyrillic_and_cjk_app_names_through_the_fallback() {
+    fn engine_draws_cyrillic_embedded_and_cjk_through_the_fallback() {
         let mut engine = TextEngine::with_fallback(1.0, Box::new(SystemFonts::new(candidates())));
         let style = TextStyle::new(22.0, 700);
         let mut list = DisplayList::new();
         engine.draw(&mut list, "Яндекс 日本語", 0.0, 50.0, &style, Color::WHITE);
-        // "Я", "д" and the three CJK characters come from the fallback fonts; the other
-        // Cyrillic letters are not in the synthetic fonts and use the missing-glyph shape.
-        // Every non-space character is drawn either way.
+        // The Cyrillic comes from the embedded Manrope, the CJK from the fallback fonts.
         assert_eq!(quads(&list), 6 + 3);
-        // The synthetic boxes are 600 and 800 units tall at 22px: the CJK box is taller.
+        // The synthetic CJK box is 800 units tall at 22px, taller than any Cyrillic letter.
         let heights: Vec<f32> = list
             .cmds()
             .iter()
@@ -413,6 +411,9 @@ mod tests {
             heights[heights.len() - 1] > heights[0],
             "the CJK box is taller than the Cyrillic one"
         );
+        // The Cyrillic glyph is Manrope's "Я" (cap height 0.72 em, ~15.8 px), not the synthetic
+        // fallback box (600 units, 13.2 px).
+        assert!(heights[0] > 14.5, "{heights:?}");
     }
 
     #[test]
