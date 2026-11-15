@@ -10,12 +10,10 @@ O resultado parece um erro de digitação ou de ênfase, quebra a coesão tipogr
 
 ## What Changes
 
-- Definir a regra tipográfica para escritas fora da fonte embutida: uma linha de texto não mistura famílias por palavra. Opções a avaliar no design:
-  - **Fonte do sistema para a linha inteira**: quando o texto tem algum caractere fora da Plus Jakarta, a linha toda usa a fonte do sistema, no peso pedido (500, 700 ou 800, o mais próximo que o sistema tiver).
-  - **Fonte do sistema para o idioma**: com o idioma da interface numa escrita não coberta, todos os textos usam a fonte do sistema; nomes de apps continuam por linha.
-  - **Embutir uma família com cirílico** parecida com a Plus Jakarta, só os glifos cirílicos (subset), medindo o custo no APK (limite de 40 MB).
-- Fazer a fonte de reserva respeitar o peso pedido. Hoje o cirílico pode sair num peso diferente do latim ao lado.
-- Capturas de verificação em russo (emulador e desktop; o desktop hoje não tem fonte de reserva com cirílico e desenha caixas vazias, o que também precisa de solução para as capturas).
+- **Decisão (2026-11-15, autor)**: embutir a Manrope (SIL OFL 1.1), só os glifos cirílicos, nos pesos 500, 700 e 800, como reserva da Plus Jakarta Sans. O latim continua na Plus Jakarta; o cirílico vem da Manrope no mesmo peso. As duas têm desenho geométrico e altura de x quase iguais (0,54 contra 0,544 do corpo), e a mistura deixa de ser visível. Alternativas descartadas no design: a fonte do sistema (no Android 12 ou mais novo a Roboto é variável e o `fontdue` só desenha o peso 400; a AIWA tem Android 14) e a linha inteira em Manrope (custo três vezes maior e mais código na medição).
+- A fonte do sistema continua como reserva para o que nenhuma fonte embutida cobre (grego, chinês e outras escritas em nomes de apps).
+- O desktop passa a desenhar russo sem `LUME_FALLBACK_FONT`, e as capturas de verificação em russo vêm do emulador `tv_api28`.
+- A tela Sobre passa a listar a Manrope.
 
 ## Capabilities
 
