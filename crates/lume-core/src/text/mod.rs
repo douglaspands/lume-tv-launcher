@@ -70,6 +70,8 @@ pub struct TextMetrics {
 enum FontId {
     /// Index into the embedded text faces.
     Text(u8),
+    /// Index into the Cyrillic companions of the text faces (same index, same weight).
+    Script(u8),
     Icons,
     /// Index into the fallback provider.
     Fallback(u16),
@@ -102,6 +104,8 @@ struct Resolved {
 
 pub struct TextEngine {
     faces: Vec<(u16, Font)>,
+    /// Cyrillic companion of each face in `faces`, at the same index.
+    scripts: Vec<Font>,
     icons: Font,
     fallback: Box<dyn FallbackFonts>,
     atlas: Atlas,
@@ -125,6 +129,10 @@ impl TextEngine {
             faces: fonts::TEXT_FACES
                 .iter()
                 .map(|(weight, data)| (*weight, load(data)))
+                .collect(),
+            scripts: fonts::CYRILLIC_FACES
+                .iter()
+                .map(|(_, data)| load(data))
                 .collect(),
             icons: load(fonts::ICONS),
             fallback,
@@ -425,6 +433,7 @@ impl TextEngine {
     fn font(&self, id: FontId) -> &Font {
         match id {
             FontId::Text(i) => &self.faces[usize::from(i)].1,
+            FontId::Script(i) => &self.scripts[usize::from(i)],
             FontId::Icons => &self.icons,
             FontId::Fallback(i) => self.fallback.font(usize::from(i)),
         }
@@ -445,6 +454,15 @@ impl TextEngine {
         if glyph != 0 {
             return Resolved {
                 font: FontId::Text(face as u8),
+                glyph,
+            };
+        }
+        // Cyrillic comes from the embedded companion of the same weight, so it matches the
+        // Latin next to it on every device (the system fonts are regular-only or variable).
+        let glyph = self.scripts[face].lookup_glyph_index(c);
+        if glyph != 0 {
+            return Resolved {
+                font: FontId::Script(face as u8),
                 glyph,
             };
         }
@@ -957,11 +975,71 @@ mod tests {
         }
     }
 
+    /// A fallback that records every character it is asked for and has none.
+    struct Recording(std::rc::Rc<std::cell::RefCell<String>>);
+
+    impl FallbackFonts for Recording {
+        fn find(&mut self, c: char) -> Option<usize> {
+            self.0.borrow_mut().push(c);
+            None
+        }
+        fn font(&self, _index: usize) -> &Font {
+            unreachable!()
+        }
+        fn release(&mut self) {}
+    }
+
+    #[test]
+    fn cyrillic_comes_from_the_embedded_companion_of_the_requested_weight() {
+        let asked = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+        let mut engine = TextEngine::with_fallback(1.0, Box::new(Recording(asked.clone())));
+        for (index, weight) in [(0u8, 500), (1, 700), (2, 800)] {
+            let cyrillic = engine.resolve('Я', weight);
+            assert_eq!(cyrillic.font, FontId::Script(index), "weight {weight}");
+            assert_ne!(cyrillic.glyph, 0);
+            assert_eq!(engine.resolve('L', weight).font, FontId::Text(index));
+        }
+        engine.measure("О Lume, Ёлка, Ґанок №5", &BODY);
+        assert_eq!(
+            asked.borrow().as_str(),
+            "",
+            "the system fonts are not asked"
+        );
+        engine.measure("日", &BODY);
+        assert_eq!(
+            asked.borrow().as_str(),
+            "日",
+            "other scripts still go to them"
+        );
+    }
+
+    #[test]
+    fn cyrillic_keeps_the_vertical_metrics_and_kerns_only_within_its_font() {
+        let mut engine = TextEngine::new(1.0);
+        let style = TextStyle::new(22.0, 800);
+        let before = engine.metrics(&style);
+        // Width of a mixed line is the sum of its parts: no kerning across the two fonts.
+        let (cyr, lat) = (engine.measure("О", &style), engine.measure("Lume", &style));
+        assert!((engine.measure("ОLume", &style) - (cyr + lat)).abs() < 0.01);
+        assert_eq!(engine.metrics(&style), before);
+        // The Cyrillic sits on the same baseline as the Latin: its bottom is near it.
+        let mut list = DisplayList::new();
+        engine.draw(&mut list, "НH", 0.0, 50.0, &style, Color::WHITE);
+        let quads = glyph_quads(&list);
+        let bottoms: Vec<f32> = quads.iter().map(|(d, _)| d.y + d.h).collect();
+        assert!((bottoms[0] - bottoms[1]).abs() <= 1.0, "{bottoms:?}");
+        let heights: Vec<f32> = quads.iter().map(|(d, _)| d.h).collect();
+        assert!(
+            (heights[0] - heights[1]).abs() <= 1.5,
+            "cap heights {heights:?}"
+        );
+    }
+
     #[test]
     fn missing_characters_fall_back_to_the_font_missing_glyph() {
         let mut engine = TextEngine::new(1.0);
         let mut list = DisplayList::new();
-        // Cyrillic and CJK are not in the embedded subset.
+        // CJK is in no embedded font.
         engine.draw(&mut list, "Яблоко 日本", 0.0, 40.0, &BODY, Color::WHITE);
         assert!(
             !glyph_quads(&list).is_empty(),

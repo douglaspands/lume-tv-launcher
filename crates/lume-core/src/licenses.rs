@@ -6,6 +6,7 @@ include!(concat!(env!("OUT_DIR"), "/third_party_generated.rs"));
 /// decoder's versions follow `assets/companion/heic/SOURCES.txt` (a test checks them).
 pub const ASSETS: &[(&str, &str)] = &[
     ("Plus Jakarta Sans (font)", "SIL Open Font License 1.1"),
+    ("Manrope (font, Cyrillic)", "SIL Open Font License 1.1"),
     ("Lucide (icons)", "ISC License"),
     ("Wallpapers (images)", "Unsplash License"),
     ("libheif 1.23.7 (HEIC decoder, phone page)", "LGPL-3.0"),
@@ -43,7 +44,8 @@ mod tests {
     fn the_list_has_the_fonts_and_the_crates_of_the_app() {
         let lines = lines();
         assert!(lines[0].contains("Plus Jakarta Sans") && lines[0].contains("Open Font License"));
-        assert!(lines[1].contains("Lucide") && lines[1].contains("ISC"));
+        assert!(lines[1].contains("Manrope") && lines[1].contains("Open Font License"));
+        assert!(lines[2].contains("Lucide") && lines[2].contains("ISC"));
         // The renderer's crates are shipped, with their licenses.
         for name in ["fontdue", "glow", "bytemuck", "ttf-parser"] {
             assert!(

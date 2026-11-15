@@ -3,9 +3,10 @@
 
 Downloads pinned upstream sources, subsets them and writes:
   crates/lume-core/assets/fonts/PlusJakartaSans-<weight>.ttf   (Latin-1 + Latin Extended-A)
+  crates/lume-core/assets/fonts/Manrope-Cyrillic-<weight>.ttf  (Cyrillic only, the faces' companion)
   crates/lume-core/assets/fonts/lucide-subset.ttf              (only the icons lume uses, drawn from
                                                                the Lucide SVGs with LUCIDE_STROKE)
-  crates/lume-core/assets/fonts/OFL.txt, LUCIDE-LICENSE.txt
+  crates/lume-core/assets/fonts/OFL.txt, OFL-Manrope.txt, LUCIDE-LICENSE.txt
   crates/lume-core/src/icons.rs                                (icon code points)
 
 Requirements: python3 and `pip install fonttools`.
@@ -26,6 +27,7 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.svgLib.path import parse_path
 from fontTools.ttLib import TTFont, newTable
 from fontTools.ttLib.tables._k_e_r_n import KernTable_format_0
+from fontTools.varLib import instancer
 
 PLUS_JAKARTA_COMMIT = "18d1cd2f7ea10481919d2f05c1f7064b7307fc26"
 PLUS_JAKARTA_URL = (
@@ -33,6 +35,10 @@ PLUS_JAKARTA_URL = (
     + PLUS_JAKARTA_COMMIT
     + "/{path}"
 )
+# Manrope (OFL) supplies the Cyrillic that Plus Jakarta Sans lacks: close geometric design, same
+# x-height. The upstream file is variable; each theme weight is instanced from it.
+MANROPE_COMMIT = "b31870aff700ab7a1d74fa0c6887d95beb9e0037"
+MANROPE_URL = "https://raw.githubusercontent.com/google/fonts/" + MANROPE_COMMIT + "/ofl/manrope/{path}"
 LUCIDE_VERSION = "1.59.0"
 LUCIDE_URL = "https://unpkg.com/lucide-static@" + LUCIDE_VERSION + "/{path}"
 # Stroke of the icons on Lucide's 24 grid. Lucide draws with 2; 1.75 gives the 36 px top bar glyph
@@ -51,6 +57,9 @@ TEXT_UNICODES = (
     + list(range(0x0100, 0x0180))
     + [0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2026, 0x2039, 0x203A, 0x20AC]
 )
+
+# Russian, Ukrainian and the other Cyrillic letters of U+0400-045F, Ґ/ґ and the numero sign.
+CYRILLIC_UNICODES = list(range(0x0400, 0x0460)) + [0x0490, 0x0491, 0x2116]
 
 # Lucide icon names used by the UI, mapped to Rust constant names.
 ICONS = {
@@ -143,7 +152,9 @@ def replace_gpos_with_kern_table(font: TTFont) -> None:
     del font["GPOS"]
 
 
-def subset_font(data: bytes, unicodes: list[int], out: pathlib.Path, kern: bool) -> None:
+def subset_font(
+    data: bytes, unicodes: list[int], out: pathlib.Path, kern: bool, weight: int | None = None
+) -> None:
     options = subset.Options()
     options.layout_features = ["kern"] if kern else []
     options.hinting = False
@@ -151,6 +162,8 @@ def subset_font(data: bytes, unicodes: list[int], out: pathlib.Path, kern: bool)
     options.notdef_outline = True
     options.drop_tables += ["GSUB", "GDEF", "DSIG", "gasp", "cvt ", "fpgm", "prep"]
     font = TTFont(__import__("io").BytesIO(data))
+    if weight is not None:
+        font = instancer.instantiateVariableFont(font, {"wght": weight}, updateFontNames=False)
     subsetter = subset.Subsetter(options)
     subsetter.populate(unicodes=unicodes)
     subsetter.subset(font)
@@ -304,6 +317,11 @@ def main() -> None:
         subset_font(data, TEXT_UNICODES, FONTS / f"PlusJakartaSans-{name}.ttf", kern=True)
     if "--icons-only" not in sys.argv:
         (FONTS / "OFL.txt").write_bytes(download(PLUS_JAKARTA_URL.format(path="OFL.txt")))
+        manrope = download(MANROPE_URL.format(path="Manrope%5Bwght%5D.ttf"))
+        for name, weight in WEIGHTS.items():
+            out = FONTS / f"Manrope-Cyrillic-{name}.ttf"
+            subset_font(manrope, CYRILLIC_UNICODES, out, kern=True, weight=weight)
+        (FONTS / "OFL-Manrope.txt").write_bytes(download(MANROPE_URL.format(path="OFL.txt")))
 
     info = json.loads(download(LUCIDE_URL.format(path="font/info.json")))
     codepoints = {}

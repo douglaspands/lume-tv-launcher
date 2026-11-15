@@ -1,7 +1,8 @@
-//! Fonts embedded in the binary: Plus Jakarta Sans (OFL) and a Lucide icon subset (ISC).
+//! Fonts embedded in the binary: Plus Jakarta Sans and Manrope (OFL) and a Lucide icon subset (ISC).
 //!
-//! The text faces cover Latin-1 and Latin Extended-A; other scripts come from the
-//! system fonts at runtime. Regenerate the files with `scripts/subset-fonts.py`.
+//! The text faces cover Latin-1 and Latin Extended-A; each has a Manrope companion of the same
+//! weight with only the Cyrillic letters, which Plus Jakarta Sans lacks. Other scripts come from
+//! the system fonts at runtime. Regenerate the files with `scripts/subset-fonts.py`.
 
 /// Weight 500.
 pub const MEDIUM: &[u8] = include_bytes!("../assets/fonts/PlusJakartaSans-Medium.ttf");
@@ -9,11 +10,25 @@ pub const MEDIUM: &[u8] = include_bytes!("../assets/fonts/PlusJakartaSans-Medium
 pub const BOLD: &[u8] = include_bytes!("../assets/fonts/PlusJakartaSans-Bold.ttf");
 /// Weight 800.
 pub const EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/PlusJakartaSans-ExtraBold.ttf");
+/// Cyrillic companion of [`MEDIUM`].
+pub const CYRILLIC_MEDIUM: &[u8] = include_bytes!("../assets/fonts/Manrope-Cyrillic-Medium.ttf");
+/// Cyrillic companion of [`BOLD`].
+pub const CYRILLIC_BOLD: &[u8] = include_bytes!("../assets/fonts/Manrope-Cyrillic-Bold.ttf");
+/// Cyrillic companion of [`EXTRA_BOLD`].
+pub const CYRILLIC_EXTRA_BOLD: &[u8] =
+    include_bytes!("../assets/fonts/Manrope-Cyrillic-ExtraBold.ttf");
 /// Icons; see [`crate::icons`] for the code points.
 pub const ICONS: &[u8] = include_bytes!("../assets/fonts/lucide-subset.ttf");
 
 /// Text faces as `(weight, data)`, lightest first.
 pub const TEXT_FACES: [(u16, &[u8]); 3] = [(500, MEDIUM), (700, BOLD), (800, EXTRA_BOLD)];
+
+/// Cyrillic companions, in the order of [`TEXT_FACES`] (same weight at the same index).
+pub const CYRILLIC_FACES: [(u16, &[u8]); 3] = [
+    (500, CYRILLIC_MEDIUM),
+    (700, CYRILLIC_BOLD),
+    (800, CYRILLIC_EXTRA_BOLD),
+];
 
 /// Picks the face closest to the requested CSS weight (the heavier one on a tie).
 pub fn face_for_weight(weight: u16) -> &'static [u8] {
@@ -37,10 +52,18 @@ mod tests {
 
     #[test]
     fn total_font_size_stays_under_the_budget() {
-        let total: usize = [MEDIUM, BOLD, EXTRA_BOLD, ICONS]
-            .iter()
-            .map(|f| f.len())
-            .sum();
+        let total: usize = [
+            MEDIUM,
+            BOLD,
+            EXTRA_BOLD,
+            CYRILLIC_MEDIUM,
+            CYRILLIC_BOLD,
+            CYRILLIC_EXTRA_BOLD,
+            ICONS,
+        ]
+        .iter()
+        .map(|f| f.len())
+        .sum();
         assert!(total < 200 * 1024, "fonts take {total} bytes");
     }
 
@@ -55,6 +78,35 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn cyrillic_faces_cover_russian_and_ukrainian_at_every_weight() {
+        for ((weight, data), (text_weight, _)) in CYRILLIC_FACES.iter().zip(TEXT_FACES) {
+            assert_eq!(*weight, text_weight, "companions follow TEXT_FACES");
+            let font = load(data);
+            let russian = ('А'..='я').chain(['Ё', 'ё']);
+            for c in russian.chain("ЄІЇҐєіїґ№".chars()) {
+                assert!(
+                    font.lookup_glyph_index(c) != 0,
+                    "weight {weight} lacks {c:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn cyrillic_faces_get_heavier_with_the_weight() {
+        // The weights are instanced from a variable font: a heavier one has wider strokes.
+        let ink = |data: &[u8]| -> u32 {
+            let (_, bitmap) = load(data).rasterize('Ж', 48.0);
+            bitmap.iter().map(|&p| u32::from(p)).sum()
+        };
+        let [medium, bold, extra_bold] = CYRILLIC_FACES.map(|(_, data)| ink(data));
+        assert!(
+            medium < bold && bold < extra_bold,
+            "{medium} {bold} {extra_bold}"
+        );
     }
 
     #[test]

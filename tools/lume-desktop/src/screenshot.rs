@@ -31,8 +31,8 @@ impl Session {
         let gl = HeadlessGl::new(width, height)?;
         let backend = Gles2Backend::new(gl.glow())?;
         let display = Display::new(width, height);
-        // `LUME_FALLBACK_FONT`: a font file for the letters the embedded font lacks (Cyrillic), as the
-        // fonts of the device give them on the TV.
+        // `LUME_FALLBACK_FONT`: a font file for the letters no embedded font has (Greek, CJK...), as
+        // the fonts of the device give them on the TV. Cyrillic is embedded and needs none.
         let text = match std::env::var_os("LUME_FALLBACK_FONT") {
             Some(path) => TextEngine::with_fallback(
                 display.scale,
