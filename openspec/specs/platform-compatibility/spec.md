@@ -47,14 +47,14 @@ O lume SHALL funcionar em GPUs que suportam apenas OpenGL ES 2.0.
 - **THEN** todas as telas são renderizadas corretamente
 
 ### Requirement: Permissões mínimas
-O lume SHALL NOT solicitar a permissão de internet, nenhuma permissão perigosa (runtime) e nem `QUERY_ALL_PACKAGES`. A única permissão declarada SHALL ser `REQUEST_DELETE_PACKAGES` (permissão normal, concedida na instalação), usada apenas para abrir o desinstalador do sistema a pedido do usuário. A visibilidade dos apps SHALL ser declarada por consultas de intent (LEANBACK_LAUNCHER e LAUNCHER).
+O lume SHALL NOT solicitar nenhuma permissão perigosa (runtime), permissão de localização nem `QUERY_ALL_PACKAGES`. As permissões declaradas SHALL ser apenas permissões normais, concedidas na instalação. A primeira é `REQUEST_DELETE_PACKAGES`, usada só para abrir o desinstalador do sistema a pedido do usuário. A segunda é `INTERNET`, exigida pelo Android para abrir o socket que lista as interfaces de rede (a conexão em Informações da TV); ela SHALL NOT ser usada para abrir conexões. A visibilidade dos apps SHALL ser declarada por consultas de intent (LEANBACK_LAUNCHER e LAUNCHER).
 
 #### Scenario: Inspeção do manifesto
 - **WHEN** o manifesto final do APK é inspecionado (`aapt dump permissions`)
-- **THEN** não aparecem `android.permission.INTERNET` nem `QUERY_ALL_PACKAGES`, e a única permissão listada é `android.permission.REQUEST_DELETE_PACKAGES`
+- **THEN** aparecem só `android.permission.REQUEST_DELETE_PACKAGES` e `android.permission.INTERNET`, sem `QUERY_ALL_PACKAGES` nem permissão de localização
 
 #### Scenario: Nenhum tráfego de rede
-- **WHEN** o lume é usado em todas as telas
+- **WHEN** o lume é usado em todas as telas, inclusive as Ferramentas
 - **THEN** o processo não abre nenhuma conexão de rede
 
 #### Scenario: Desinstalar no Android 9 e 11

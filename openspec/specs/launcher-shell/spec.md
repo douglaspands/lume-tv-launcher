@@ -158,7 +158,7 @@ Ao trocar de aba (Início e Apps), o conteúdo da aba nova SHALL aparecer com um
 - **THEN** a tela volta a pedir quadros só para o relógio
 
 ### Requirement: Tela de Configurações do Lume
-A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de Apps, com os itens "Tela Início", "Mapeamento de controle", "Informações da TV" e "Sobre o Lume", sem item do Android e com o painel de estatísticas à direita (`device-stats`), caminho "Configurações" no topo e versão instalada (`platform-compatibility`) no canto inferior direito. Voltar SHALL retraçar o caminho de entrada passo a passo até o tile "Lume".
+A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de Apps, com os itens "Tela Início", "Mapeamento de controle", "Informações da TV", "Ferramentas" e "Sobre o Lume", sem item do Android e com o painel de estatísticas à direita (`device-stats`), caminho "Configurações" no topo e versão instalada (`platform-compatibility`) no canto inferior direito. Voltar SHALL retraçar o caminho de entrada passo a passo até o tile "Lume".
 
 #### Scenario: Abrir pelo tile
 - **WHEN** o foco está no tile "Lume" da grade de Apps e o usuário pressiona OK
@@ -182,7 +182,7 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 
 #### Scenario: Sem item do Android
 - **WHEN** a tela "Configurações" do Lume é exibida
-- **THEN** ela lista apenas "Tela Início", "Mapeamento de controle", "Informações da TV" e "Sobre o Lume"
+- **THEN** ela lista apenas "Tela Início", "Mapeamento de controle", "Informações da TV", "Ferramentas" e "Sobre o Lume"
 
 #### Scenario: Voltar ao tile
 - **WHEN** o usuário pressiona Voltar na tela "Configurações" do Lume
@@ -196,9 +196,13 @@ A tela "Configurações" do Lume SHALL ser aberta pelo tile "Lume" da grade de A
 - **WHEN** o usuário seleciona "Mapeamento de controle" em Configurações
 - **THEN** a tela de mapeamento é aberta com o caminho "Configurações › Mapeamento de controle" e o título "Mapeamento de controle"
 
+#### Scenario: Ir para as Ferramentas
+- **WHEN** o usuário seleciona "Ferramentas" em Configurações
+- **THEN** o menu Ferramentas é aberto com o caminho "Configurações › Ferramentas" (`diagnostic-tools`)
+
 #### Scenario: Voltar passo a passo
-- **WHEN** o usuário está no modo edição ou no mapeamento de controle aberto pelas Configurações e pressiona Voltar duas vezes
-- **THEN** a primeira volta à tela "Configurações" com o foco no item de origem ("Tela Início" ou "Mapeamento de controle"), e a segunda à aba Apps com o foco no tile "Lume"
+- **WHEN** o usuário está no modo edição, no mapeamento de controle ou no menu Ferramentas aberto pelas Configurações e pressiona Voltar duas vezes
+- **THEN** a primeira volta à tela "Configurações" com o foco no item de origem ("Tela Início", "Mapeamento de controle" ou "Ferramentas"), e a segunda à aba Apps com o foco no tile "Lume"
 
 #### Scenario: Tela Sobre
 - **WHEN** o usuário escolhe "Sobre o Lume"
