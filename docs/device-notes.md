@@ -687,3 +687,67 @@ Base: `v0.6.1` (`dist/lume-0.6.1.apk`). Change: APK de release `lume-2e7421d-dir
   mesmo jeito e ficam abaixo dos 64 MB.
 - Na TV (4.2), o foco da grade, o menu de contexto (menu claro, item em `--primary`), o tile sem sombra, a abertura a frio e o
   retorno a quente ficaram como esperado. O emulador `tv_api28` não existe mais nesta máquina, então a checagem foi feita na TCL.
+
+## Ferramentas (change `ferramentas`, 2026-11-15)
+
+### Tamanho do APK (tarefa 8.3)
+
+Build de release no container (`scripts/container-build.sh release`), `arm64-v8a` e `armeabi-v7a`, comparado com o build
+anterior da `main` (`2e7421d`):
+
+| Medida | Antes | Depois | Diferença |
+|---|---|---|---|
+| APK (`ls -l`) | 22,07 MB | 24,70 MB | +2,63 MB |
+| APK (`verify-apk.py`, limite 40 MB) | n/d | 23,55 MB | n/a |
+| `lib/arm64-v8a/liblume.so` | 1,69 MB | 3,31 MB | +1,62 MB |
+| `lib/armeabi-v7a/liblume.so` | 1,25 MB | 2,23 MB | +0,98 MB |
+
+- O aumento vem do cliente HTTPS do teste de velocidade (`ureq` 3.1.2, `rustls` 0.23 com `ring` 0.17 e `webpki-roots` 1.0),
+  do AAudio (`ndk` com a feature `audio`) e do código das seis ferramentas. Fica abaixo dos 3 MB que o design pede para
+  reavaliar.
+- Permissões (`aapt dump permissions`): `REQUEST_DELETE_PACKAGES`, `INTERNET` e `ACCESS_WIFI_STATE`, só essas.
+- O `cargo ndk` passou a ligar contra a plataforma 28 (`--platform 28` em `android/app/build.gradle`, igual ao `minSdk`): no
+  padrão dele (21) não existe `libaaudio`, e o link falhava.
+
+### TCL 55C715, build de release `4043000-dirty` (2026-11-15)
+
+| Medida | Valor | Orçamento ou critério |
+|---|---|---|
+| `KEEP_SCREEN_ON` na janela | ligado no menu Ferramentas e nas ferramentas, desligado nas Configurações | `diagnostic-tools` |
+| PSS nas Configurações, antes de entrar | 18,3 MB | n/a |
+| PSS com um tom tocando (Áudio) | 20,0 MB | 64 MB |
+| PSS no teste de velocidade | 19,4 a 21,0 MB | 64 MB |
+| PSS no teste de armazenamento | 20,3 a 21,4 MB | 64 MB |
+| PSS de volta às Configurações | 19,6 MB (+1,3 MB) | até 2 MB acima |
+| Thread `lume-test` depois dos testes | nenhuma | n/a |
+| Padrão sólido parado (vermelho, sem dica) | 0 quadros em 10 s | sem quadros |
+| Teste de movimento | ~62 quadros/s, 0 de 868 com 33 ms ou mais | até 1% |
+| Grade em 1920x1080 (`screencap`) | 33 linhas verticais, todas de 1 px | 1 px físico |
+| AudioTrack do Lume | criado ao tocar, removido ao parar e com Home (`media.audio_flinger`) | sem stream parado |
+| Teste de velocidade (Ethernet) | latência 48 ms, download 92 Mbps, upload 80 Mbps | até 20% de outro medidor |
+| Teste de armazenamento (64 MB) | escrita 44,8 MB/s, leitura 163,5 MB/s, cerca de 2 s no total | até 20 s |
+| Controle remoto | Menu (82) e Bookmark (174) com os nomes certos; Voltar duas vezes sai | `remote-mapping` |
+
+- Gateway: o Android põe a rota padrão em tabelas por rede (`default via 192.168.0.1 dev eth0 table 1003`), e a tabela
+  principal, a única de `/proc/net/route`, não tem rota padrão; por ela o gateway saía sempre "—". A leitura passou a ser um
+  dump de rotas por netlink (`RTM_GETROUTE`, todas as tabelas, em Rust), com `/proc/net/route` de reserva: a TCL mostra
+  192.168.0.1.
+- A TCL roda o Lume em `armeabi-v7a` (`ro.product.cpu.abilist` = `armeabi-v7a,armeabi`), num Cortex-A55 (`CPU part 0xd05`)
+  com NEON, VFPv4, `idiva` e CRC32.
+- A TCL está no cabo, então a seção do Wi-Fi não aparece e o comando `wifi-signal` não foi exercitado nela.
+- Referência do teste de velocidade: o PC na mesma rede, contra o mesmo serviço com `curl`, mediu 334 Mbps de download e
+  151 Mbps de upload, com 100 a 300 ms até o primeiro byte. Não serve de comparação: os 92 Mbps da TCL batem com uma porta
+  Ethernet de 100 Mbit/s (a velocidade do link não é legível pelo `adb shell`). Falta comparar com um medidor rodando na
+  própria TV.
+- Limpeza de retenção "Cores" de 30 min sem tocar no controle, com o desligamento por inatividade da TCL em 5 min
+  (`screen_off_timeout` = 300000): `mWakefulness=Awake` e o Lume em foco nas 7 leituras, a cada 4 min 40 s, das 01:05 às
+  01:38. Ao fim, a tela Tela voltou sozinha com o foco em "Iniciar".
+- A 64 MB, a TCL termina o teste de armazenamento muito abaixo dos 20 s. O autor decidiu manter os 64 MB sem medir a
+  AIWA (2026-11-15): mesmo dez vezes mais lenta, ela ficaria perto do limite.
+
+### Emulador `tv_api28` (Android 9, x86, build de debug, 2026-11-15)
+
+- Texto em russo (tarefa 1.6): Configurações, menu Ferramentas e as seis ferramentas sem corte nem sobreposição.
+- Sinal do Wi-Fi (tarefa 6.2): a ferramenta Rede mostrou -50 dBm ("Excelente"), 26 Mbps · 2,4 GHz e o gateway
+  192.168.232.1. O autor aceitou esta verificação no lugar da TCL, que está no cabo; o comando `wifi-signal` roda dentro de
+  `LumeBridge.handle`, que o ProGuard já mantém (`-keep class app.lume.tv.LumeBridge { *; }`).
