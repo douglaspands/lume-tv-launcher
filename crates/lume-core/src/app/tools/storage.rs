@@ -8,7 +8,7 @@
 use super::common::{
     self, draw_panel, panel_bar, panel_heading, panel_row, wrapped_text, PANEL_ROW_PITCH,
 };
-use super::{TestKind, TestUpdate, ToolEvent, ToolKey, ToolKind};
+use super::{TestKind, TestUpdate, ToolEvent, ToolKey, ToolKind, ToolReading};
 use crate::app::painter::Painter;
 use crate::app::{Effect, Key, LumeApp};
 use crate::i18n::{Arg, StringId};
@@ -167,7 +167,7 @@ impl LumeApp {
 
     /// The space of the data partition, from a reading (see [`LumeApp::storage_reading_deadline`]).
     pub(in crate::app) fn storage_space(&mut self, space: Option<StorageSpace>) {
-        if let Some(super::ToolState::Storage(state)) = self.tool.as_deref_mut() {
+        if let Some(state) = self.tool_mut::<StorageTool>() {
             state.space_read = true;
             state.space = space.or(state.space);
         }
@@ -175,22 +175,16 @@ impl LumeApp {
 
     /// The tool wants the space read once when it opens (and not while the test writes).
     pub(in crate::app) fn storage_reading_deadline(&self, now_ms: u64) -> Option<u64> {
-        match self.tool.as_deref() {
-            Some(super::ToolState::Storage(state))
-                if !state.space_read && !state.phase.running() =>
-            {
-                Some(now_ms)
-            }
-            _ => None,
-        }
+        self.tool_ref::<StorageTool>()
+            .filter(|state| !state.space_read && !state.phase.running())
+            .map(|_| now_ms)
     }
 
     pub(in crate::app) fn draw_storage(&mut self, p: &mut Painter) {
         let t = self.translator;
-        let running = matches!(
-            self.tool.as_deref(),
-            Some(super::ToolState::Storage(s)) if s.phase.running()
-        );
+        let running = self
+            .tool_ref::<StorageTool>()
+            .is_some_and(|s| s.phase.running());
         let label = if running {
             StringId::ToolStorageCancel
         } else {
@@ -198,7 +192,7 @@ impl LumeApp {
         };
         self.draw_tool_items(p, &[(item_id(), t.get(label).into_owned())], 0.0);
         self.draw_tool_header(p, ToolKind::Storage);
-        let Some(super::ToolState::Storage(state)) = self.tool.as_deref() else {
+        let Some(state) = self.tool_ref::<StorageTool>() else {
             return;
         };
         let comma = !t.language().starts_with("en");
@@ -294,7 +288,7 @@ impl LumeApp {
 
     pub(in crate::app) fn storage_key(&mut self, key: Key) -> ToolKey {
         let focused = self.focus.current_id();
-        let Some(super::ToolState::Storage(state)) = self.tool.as_deref_mut() else {
+        let Some(state) = self.tool_mut::<StorageTool>() else {
             return ToolKey::Default;
         };
         match key {
@@ -318,20 +312,15 @@ impl LumeApp {
         }
     }
 
-    pub(in crate::app) fn storage_deadline(&self, _now_ms: u64) -> Option<u64> {
-        None
-    }
-
-    pub(in crate::app) fn storage_fullscreen(&self) -> bool {
-        false
-    }
-
     pub(in crate::app) fn storage_event(&mut self, event: ToolEvent) {
-        let ToolEvent::Test(TestUpdate::Storage(update)) = event else {
-            return;
-        };
-        if let Some(super::ToolState::Storage(state)) = self.tool.as_deref_mut() {
-            state.update(update);
+        match event {
+            ToolEvent::Reading(ToolReading::Storage(space)) => self.storage_space(space),
+            ToolEvent::Test(TestUpdate::Storage(update)) => {
+                if let Some(state) = self.tool_mut::<StorageTool>() {
+                    state.update(update);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -351,10 +340,10 @@ mod tests {
     }
 
     fn phase(rig: &Rig) -> Phase {
-        match rig.app.tool.as_deref() {
-            Some(crate::app::tools::ToolState::Storage(state)) => state.phase,
-            _ => panic!("the storage tool is not open"),
-        }
+        rig.app
+            .tool_ref::<StorageTool>()
+            .expect("the storage tool is not open")
+            .phase
     }
 
     fn send(rig: &mut Rig, update: StorageUpdate) {

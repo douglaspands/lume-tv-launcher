@@ -42,6 +42,7 @@ const SWEEP_FRAME_MS: u64 = 250;
 
 /// The items of the screen, in order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
 enum Item {
     Left,
     Right,
@@ -54,7 +55,8 @@ impl Item {
     const ALL: [Item; 5] = [Item::Left, Item::Right, Item::Both, Item::Sweep, Item::Sync];
 
     fn id(self) -> FocusId {
-        ToolKind::Audio.first_id() + Item::ALL.iter().position(|i| *i == self).unwrap_or(0) as u32
+        // The position in [`Item::ALL`] (the variants are declared in the same order).
+        ToolKind::Audio.first_id() + self as u32
     }
 
     fn from_id(id: FocusId) -> Option<Item> {
@@ -165,29 +167,10 @@ fn square_visible(beep_at: u64, offset_ms: i32, now_ms: u64) -> bool {
 }
 
 impl LumeApp {
-    fn audio_state(&self) -> Option<&AudioTool> {
-        match self.tool.as_deref() {
-            Some(super::ToolState::Audio(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    fn audio_state_mut(&mut self) -> Option<&mut AudioTool> {
-        match self.tool.as_deref_mut() {
-            Some(super::ToolState::Audio(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    /// Opening the tool: nothing plays, so no stream is opened.
-    pub(in crate::app) fn audio_open(&mut self) -> Vec<Effect> {
-        vec![]
-    }
-
     pub(in crate::app) fn draw_audio(&mut self, p: &mut Painter) {
         let now = self.now_ms;
         let t = self.translator;
-        let Some(state) = self.audio_state_mut() else {
+        let Some(state) = self.tool_mut::<AudioTool>() else {
             return;
         };
         state.settle(now);
@@ -280,7 +263,7 @@ impl LumeApp {
         let now = self.now_ms;
         let t = self.translator;
         let focused = self.focused().and_then(Item::from_id);
-        let Some(state) = self.audio_state_mut() else {
+        let Some(state) = self.tool_mut::<AudioTool>() else {
             return ToolKey::Default;
         };
         state.settle(now);
@@ -349,7 +332,7 @@ impl LumeApp {
     /// Continuous frames only while the sync square may show; four a second for the sweep's
     /// frequency, and one when it ends.
     pub(in crate::app) fn audio_deadline(&self, _now_ms: u64) -> Option<u64> {
-        let state = self.audio_state()?;
+        let state = self.tool_ref::<AudioTool>()?;
         if state.sync.is_some() {
             return Some(self.now_ms + crate::ui::animation::FRAME_MS);
         }
@@ -365,11 +348,12 @@ impl LumeApp {
 
     /// The sync test is a full-screen pattern: a square over black, without wallpaper.
     pub(in crate::app) fn audio_fullscreen(&self) -> bool {
-        self.audio_state().is_some_and(|s| s.sync.is_some())
+        self.tool_ref::<AudioTool>()
+            .is_some_and(|s| s.sync.is_some())
     }
 
     pub(in crate::app) fn audio_event(&mut self, event: ToolEvent) {
-        let Some(state) = self.audio_state_mut() else {
+        let Some(state) = self.tool_mut::<AudioTool>() else {
             return;
         };
         match event {
@@ -412,7 +396,7 @@ mod tests {
 
     fn sync_offset(rig: &Rig) -> Option<i32> {
         rig.app
-            .audio_state()
+            .tool_ref::<AudioTool>()
             .and_then(|s| s.sync.as_ref())
             .map(|s| s.offset_ms)
     }
@@ -457,7 +441,7 @@ mod tests {
         };
         assert_eq!(rig.press(Key::Ok), vec![Effect::Audio(right)]);
         assert_eq!(rig.press(Key::Ok), vec![Effect::Audio(AudioCommand::Stop)]);
-        assert_eq!(rig.app.audio_state().unwrap().playing, None);
+        assert_eq!(rig.app.tool_ref::<AudioTool>().unwrap().playing, None);
         assert_eq!(rig.app.audio_deadline(rig.now), None, "no frames at rest");
     }
 
@@ -470,10 +454,10 @@ mod tests {
         assert_eq!(rig.app.audio_deadline(rig.now), Some(started + 250));
         rig.advance(15_000 - 100);
         // Halfway it plays (and shows) the geometric middle of 20 Hz and 20 kHz.
-        assert!(rig.app.audio_state().unwrap().playing.is_some());
+        assert!(rig.app.tool_ref::<AudioTool>().unwrap().playing.is_some());
         assert_eq!(hz_text(&rig.app.translator, rig.now - started), "632 Hz");
         rig.advance(15_000);
-        assert_eq!(rig.app.audio_state().unwrap().playing, None);
+        assert_eq!(rig.app.tool_ref::<AudioTool>().unwrap().playing, None);
         assert_eq!(rig.app.audio_deadline(rig.now), None);
     }
 
@@ -560,7 +544,7 @@ mod tests {
         let mut rig = open();
         rig.press(Key::Ok);
         rig.app.tool_event(ToolEvent::AudioUnavailable, rig.now);
-        let state = rig.app.audio_state().unwrap();
+        let state = rig.app.tool_ref::<AudioTool>().unwrap();
         assert_eq!(state.playing, None);
         assert_eq!(state.unavailable, Some(Item::Left));
         assert_eq!(

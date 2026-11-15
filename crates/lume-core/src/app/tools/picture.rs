@@ -7,9 +7,9 @@
 
 use super::common::Hint;
 use super::display::{draw_description, hline, outline, vline, BLACK, GRAY_50};
-use super::{ToolEvent, ToolKey, ToolKind};
+use super::{ToolKey, ToolKind};
 use crate::app::painter::Painter;
-use crate::app::{Effect, Key, LumeApp, PendingFocus};
+use crate::app::{Key, LumeApp, PendingFocus};
 use crate::i18n::{Arg, StringId};
 use crate::render::{PatternOp, PixelRect, Rect};
 use crate::text::Align;
@@ -167,29 +167,10 @@ pub fn overscan_ops(width: i32, height: i32) -> Vec<PatternOp> {
 }
 
 impl LumeApp {
-    fn picture_state(&mut self) -> Option<&mut PictureTool> {
-        match self.tool.as_deref_mut() {
-            Some(super::ToolState::Picture(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    fn picture_ref(&self) -> Option<&PictureTool> {
-        match self.tool.as_deref() {
-            Some(super::ToolState::Picture(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    /// Opening the tool (its state was just created): effects for the platform.
-    pub(in crate::app) fn picture_open(&mut self) -> Vec<Effect> {
-        vec![]
-    }
-
     pub(in crate::app) fn draw_picture(&mut self, p: &mut Painter) {
         let now = self.now_ms;
         let t = self.translator;
-        let Some(s) = self.picture_state() else {
+        let Some(s) = self.tool_mut::<PictureTool>() else {
             return;
         };
         let (width, height) = (p.display.width as i32, p.display.height as i32);
@@ -283,7 +264,7 @@ impl LumeApp {
         let now = self.now_ms;
         let t = self.translator;
         let focused = self.focus.current_id();
-        let Some(s) = self.picture_state() else {
+        let Some(s) = self.tool_mut::<PictureTool>() else {
             return ToolKey::Default;
         };
         let mut focus_on = None;
@@ -333,7 +314,7 @@ impl LumeApp {
     }
 
     pub(in crate::app) fn picture_deadline(&self, _now_ms: u64) -> Option<u64> {
-        let s = self.picture_ref()?;
+        let s = self.tool_ref::<PictureTool>()?;
         match s.phase {
             Phase::Motion(_) => Some(self.now_ms + FRAME_MS),
             _ => s.hint.deadline(self.now_ms),
@@ -341,10 +322,9 @@ impl LumeApp {
     }
 
     pub(in crate::app) fn picture_fullscreen(&self) -> bool {
-        self.picture_ref().is_some_and(|s| s.phase != Phase::Modes)
+        self.tool_ref::<PictureTool>()
+            .is_some_and(|s| s.phase != Phase::Modes)
     }
-
-    pub(in crate::app) fn picture_event(&mut self, _event: ToolEvent) {}
 }
 
 #[cfg(test)]
@@ -353,7 +333,9 @@ mod tests {
     use crate::app::tests::{open_tool, Rig};
 
     fn state(rig: &Rig) -> &PictureTool {
-        rig.app.picture_ref().expect("the Picture tool is open")
+        rig.app
+            .tool_ref::<PictureTool>()
+            .expect("the Picture tool is open")
     }
 
     fn motion(rig: &Rig) -> Motion {

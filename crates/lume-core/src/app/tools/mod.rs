@@ -1,13 +1,14 @@
-//! The Tools: a menu in the lume settings with six diagnostic tools (`diagnostic-tools` spec).
+//! The Tools: a menu in the lume settings with five diagnostic tools (`diagnostic-tools` spec).
 //!
 //! Everything here exists only while it is used (D1 in the `ferramentas` design): the state of the
 //! open tool lives in [`LumeApp::tool`] and is dropped when the tool closes; the heavy resources
 //! (audio stream, test thread, temporary file) live on the platform side and are asked
 //! for with an [`Effect`] (D2).
 //!
-//! Every tool lives in its own file, with the same hooks on [`LumeApp`] (`<tool>_open`,
-//! `draw_<tool>`, `<tool>_key`, `<tool>_deadline`, `<tool>_event`, `<tool>_fullscreen`), which this
-//! module dispatches to.
+//! Every tool lives in its own file, with hooks on [`LumeApp`] (`draw_<tool>` and `<tool>_key`
+//! always; `<tool>_open`, `<tool>_deadline`, `<tool>_event` and `<tool>_fullscreen` only when the tool
+//! needs them), which this module dispatches to; its state is reached with [`LumeApp::tool_ref`] and
+//! [`LumeApp::tool_mut`].
 
 pub mod audio;
 pub(super) mod common;
@@ -23,6 +24,7 @@ use crate::ui::focus::FocusId;
 
 /// The tools, in the order of the menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum ToolKind {
     /// "Tela": test patterns, image retention cleaning and the stuck pixel fixer.
     Display,
@@ -65,8 +67,9 @@ impl ToolKind {
         }
     }
 
+    /// The position in [`ToolKind::ALL`] (the variants are declared in the same order).
     fn index(self) -> usize {
-        ToolKind::ALL.iter().position(|k| *k == self).unwrap_or(0)
+        self as usize
     }
 
     /// The menu item of the tool.
@@ -157,6 +160,40 @@ pub(super) enum ToolState {
     Storage(storage::StorageTool),
 }
 
+/// The state of one tool, reached from [`ToolState`] by its type.
+pub(super) trait ToolOf {
+    fn of(state: &ToolState) -> Option<&Self>;
+    fn of_mut(state: &mut ToolState) -> Option<&mut Self>;
+}
+
+macro_rules! tool_of {
+    ($($variant:ident => $ty:ty),* $(,)?) => {$(
+        impl ToolOf for $ty {
+            fn of(state: &ToolState) -> Option<&Self> {
+                match state {
+                    ToolState::$variant(s) => Some(s),
+                    _ => None,
+                }
+            }
+
+            fn of_mut(state: &mut ToolState) -> Option<&mut Self> {
+                match state {
+                    ToolState::$variant(s) => Some(s),
+                    _ => None,
+                }
+            }
+        }
+    )*};
+}
+
+tool_of!(
+    Display => display::DisplayTool,
+    Picture => picture::PictureTool,
+    Remote => remote::RemoteTool,
+    Audio => audio::AudioTool,
+    Storage => storage::StorageTool,
+);
+
 impl ToolState {
     fn new(kind: ToolKind, now_ms: u64) -> ToolState {
         match kind {
@@ -199,7 +236,32 @@ pub(super) enum ToolKey {
     Exit(Vec<Effect>),
 }
 
+impl ToolKey {
+    /// The effects of a key a tool handled, closing the tool on [`ToolKey::Exit`]. `None`: not
+    /// handled.
+    fn apply(self, app: &mut LumeApp, kind: ToolKind) -> Option<Vec<Effect>> {
+        match self {
+            ToolKey::Default => None,
+            ToolKey::Handled(effects) => Some(effects),
+            ToolKey::Exit(effects) => {
+                app.back_from_tool(kind);
+                Some(effects)
+            }
+        }
+    }
+}
+
 impl LumeApp {
+    /// The open tool's state, if the open tool is `T`.
+    pub(super) fn tool_ref<T: ToolOf>(&self) -> Option<&T> {
+        self.tool.as_deref().and_then(T::of)
+    }
+
+    /// The open tool's state, mutable, if the open tool is `T`.
+    pub(super) fn tool_mut<T: ToolOf>(&mut self) -> Option<&mut T> {
+        self.tool.as_deref_mut().and_then(T::of_mut)
+    }
+
     /// Whether the screen is the Tools menu or a tool.
     pub(super) fn in_tools(&self) -> bool {
         matches!(self.screen, Screen::Tools | Screen::Tool(_))
@@ -213,11 +275,8 @@ impl LumeApp {
         self.pending_focus = Some(PendingFocus::FirstContent);
         self.focus.set_rows(vec![]);
         match kind {
-            ToolKind::Display => self.display_open(),
-            ToolKind::Picture => self.picture_open(),
-            ToolKind::Remote => self.remote_open(),
-            ToolKind::Audio => self.audio_open(),
             ToolKind::Storage => self.storage_open(),
+            ToolKind::Display | ToolKind::Picture | ToolKind::Remote | ToolKind::Audio => vec![],
         }
     }
 
@@ -269,14 +328,7 @@ impl LumeApp {
             ToolKind::Audio => self.audio_key(key),
             ToolKind::Storage => self.storage_key(key),
         };
-        match result {
-            ToolKey::Default => None,
-            ToolKey::Handled(effects) => Some(effects),
-            ToolKey::Exit(effects) => {
-                self.back_from_tool(kind);
-                Some(effects)
-            }
-        }
+        result.apply(self, kind)
     }
 
     pub(super) fn draw_tool(&mut self, p: &mut super::Painter, kind: ToolKind) {
@@ -303,7 +355,7 @@ impl LumeApp {
             ToolKind::Picture => self.picture_deadline(now_ms),
             ToolKind::Remote => self.remote_deadline(now_ms),
             ToolKind::Audio => self.audio_deadline(now_ms),
-            ToolKind::Storage => self.storage_deadline(now_ms),
+            ToolKind::Storage => None,
         }
     }
 
@@ -312,9 +364,7 @@ impl LumeApp {
         match self.screen {
             Screen::Tool(ToolKind::Display) => self.display_fullscreen(),
             Screen::Tool(ToolKind::Picture) => self.picture_fullscreen(),
-            Screen::Tool(ToolKind::Remote) => self.remote_fullscreen(),
             Screen::Tool(ToolKind::Audio) => self.audio_fullscreen(),
-            Screen::Tool(ToolKind::Storage) => self.storage_fullscreen(),
             _ => false,
         }
     }
@@ -326,14 +376,9 @@ impl LumeApp {
             return;
         };
         match kind {
-            ToolKind::Display => self.display_event(event),
-            ToolKind::Picture => self.picture_event(event),
-            ToolKind::Remote => self.remote_event(event),
             ToolKind::Audio => self.audio_event(event),
-            ToolKind::Storage => match event {
-                ToolEvent::Reading(ToolReading::Storage(space)) => self.storage_space(space),
-                other => self.storage_event(other),
-            },
+            ToolKind::Storage => self.storage_event(event),
+            ToolKind::Display | ToolKind::Picture | ToolKind::Remote => {}
         }
     }
 
@@ -356,14 +401,8 @@ impl LumeApp {
         if self.screen != Screen::Tool(ToolKind::Remote) {
             return None;
         }
-        Some(match self.remote_keycode(code) {
-            ToolKey::Default => vec![],
-            ToolKey::Handled(effects) => effects,
-            ToolKey::Exit(effects) => {
-                self.back_from_tool(ToolKind::Remote);
-                effects
-            }
-        })
+        let result = self.remote_keycode(code);
+        Some(result.apply(self, ToolKind::Remote).unwrap_or_default())
     }
 
     /// The tool's state, for tests.

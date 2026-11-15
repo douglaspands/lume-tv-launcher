@@ -10,9 +10,9 @@ use super::common::{
     self, draw_panel, format_remaining, panel_heading, wrapped_text, FlashWarning, Hint,
     WarningAnswer,
 };
-use super::{ToolEvent, ToolKey, ToolKind};
+use super::{ToolKey, ToolKind};
 use crate::app::painter::Painter;
-use crate::app::{Effect, Key, LumeApp, PendingFocus};
+use crate::app::{Key, LumeApp, PendingFocus};
 use crate::i18n::{Arg, StringId, Translator};
 use crate::render::{PatternOp, PixelRect, Rect};
 use crate::theme::{Color, StateFlags, THEME};
@@ -307,29 +307,10 @@ impl DisplayTool {
 }
 
 impl LumeApp {
-    fn display_state(&mut self) -> Option<&mut DisplayTool> {
-        match self.tool.as_deref_mut() {
-            Some(super::ToolState::Display(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    fn display_ref(&self) -> Option<&DisplayTool> {
-        match self.tool.as_deref() {
-            Some(super::ToolState::Display(s)) => Some(s),
-            _ => None,
-        }
-    }
-
-    /// Opening the tool (its state was just created): effects for the platform.
-    pub(in crate::app) fn display_open(&mut self) -> Vec<Effect> {
-        vec![]
-    }
-
     pub(in crate::app) fn draw_display(&mut self, p: &mut Painter) {
         let now = self.now_ms;
         let t = self.translator;
-        let Some(s) = self.display_state() else {
+        let Some(s) = self.tool_mut::<DisplayTool>() else {
             return;
         };
         let (width, height) = (p.display.width as i32, p.display.height as i32);
@@ -357,7 +338,7 @@ impl LumeApp {
             self.focus.set_rows(vec![]);
         }
 
-        let Some(s) = self.display_state() else {
+        let Some(s) = self.tool_mut::<DisplayTool>() else {
             return;
         };
         match s.phase {
@@ -406,7 +387,7 @@ impl LumeApp {
     /// The modes, or the choices of a mode, at the left, and what the mode does at the right.
     fn draw_display_choices(&mut self, p: &mut Painter, phase: Phase) {
         let t = self.translator;
-        let Some(s) = self.display_ref() else {
+        let Some(s) = self.tool_ref::<DisplayTool>() else {
             return;
         };
         let duration =
@@ -470,7 +451,7 @@ impl LumeApp {
         let now = self.now_ms;
         let t = self.translator;
         let focused = self.focus.current_id().map(|f| f.wrapping_sub(id(0)));
-        let Some(s) = self.display_state() else {
+        let Some(s) = self.tool_mut::<DisplayTool>() else {
             return ToolKey::Default;
         };
         // Where the focus goes when the tool screen comes back.
@@ -605,7 +586,7 @@ impl LumeApp {
     }
 
     pub(in crate::app) fn display_deadline(&self, _now_ms: u64) -> Option<u64> {
-        let s = self.display_ref()?;
+        let s = self.tool_ref::<DisplayTool>()?;
         let now = self.now_ms;
         let mode = match s.phase {
             // A frame for every step of the fade, and none while a color stays.
@@ -627,11 +608,9 @@ impl LumeApp {
     }
 
     pub(in crate::app) fn display_fullscreen(&self) -> bool {
-        self.display_ref()
+        self.tool_ref::<DisplayTool>()
             .is_some_and(|s| s.fullscreen(self.now_ms))
     }
-
-    pub(in crate::app) fn display_event(&mut self, _event: ToolEvent) {}
 }
 
 /// "Faltam 9:59".
@@ -654,7 +633,9 @@ mod tests {
     use crate::app::tests::{open_tool, Rig};
 
     fn state(rig: &Rig) -> &DisplayTool {
-        rig.app.display_ref().expect("the Screen tool is open")
+        rig.app
+            .tool_ref::<DisplayTool>()
+            .expect("the Screen tool is open")
     }
 
     fn phase(rig: &Rig) -> Phase {

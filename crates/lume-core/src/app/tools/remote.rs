@@ -7,10 +7,10 @@
 //! does what it always does.
 
 use super::common::{self, draw_panel, panel_heading, panel_row, PANEL_ROW_PITCH};
-use super::{ToolEvent, ToolKey, ToolKind};
+use super::{ToolKey, ToolKind};
 use crate::app::page::LEFT;
 use crate::app::painter::Painter;
-use crate::app::{Effect, Key, LumeApp, Screen};
+use crate::app::{Key, LumeApp, Screen};
 use crate::i18n::{Arg, StringId, Translator};
 use crate::keys::{self, KeyAction};
 use crate::render::Rect;
@@ -305,15 +305,10 @@ impl LumeApp {
         t.get(id).into_owned()
     }
 
-    /// Opening the tool (its state was just created): effects for the platform.
-    pub(in crate::app) fn remote_open(&mut self) -> Vec<Effect> {
-        vec![]
-    }
-
     pub(in crate::app) fn draw_remote(&mut self, p: &mut Painter) {
         self.draw_tool_items(p, &[], 0.0);
         self.draw_tool_header(p, ToolKind::Remote);
-        let Some(super::ToolState::Remote(state)) = self.tool.as_deref() else {
+        let Some(state) = self.tool_ref::<RemoteTool>() else {
             return;
         };
         let t = self.translator;
@@ -414,20 +409,12 @@ impl LumeApp {
 
     /// A frame when a first Back stops waiting for the second one (the hint changes back).
     pub(in crate::app) fn remote_deadline(&self, now_ms: u64) -> Option<u64> {
-        let Some(super::ToolState::Remote(state)) = self.tool.as_deref() else {
-            return None;
-        };
+        let state = self.tool_ref::<RemoteTool>()?;
         state
             .back_at
             .map(|at| at + DOUBLE_BACK_MS)
             .filter(|at| *at > now_ms)
     }
-
-    pub(in crate::app) fn remote_fullscreen(&self) -> bool {
-        false
-    }
-
-    pub(in crate::app) fn remote_event(&mut self, _event: ToolEvent) {}
 
     /// Every raw keycode while this tool is open, before the key mapping (D10): it is recorded and
     /// nothing runs. Back twice within 2 s closes the tool; Home does what it always does.
@@ -438,7 +425,7 @@ impl LumeApp {
             return ToolKey::Handled(self.handle_key(Key::Home, now));
         }
         let is_back = keys::is_back_code(code) || self.keys.from_android(code) == Some(Key::Back);
-        let Some(super::ToolState::Remote(state)) = self.tool.as_deref_mut() else {
+        let Some(state) = self.tool_mut::<RemoteTool>() else {
             return ToolKey::Default;
         };
         if is_back && state.back_pending(now) {
@@ -463,17 +450,16 @@ mod tests {
     }
 
     /// A raw code at `rig.now`, then `after` ms pass.
-    fn code(rig: &mut Rig, code: i32, after: u64) -> Vec<Effect> {
+    fn code(rig: &mut Rig, code: i32, after: u64) -> Vec<crate::app::Effect> {
         let effects = rig.app.handle_keycode(code, rig.now);
         rig.advance(after);
         effects
     }
 
     fn state(rig: &Rig) -> &RemoteTool {
-        match rig.app.tool.as_deref() {
-            Some(crate::app::tools::ToolState::Remote(state)) => state,
-            _ => panic!("the remote tool is not open"),
-        }
+        rig.app
+            .tool_ref::<RemoteTool>()
+            .expect("the remote tool is not open")
     }
 
     #[test]
