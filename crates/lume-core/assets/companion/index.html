@@ -1,0 +1,830 @@
+<!doctype html>
+<!-- The Lume page the TV serves to the phone. A template: build.rs fills the double-brace values from
+     themes/lume/theme.css and the logo from src/logo.rs; the server fills the language and the texts
+     from Accept-Language. No external resource. The picture is framed here (five modes, pinch and
+     drag) and the TV receives only the result, 1920x1080 in QOI. -->
+<html lang="__LUME_LANG__">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="{{bg}}">
+<title>Lume</title>
+<style>
+:root {
+  --bg: {{bg}};
+  --surface: {{surface}};
+  --surface-row: {{surface-row}};
+  --border: {{border}};
+  --primary: {{primary}};
+  --on-primary: {{on-primary}};
+  --text: {{text}};
+  --text-muted: {{text-muted}};
+  --danger: {{danger-fg}};
+  --radius: {{radius}};
+  --radius-lg: {{shape-lg}};
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body {
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+header { display: flex; align-items: center; gap: 12px; padding: 20px 16px 12px; max-width: 640px; margin: 0 auto; }
+header svg { width: 40px; height: 40px; flex: none; }
+header span { font-size: 26px; font-weight: 800; letter-spacing: .01em; }
+main { padding: 0 16px 32px; max-width: 640px; margin: 0 auto; }
+h1 { font-size: 22px; line-height: 1.3; margin: 8px 0 16px; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+.column { min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; margin-bottom: 16px; }
+ul { margin: 0; padding-left: 20px; color: var(--text-muted); }
+li + li { margin-top: 4px; }
+.drop { display: flex; flex-direction: column; align-items: center; gap: 8px; border: 2px dashed var(--border); border-radius: var(--radius); padding: 20px 12px; text-align: center; transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--primary); background: var(--surface-row); }
+.drop-hint { display: none; color: var(--text-muted); margin: 0; }
+button, label.button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 20px; border-radius: var(--radius); font: inherit; font-weight: 700; cursor: pointer; border: 0; text-align: center; touch-action: manipulation; }
+.secondary { background: var(--surface-row); color: var(--text); border: 1px solid var(--border); }
+.primary { background: var(--primary); color: var(--on-primary); width: 100%; }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.code-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.code-row input { font: inherit; font-size: 24px; font-weight: 800; letter-spacing: .3em; text-transform: uppercase; width: 8.5ch; min-height: 48px; padding: 0 12px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); }
+.frame { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius); overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: none; user-select: none; -webkit-user-select: none; }
+.frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.frame canvas.dragging { cursor: grabbing; }
+.frame p { color: var(--text-muted); padding: 16px; margin: 0; text-align: center; }
+.note { color: var(--text-muted); margin: 12px 0 0; min-height: 24px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chip { min-height: 48px; padding: 0 16px; border-radius: 24px; background: var(--surface-row); color: var(--text); border: 1px solid var(--border); font-weight: 700; }
+.chip[aria-pressed=true] { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+.chip:disabled { background: transparent; color: var(--text-muted); opacity: 1; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.round { width: 48px; min-width: 48px; padding: 0; border-radius: 24px; font-size: 24px; background: var(--surface-row); color: var(--text); border: 1px solid var(--border); }
+.value { min-width: 64px; text-align: center; font-weight: 700; }
+.hint { color: var(--text-muted); margin: 8px 0 0; font-size: 16px; }
+.send-row { margin-top: 16px; }
+.msg { min-height: 24px; margin: 12px 0 0; }
+.warn { color: var(--text-muted); }
+.error { color: var(--danger); }
+.done { color: var(--primary); font-weight: 700; }
+.progress { height: 8px; background: var(--surface-row); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+.progress > i { display: block; height: 100%; width: 0; background: var(--primary); transition: width .2s; }
+.hidden { display: none !important; }
+.intro { color: var(--text-muted); margin: 0 0 16px; }
+.pick .drop { padding: 28px 16px; }
+.pick label.button { min-width: 220px; font-size: 18px; }
+.reqs { color: var(--text-muted); margin: 4px 0 0; }
+.frame #replace { position: absolute; top: 8px; right: 8px; z-index: 1; min-height: 48px; padding: 0 16px; border-radius: 24px; background: rgba(0, 0, 0, .62); color: #fff; border: 1px solid rgba(255, 255, 255, .35); }
+.modes-title { font-size: 16px; color: var(--text-muted); margin: 16px 0 8px; }
+.modes { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+.mode { flex: 0 0 auto; width: 124px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 6px 8px; background: var(--surface-row); color: var(--text); border: 2px solid transparent; border-radius: var(--radius); font-weight: 700; scroll-snap-align: start; }
+.mode canvas { display: block; width: 108px; height: 61px; border-radius: 6px; background: #000; }
+.mode span { font-size: 16px; line-height: 1.2; }
+.mode[aria-pressed=true] { border-color: var(--primary); color: var(--primary); }
+.mode.locked { opacity: .5; }
+.mode.locked span::before { content: "\1F512\FE0E  "; font-size: 14px; }
+.desc { margin: 8px 0 0; }
+.note { color: var(--text-muted); margin: 8px 0 0; }
+.control { display: flex; align-items: center; gap: 12px; margin-top: 12px; min-height: 48px; }
+.control label { font-weight: 700; }
+.control input[type=range] { flex: 1; min-width: 0; height: 48px; accent-color: var(--primary); }
+.value { min-width: 56px; text-align: right; font-weight: 700; }
+.seg { display: flex; margin-top: 12px; border: 1px solid var(--border); border-radius: 24px; overflow: hidden; }
+.seg button { flex: 1; border-radius: 0; background: transparent; color: var(--text); }
+.seg button[aria-pressed=true] { background: var(--primary); color: var(--on-primary); }
+.hint-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; }
+.hint-row p { margin: 0; color: var(--text-muted); }
+.link { background: transparent; color: var(--primary); padding: 0 8px; }
+.sendbar { position: sticky; bottom: 0; z-index: 2; margin: 16px -16px -16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.sendbar .msg { margin: 8px 0 0; min-height: 0; }
+.sendbar .msg:empty { display: none; }
+.pick .msg:empty { display: none; }
+.finished { text-align: center; padding: 32px 16px; }
+.finished h2 { font-size: 22px; margin: 0 0 8px; }
+.finished p { color: var(--text-muted); margin: 0; }
+.finished .finished-icon { color: var(--primary); font-size: 48px; line-height: 1; font-weight: 800; margin: 0 0 12px; }
+@media (min-width: 1024px) {
+  header { max-width: 1120px; padding-top: 32px; }
+  main { max-width: 1120px; }
+  body:not(.editing) main { max-width: 640px; }
+  body.editing #editing { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
+  body.editing .modes-title { margin-top: 0; }
+  .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
+  .modes .mode { width: auto; justify-content: flex-start; }
+  .mode canvas { width: 100%; height: auto; aspect-ratio: 16 / 9; }
+  .sendbar { position: static; margin: 16px 0 0; padding: 0; border: 0; background: transparent; }
+  .drop-hint { display: block; }
+}
+</style>
+</head>
+<body>
+<header>{{logo}}<span>Lume</span></header>
+<main>
+  <h1 data-l="section">Papel de parede</h1>
+  <p class="intro" data-l="req_edit"></p>
+  <section class="panel hidden" id="code-panel">
+    <h2 data-l="code_label"></h2>
+    <p class="warn" data-l="code_hint"></p>
+    <div class="code-row">
+      <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text">
+    </div>
+  </section>
+  <!-- Without a photo: only the choice. -->
+  <section class="panel pick" id="pick">
+    <div class="drop" id="drop">
+      <label class="button primary" for="file" data-l="choose"></label>
+      <input type="file" id="file" accept="image/*,.heic,.heif">
+      <p class="drop-hint" data-l="drop"></p>
+      <p class="reqs"><span data-l="req_formats"></span><br><span data-l="req_size"></span></p>
+    </div>
+    <p class="msg" id="pick-msg" role="status" aria-live="polite"></p>
+  </section>
+  <!-- With a photo: the preview first, the modes shown with the photo itself, Send always at hand. -->
+  <section class="panel hidden" id="editing">
+    <div class="stage" id="left">
+      <div class="frame" id="frame"><canvas id="preview"></canvas><button type="button" id="replace" data-l="replace"></button></div>
+    </div>
+    <div class="side" id="right">
+      <h2 class="modes-title" data-l="modes_title"></h2>
+      <div class="modes" id="modes" role="group"></div>
+      <p class="desc" id="desc"></p>
+      <p class="note hidden" id="note"></p>
+      <div class="control hidden" id="cover-controls">
+        <label for="zoom" data-l="zoom"></label>
+        <input type="range" id="zoom" min="100" max="200" step="1">
+        <span class="value" id="zoom-value"></span>
+      </div>
+      <div class="hidden" id="tile-controls">
+        <div class="seg" id="variants" role="group"></div>
+        <div class="control">
+          <label for="scale" data-l="tile_size"></label>
+          <input type="range" id="scale" min="25" max="100" step="25">
+          <span class="value" id="scale-value"></span>
+        </div>
+      </div>
+      <div class="hint-row hidden" id="hint"><p data-l="hint_drag"></p><button type="button" class="link" id="center" data-l="center"></button></div>
+      <div class="sendbar">
+        <button class="primary" id="send" type="button" disabled data-l="send"></button>
+        <div class="progress hidden" id="progress"><i></i></div>
+        <p class="msg" id="msg" role="status" aria-live="polite"></p>
+      </div>
+    </div>
+  </section>
+  <!-- Applied on the TV. -->
+  <section class="panel hidden finished" id="finished" role="status">
+    <p class="finished-icon" aria-hidden="true">✓</p>
+    <h2 data-l="applied"></h2>
+    <p data-l="close_tab"></p>
+  </section>
+</main>
+<script>
+"use strict";
+const L = __LUME_STRINGS__;
+// The result the TV takes (companion/server.rs): 1920x1080 QOI, at most 9 MB.
+const OUT_W = 1920, OUT_H = 1080, MAX_BODY = 9 * 1024 * 1024;
+// The working copy kept in the browser, and the smallest picture accepted.
+const MAX_PIXELS = 4194304, MIN_SIDE = 64;
+// The tolerances: 16:9 within 5% starts in Fill; under 720 px only Repeat; under 1080 a warning.
+const RATIO_MIN = 1.70, RATIO_MAX = 1.86, SIDE_TILE = 720, SIDE_SHARP = 1080;
+const ZOOM_MIN = 100, ZOOM_MAX = 200, ZOOM_STEP = 10, SCALE_MIN = 25, SCALE_MAX = 100, SCALE_STEP = 25;
+// How often the page tells the TV it is open, and since when the last use counts.
+const PING_MS = window.LUME_PING_MS || 30000;
+const MODES = ["contain", "cover", "stretch", "blur", "tile"];
+
+const $ = (id) => document.getElementById(id);
+for (const el of document.querySelectorAll("[data-l]")) el.textContent = L[el.dataset.l] || "";
+
+let code = (new URLSearchParams(location.search).get("c") || "").trim().toUpperCase();
+let photo = null;   // {src: canvas, w, h (the original's size), blur: canvas or null}
+let params = null;  // {mode, zoom, px, py, variant, scale, ox, oy}
+let busy = false;
+let lastUse = Date.now();
+
+// ---- the code ----------------------------------------------------------------------------------
+const codeInput = $("code");
+function needCode(show) {
+  $("code-panel").classList.toggle("hidden", !show);
+  if (show) codeInput.value = code;
+}
+needCode(code.length !== 4);
+codeInput.addEventListener("input", () => {
+  codeInput.value = codeInput.value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+  code = codeInput.value;
+  update();
+  if (code.length === 4) { pingRefused = false; ping(); }
+});
+
+// The message goes under the choice and over Send (only the one on screen shows).
+function say(text, kind) {
+  for (const id of ["msg", "pick-msg"]) {
+    const msg = $(id);
+    msg.textContent = text || "";
+    msg.className = "msg" + (kind ? " " + kind : "");
+  }
+}
+function update() {
+  $("send").disabled = busy || !photo || code.length !== 4;
+}
+
+// ---- telling the TV the page is in use -----------------------------------------------------------
+const used = () => { lastUse = Date.now(); };
+for (const type of ["pointerdown", "wheel", "keydown"]) window.addEventListener(type, used, { capture: true, passive: true });
+let pingRefused = false;
+function ping() {
+  if (document.visibilityState !== "visible" || code.length !== 4 || pingRefused) return;
+  const idle = Math.max(0, Math.floor((Date.now() - lastUse) / 1000));
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/ping?c=" + encodeURIComponent(code) + "&idle=" + idle);
+  xhr.onload = () => {
+    let answer = null;
+    try { answer = JSON.parse(xhr.responseText); } catch (e) { /* not ours */ }
+    if (answer && !answer.ok) {
+      // A new code on the TV (or a wrong one typed): stop until the user types it.
+      pingRefused = true;
+      watchTv(false);
+      if (answer.error === "attempts") say(L.err_closed, "error");
+      else { needCode(true); say(L.code_wrong, "error"); }
+      return;
+    }
+    if (!answer || !watching) return;
+    // What the TV did with the photo sent.
+    if (answer.tv === "applied") finished();
+    else if (answer.tv === "declined") { watchTv(false); say(L.declined, "warn"); }
+  };
+  xhr.send();
+}
+setInterval(ping, PING_MS);
+
+// After a photo is sent, the page asks the TV every 2 s whether it was applied.
+let watching = null;
+function watchTv(on) {
+  if (watching) clearInterval(watching);
+  watching = on ? setInterval(ping, 2000) : null;
+}
+
+// Applied on the TV: the end. The page tries to close itself (browsers allow it only to tabs a
+// script opened), and otherwise says that the tab can be closed.
+function finished() {
+  watchTv(false);
+  pingRefused = true;
+  document.body.classList.remove("editing");
+  for (const id of ["pick", "editing", "code-panel"]) $(id).classList.add("hidden");
+  $("finished").classList.remove("hidden");
+  try { window.close(); } catch (e) { /* stays open */ }
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") ping(); });
+
+// ---- choosing ----------------------------------------------------------------------------------
+$("file").addEventListener("change", (e) => { used(); const f = e.target.files && e.target.files[0]; if (f) choose(f); });
+const drop = $("drop");
+["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "dragend"].forEach((t) => drop.addEventListener(t, () => drop.classList.remove("over")));
+drop.addEventListener("drop", (e) => {
+  e.preventDefault();
+  used();
+  drop.classList.remove("over");
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) choose(f);
+});
+// A file dropped outside the area must not make the browser leave the page.
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
+// A HEIC/HEIF by its type, its name or the brand at the start of the file.
+async function isHeic(file) {
+  if (/image\/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name || "")) return true;
+  try {
+    const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    const brand = String.fromCharCode(...head.subarray(4, 12));
+    return /^ftyp(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(brand);
+  } catch (e) {
+    return false;
+  }
+}
+
+// The HEIC decoder (libheif in WebAssembly), from the TV, only when the browser cannot open a HEIC.
+let heicScript = null;
+function loadHeic() {
+  if (!heicScript) {
+    heicScript = new Promise((ok, fail) => {
+      const s = document.createElement("script");
+      s.src = "/lib/heic.js";
+      s.onload = () => (window.LumeHeic ? ok() : fail(new Error("no decoder")));
+      s.onerror = () => { heicScript = null; fail(new Error("cannot load the decoder")); };
+      document.head.appendChild(s);
+    });
+  }
+  return heicScript;
+}
+// Decodes with the file's rotation applied; the module goes away after it, and its memory with it.
+async function decodeHeic(file) {
+  await loadHeic();
+  const heic = await window.LumeHeic();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const input = heic._malloc(bytes.length);
+  if (!input) throw new Error("no memory");
+  heic.HEAPU8.set(bytes, input);
+  const out = heic._lume_heic_decode(input, bytes.length);
+  heic._free(input);
+  if (!out) throw new Error("not decoded");
+  const view = new DataView(heic.HEAPU8.buffer, out, 8);
+  const w = view.getUint32(0, true), h = view.getUint32(4, true);
+  const rgba = new Uint8Array(heic.HEAPU8.buffer, out + 8, w * h * 4);
+  // A photo larger than a canvas can hold is averaged down by blocks first.
+  const f = Math.max(1, Math.ceil(Math.max(Math.sqrt(w * h / CANVAS_PIXELS), Math.max(w, h) / CANVAS_SIDE)));
+  const small = f === 1 ? { data: rgba.slice(), w, h } : shrink(rgba, w, h, f);
+  heic._free(out);
+  const c = canvas(small.w, small.h);
+  const g = c.getContext("2d");
+  if (!g) throw new Error("no canvas");
+  g.putImageData(new ImageData(new Uint8ClampedArray(small.data.buffer), small.w, small.h), 0, 0);
+  return c;
+}
+// Averages blocks of f x f pixels of RGBA.
+function shrink(rgba, w, h, f) {
+  const sw = Math.floor(w / f), sh = Math.floor(h / f), out = new Uint8Array(sw * sh * 4);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      let r = 0, g = 0, b = 0;
+      for (let j = 0; j < f; j++) {
+        let o = ((y * f + j) * w + x * f) * 4;
+        for (let i = 0; i < f; i++, o += 4) { r += rgba[o]; g += rgba[o + 1]; b += rgba[o + 2]; }
+      }
+      const n = f * f, at = (y * sw + x) * 4;
+      out[at] = r / n; out[at + 1] = g / n; out[at + 2] = b / n; out[at + 3] = 255;
+    }
+  }
+  return { data: out, w: sw, h: sh };
+}
+
+async function decode(file) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (e) { /* next */ }
+    // A photo too large to decode whole (memory): decoded already reduced, if the browser can.
+    for (const width of [4096, 2048]) {
+      try {
+        return await createImageBitmap(file, { imageOrientation: "from-image", resizeWidth: width, resizeQuality: "high" });
+      } catch (e) { /* next */ }
+    }
+    try { return await createImageBitmap(file); } catch (e) { /* next */ }
+  }
+  // Current browsers apply the photo's rotation to <img> by themselves.
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    if (img.decode) await img.decode();
+    else await new Promise((ok, fail) => { img.onload = ok; img.onerror = fail; });
+    return img;
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
+
+const sizeOf = (img) => [img.naturalWidth || img.width, img.naturalHeight || img.height];
+
+function canvas(w, h) {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  return c;
+}
+
+// Reduces by halves (each step averages 2x2), then to the exact size: close to an area reduction.
+// The largest canvas created, under what browsers allow (Safari: about 16 MP).
+const CANVAS_PIXELS = 16 * 1024 * 1024, CANVAS_SIDE = 8192;
+function reduce(source, width, height, tw, th) {
+  let cur = source, cw = width, ch = height;
+  while (cw / 2 >= tw && ch / 2 >= th) {
+    // Halves, but the first step of a huge photo goes straight to what a canvas can hold.
+    const k = Math.min(0.5, Math.sqrt(CANVAS_PIXELS / (cw * ch)), CANVAS_SIDE / Math.max(cw, ch));
+    const next = canvas(Math.max(tw, Math.round(cw * k)), Math.max(th, Math.round(ch * k)));
+    const g = next.getContext("2d");
+    if (!g) throw new Error("no canvas");
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(cur, 0, 0, next.width, next.height);
+    cur = next; cw = next.width; ch = next.height;
+  }
+  const out = canvas(tw, th);
+  const g = out.getContext("2d");
+  g.fillStyle = "#000"; // transparency is composed over black, as the TV does
+  g.fillRect(0, 0, tw, th);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(cur, 0, 0, tw, th);
+  return out;
+}
+
+// The tolerances on the original's size: which modes there are, and the one it starts in.
+function sizeClass(w, h) {
+  const small = Math.min(w, h);
+  if (small < MIN_SIDE) return "refused";
+  if (small < SIDE_TILE) return "tile";
+  return small < SIDE_SHARP ? "soft" : "sharp";
+}
+function startMode(w, h) {
+  if (sizeClass(w, h) === "tile") return "tile";
+  const ratio = w / h;
+  return ratio >= RATIO_MIN && ratio <= RATIO_MAX ? "cover" : "contain";
+}
+const available = (mode) => !!photo && (sizeClass(photo.w, photo.h) !== "tile" || mode === "tile");
+
+async function choose(file) {
+  if (busy) return;
+  say(L.preparing);
+  let img = null;
+  try {
+    img = await decode(file);
+  } catch (e) { /* below */ }
+  if (!img || !sizeOf(img)[0]) {
+    if (!(await isHeic(file))) { say(L.err_format, "error"); return; }
+    // The browser does not open HEIC (Chrome): the decoder from the TV.
+    try {
+      img = await decodeHeic(file);
+    } catch (e) {
+      console.warn("HEIC decoder:", e && e.message);
+      say(L.err_heic, "error");
+      return;
+    }
+  }
+  const [w, h] = sizeOf(img);
+  if (Math.min(w, h) < MIN_SIDE) { say(L.err_small, "error"); return; }
+  // The working copy: 4 MP, or smaller when the phone cannot hold it. An error only when even
+  // 1 MP fails.
+  let src = null;
+  for (const budget of [MAX_PIXELS, MAX_PIXELS / 2, MAX_PIXELS / 4]) {
+    try {
+      const k = Math.min(1, Math.sqrt(budget / (w * h)));
+      src = reduce(img, w, h, Math.max(1, Math.floor(w * k)), Math.max(1, Math.floor(h * k)));
+      break;
+    } catch (e) {
+      console.warn("working copy of", budget, "pixels:", e && e.message);
+    }
+  }
+  if (img.close) img.close();
+  if (!src) { say(L.err_browser, "error"); return; }
+  photo = { src, w, h, blur: null };
+  params = { mode: startMode(w, h), zoom: 100, px: 0, py: 0, variant: "grid", scale: 100, ox: 0, oy: 0 };
+  say("");
+  // The choice gives way to the editor; "Change photo" on the preview chooses again.
+  document.body.classList.add("editing");
+  $("pick").classList.add("hidden");
+  $("editing").classList.remove("hidden");
+  $("send").textContent = L.send;
+  refresh();
+  update();
+}
+
+// ---- framing: one function for the preview and for the result -----------------------------------
+// The whole picture centered, as large as fits: x, y, w, h in output pixels (whole numbers).
+function containRect(w, h, W, H) {
+  const k = Math.min(W / w, H / h);
+  const dw = Math.min(W, Math.max(1, Math.round(w * k))), dh = Math.min(H, Math.max(1, Math.round(h * k)));
+  return [Math.floor((W - dw) / 2), Math.floor((H - dh) / 2), dw, dh];
+}
+
+// Cover: the part of the original seen at this zoom and position (in the original's pixels).
+function coverView(p, w, h, W, H) {
+  const k = Math.max(W / w, H / h) * p.zoom / 100;
+  const vw = Math.min(w, W / k), vh = Math.min(h, H / k);
+  return { k, vw, vh, x: (w - vw) * (p.px + 1) / 2, y: (h - vh) * (p.py + 1) / 2 };
+}
+
+// Repeat: the size of a copy in a 1920x1080 result (the picture in Fit, or its own size if smaller).
+function tileSize(p, w, h) {
+  const [, , cw, ch] = containRect(w, h, OUT_W, OUT_H);
+  const k = Math.min(1, cw / w) * p.scale / 100;
+  return [Math.max(1, w * k), Math.max(1, h * k)];
+}
+
+// The blurred background: the cover of the picture at an eighth, three passes of a box blur.
+function blurred() {
+  if (photo.blur) return photo.blur;
+  const bw = OUT_W / 8, bh = OUT_H / 8;
+  const c = canvas(bw, bh), g = c.getContext("2d");
+  const k = Math.max(bw / photo.w, bh / photo.h), vw = bw / k, vh = bh / k;
+  const sx = photo.src.width / photo.w;
+  g.imageSmoothingQuality = "high";
+  g.drawImage(photo.src, (photo.w - vw) / 2 * sx, (photo.h - vh) / 2 * sx, vw * sx, vh * sx, 0, 0, bw, bh);
+  const data = g.getImageData(0, 0, bw, bh);
+  for (let i = 0; i < 3; i++) boxBlur(data.data, bw, bh, 2);
+  g.putImageData(data, 0, 0);
+  photo.blur = c;
+  return c;
+}
+function boxBlur(px, w, h, r) {
+  const line = new Float32Array(Math.max(w, h) * 4);
+  const pass = (n, count, at) => {
+    for (let k = 0; k < count; k++) {
+      for (let i = 0; i < n; i++) for (let c = 0; c < 4; c++) line[i * 4 + c] = px[at(k, i) + c];
+      for (let i = 0; i < n; i++) {
+        for (let c = 0; c < 3; c++) {
+          let s = 0;
+          for (let d = -r; d <= r; d++) s += line[Math.min(n - 1, Math.max(0, i + d)) * 4 + c];
+          px[at(k, i) + c] = s / (2 * r + 1);
+        }
+      }
+    }
+  };
+  pass(w, h, (y, x) => (y * w + x) * 4);
+  pass(h, w, (x, y) => (y * w + x) * 4);
+}
+
+// Draws `photo` framed by `p` on a W x H canvas (16:9): what the TV will show.
+function compose(ctx, ph, p, W, H) {
+  const s = H / OUT_H; // the 1920x1080 units of the parameters, at this size
+  const sx = ph.src.width / ph.w; // the original's pixels in the working copy
+  ctx.save();
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  const whole = (x, y, w, h) => ctx.drawImage(ph.src, 0, 0, ph.src.width, ph.src.height, x, y, w, h);
+  if (p.mode === "contain" || p.mode === "blur") {
+    if (p.mode === "blur") ctx.drawImage(blurred(), 0, 0, W, H);
+    const [x, y, w, h] = containRect(ph.w, ph.h, W, H);
+    whole(x, y, w, h);
+  } else if (p.mode === "stretch") {
+    whole(0, 0, W, H);
+  } else if (p.mode === "cover") {
+    const v = coverView(p, ph.w, ph.h, W, H);
+    ctx.drawImage(ph.src, v.x * sx, v.y * sx, v.vw * sx, v.vh * sx, 0, 0, W, H);
+  } else {
+    // Repeat: the middle copy where Fit puts the picture, the others around it, edge to edge.
+    const [tw0, th0] = tileSize(p, ph.w, ph.h);
+    const tw = tw0 * s, th = th0 * s;
+    const cx = (W - tw) / 2 + p.ox * s, cy = (H - th) / 2 + p.oy * s;
+    const i0 = -Math.ceil(cx / tw), j0 = -Math.ceil(cy / th);
+    for (let j = j0; cy + j * th < H; j++) {
+      const y = Math.round(cy + j * th), y2 = Math.round(cy + (j + 1) * th);
+      for (let i = i0; cx + i * tw < W; i++) {
+        const x = Math.round(cx + i * tw), x2 = Math.round(cx + (i + 1) * tw);
+        const fx = p.variant === "mirror" && (i & 1) ? -1 : 1, fy = p.variant === "mirror" && (j & 1) ? -1 : 1;
+        ctx.save();
+        ctx.translate(fx < 0 ? x2 : x, fy < 0 ? y2 : y);
+        ctx.scale(fx, fy);
+        whole(0, 0, x2 - x, y2 - y);
+        ctx.restore();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// ---- the editor --------------------------------------------------------------------------------
+const preview = $("preview");
+function draw() {
+  if (!photo) return;
+  const r = preview.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const W = Math.max(16, Math.round(r.width * dpr)), H = Math.max(9, Math.round(W * 9 / 16));
+  if (preview.width !== W || preview.height !== H) { preview.width = W; preview.height = H; }
+  compose(preview.getContext("2d"), photo, params, W, H);
+}
+let drawPending = false, thumbsPending = false;
+function redraw() {
+  if (drawPending) return;
+  drawPending = true;
+  requestAnimationFrame(() => { drawPending = false; draw(); });
+}
+function redrawThumbs() {
+  if (thumbsPending) return;
+  thumbsPending = true;
+  requestAnimationFrame(() => { thumbsPending = false; drawThumbs(); });
+}
+// Turning the phone or resizing the window keeps the photo and the framing.
+if (window.ResizeObserver) new ResizeObserver(redraw).observe($("frame"));
+else window.addEventListener("resize", redraw);
+
+// The modes, each one shown with the user's own photo in it.
+const modeButtons = {};
+for (const mode of MODES) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "mode";
+  b.dataset.mode = mode;
+  const thumb = canvas(160, 90);
+  const label = document.createElement("span");
+  label.textContent = L["mode_" + mode];
+  b.append(thumb, label);
+  b.addEventListener("click", () => {
+    if (!available(mode)) { note(L.tile_only); return; }
+    params.mode = mode;
+    refresh();
+  });
+  $("modes").appendChild(b);
+  modeButtons[mode] = b;
+}
+function drawThumbs() {
+  if (!photo) return;
+  for (const mode of MODES) {
+    const c = modeButtons[mode].firstElementChild;
+    compose(c.getContext("2d"), photo, Object.assign({}, params, { mode }), c.width, c.height);
+  }
+}
+const variantButtons = {};
+for (const variant of ["grid", "mirror"]) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = L["tile_" + variant];
+  b.addEventListener("click", () => { params.variant = variant; params.ox = 0; params.oy = 0; refresh(); });
+  $("variants").appendChild(b);
+  variantButtons[variant] = b;
+}
+$("zoom").addEventListener("input", (e) => setZoom(Number(e.target.value)));
+$("scale").addEventListener("input", (e) => {
+  params.scale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, Math.round(Number(e.target.value) / SCALE_STEP) * SCALE_STEP));
+  refresh();
+});
+$("center").addEventListener("click", () => { params.px = 0; params.py = 0; params.ox = 0; params.oy = 0; refresh(); });
+$("replace").addEventListener("click", () => $("file").click());
+
+function setZoom(zoom) {
+  params.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(zoom)));
+  refresh();
+}
+function note(text) {
+  $("note").textContent = text || "";
+  $("note").classList.toggle("hidden", !text);
+}
+
+// The controls of the mode, its sentence, the note, the preview and the thumbnails.
+function refresh() {
+  const cls = sizeClass(photo.w, photo.h);
+  for (const mode of MODES) {
+    const b = modeButtons[mode], ok = available(mode);
+    b.classList.toggle("locked", !ok);
+    b.setAttribute("aria-disabled", String(!ok));
+    b.setAttribute("aria-pressed", String(params.mode === mode));
+  }
+  const cover = params.mode === "cover", tile = params.mode === "tile";
+  $("desc").textContent = L["desc_" + params.mode];
+  $("cover-controls").classList.toggle("hidden", !cover);
+  $("tile-controls").classList.toggle("hidden", !tile);
+  $("hint").classList.toggle("hidden", !cover && !tile);
+  $("zoom").value = params.zoom;
+  $("zoom-value").textContent = params.zoom + "%";
+  $("scale").value = params.scale;
+  $("scale-value").textContent = params.scale + "%";
+  for (const v in variantButtons) variantButtons[v].setAttribute("aria-pressed", String(params.variant === v));
+  note(cls === "tile" ? L.tile_only : cls === "soft" ? L.warn_soft : "");
+  redraw();
+  redrawThumbs();
+}
+
+// Gestures on the preview: drag moves (Fill, Repeat), pinch and the wheel zoom (Fill). They never
+// scroll nor zoom the page.
+const pointers = new Map();
+let gesture = null;
+preview.addEventListener("pointerdown", (e) => {
+  if (!photo) return;
+  e.preventDefault();
+  preview.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  preview.classList.add("dragging");
+  gesture = null;
+});
+preview.addEventListener("pointermove", (e) => {
+  const prev = pointers.get(e.pointerId);
+  if (!prev || !photo) return;
+  e.preventDefault();
+  const now = { x: e.clientX, y: e.clientY };
+  if (pointers.size >= 2) {
+    pointers.set(e.pointerId, now);
+    const [a, b] = [...pointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    if (!gesture) gesture = { dist, zoom: params.zoom };
+    else if (params.mode === "cover" && gesture.dist > 0) setZoom(gesture.zoom * dist / gesture.dist);
+    return;
+  }
+  pointers.set(e.pointerId, now);
+  move(now.x - prev.x, now.y - prev.y);
+});
+const release = (e) => {
+  pointers.delete(e.pointerId);
+  redrawThumbs();
+  if (pointers.size < 2) gesture = null;
+  if (!pointers.size) preview.classList.remove("dragging");
+};
+preview.addEventListener("pointerup", release);
+preview.addEventListener("pointercancel", release);
+preview.addEventListener("wheel", (e) => {
+  if (!photo || params.mode !== "cover") return;
+  e.preventDefault();
+  setZoom(params.zoom * Math.exp(-e.deltaY / 500));
+}, { passive: false });
+
+// A drag of dx, dy CSS pixels on the preview: the picture follows the finger.
+function move(dx, dy) {
+  const k = OUT_W / preview.getBoundingClientRect().width; // CSS pixels to 1920x1080 units
+  if (params.mode === "cover") {
+    const v = coverView(params, photo.w, photo.h, OUT_W, OUT_H);
+    const slackX = (photo.w - v.vw) * v.k, slackY = (photo.h - v.vh) * v.k;
+    if (slackX > 0) params.px = Math.min(1, Math.max(-1, params.px - 2 * dx * k / slackX));
+    if (slackY > 0) params.py = Math.min(1, Math.max(-1, params.py - 2 * dy * k / slackY));
+  } else if (params.mode === "tile") {
+    const [tw, th] = tileSize(params, photo.w, photo.h);
+    const period = params.variant === "mirror" ? 2 : 1;
+    const wrap = (v, size) => ((v + size / 2) % size + size) % size - size / 2;
+    params.ox = wrap(params.ox + dx * k, tw * period);
+    params.oy = wrap(params.oy + dy * k, th * period);
+  } else return;
+  redraw();
+}
+
+// ---- QOI (https://qoiformat.org), 3 channels, from RGBA pixels -------------------------------------
+function qoiEncode(rgba, w, h) {
+  const out = new Uint8Array(14 + w * h * 4 + 8);
+  let p = 0;
+  const u32 = (v) => { out[p++] = v >>> 24; out[p++] = (v >>> 16) & 255; out[p++] = (v >>> 8) & 255; out[p++] = v & 255; };
+  out[p++] = 113; out[p++] = 111; out[p++] = 105; out[p++] = 102; // "qoif"
+  u32(w); u32(h); out[p++] = 3; out[p++] = 0;
+  const index = new Uint8Array(64 * 3);
+  const seen = new Uint8Array(64);
+  let pr = 0, pg = 0, pb = 0, run = 0;
+  const n = w * h;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4, r = rgba[o], g = rgba[o + 1], b = rgba[o + 2];
+    if (r === pr && g === pg && b === pb) {
+      run++;
+      if (run === 62 || i === n - 1) { out[p++] = 0xc0 | (run - 1); run = 0; }
+      continue;
+    }
+    if (run > 0) { out[p++] = 0xc0 | (run - 1); run = 0; }
+    const hash = (r * 3 + g * 5 + b * 7 + 255 * 11) % 64, at = hash * 3;
+    if (seen[hash] && index[at] === r && index[at + 1] === g && index[at + 2] === b) {
+      out[p++] = hash;
+    } else {
+      seen[hash] = 1; index[at] = r; index[at + 1] = g; index[at + 2] = b;
+      const vr = (r - pr) << 24 >> 24, vg = (g - pg) << 24 >> 24, vb = (b - pb) << 24 >> 24;
+      const vgr = vr - vg, vgb = vb - vg;
+      if (vr > -3 && vr < 2 && vg > -3 && vg < 2 && vb > -3 && vb < 2) {
+        out[p++] = 0x40 | ((vr + 2) << 4) | ((vg + 2) << 2) | (vb + 2);
+      } else if (vgr > -9 && vgr < 8 && vg > -33 && vg < 32 && vgb > -9 && vgb < 8) {
+        out[p++] = 0x80 | (vg + 32);
+        out[p++] = ((vgr + 8) << 4) | (vgb + 8);
+      } else {
+        out[p++] = 0xfe; out[p++] = r; out[p++] = g; out[p++] = b;
+      }
+    }
+    pr = r; pg = g; pb = b;
+  }
+  out.set([0, 0, 0, 0, 0, 0, 0, 1], p);
+  return out.subarray(0, p + 8);
+}
+
+// ---- sending -----------------------------------------------------------------------------------
+const ERRORS = { too_big: "err_big", read: "err_read", busy: "err_busy", attempts: "err_closed", length: "err_read" };
+
+$("send").addEventListener("click", () => {
+  if (!photo || busy) return;
+  let body;
+  try {
+    const c = canvas(OUT_W, OUT_H);
+    const g = c.getContext("2d");
+    compose(g, photo, params, OUT_W, OUT_H);
+    body = qoiEncode(g.getImageData(0, 0, OUT_W, OUT_H).data, OUT_W, OUT_H);
+  } catch (e) {
+    say(L.err_browser, "error");
+    return;
+  }
+  if (body.length > MAX_BODY) { say(L.err_big, "error"); return; }
+  busy = true;
+  update();
+  const bar = $("progress"), fill = bar.firstElementChild;
+  bar.classList.remove("hidden");
+  fill.style.width = "0";
+  say(L.sending);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/wallpaper/upload?c=" + encodeURIComponent(code));
+  xhr.setRequestHeader("Content-Type", "image/qoi");
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) fill.style.width = (100 * e.loaded / e.total).toFixed(1) + "%"; };
+  const finish = () => { busy = false; update(); };
+  xhr.onload = () => {
+    let answer = null;
+    try { answer = JSON.parse(xhr.responseText); } catch (e) { /* below */ }
+    bar.classList.add("hidden");
+    if (answer && answer.ok) {
+      // The photo and the framing stay: adjust and send again.
+      say(L.done, "done");
+      $("send").textContent = L.send_again;
+      finish();
+      watchTv(true);
+      return;
+    }
+    const kind = answer && answer.error;
+    if (kind === "applied") { finished(); return; }
+    if (kind === "code") { needCode(true); codeInput.focus(); say(L.code_wrong, "error"); }
+    else say(L[ERRORS[kind]] || L.err_read, "error");
+    finish();
+  };
+  xhr.onerror = () => { bar.classList.add("hidden"); say(L.err_network, "error"); finish(); };
+  xhr.send(new Blob([body], { type: "image/qoi" }));
+});
+</script>
+</body>
+</html>

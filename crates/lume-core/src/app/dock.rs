@@ -697,6 +697,7 @@ mod tests {
                 favorites: vec!["app1".into()],
                 round_favorites: false,
                 wallpaper: crate::wallpaper::WallpaperId::Aurora,
+                custom: None,
             },
             crate::i18n::Translator::new(&["en"]),
             crate::clock::WallClock {

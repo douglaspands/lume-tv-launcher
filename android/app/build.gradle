@@ -118,10 +118,12 @@ abstract class CargoNdkTask extends DefaultTask {
     }
 }
 
-// The wallpapers are read by the Rust side from the APK's assets (one copy of each, not one inside
-// every liblume.so): stage the QOI files of the catalog under assets/wallpaper/.
-abstract class StageWallpapersTask extends DefaultTask {
+// The Rust side reads these from the APK's assets (one copy of each, not one inside every
+// liblume.so): the QOI files of the catalog under assets/wallpaper/, and the HEIC decoder the phone
+// page asks the TV for (heic.js, heic.wasm) under assets/companion/.
+abstract class StageAssetsTask extends DefaultTask {
     @InputDirectory abstract DirectoryProperty getSourceDir()
+    @InputDirectory abstract DirectoryProperty getCompanionDir()
     @OutputDirectory abstract DirectoryProperty getOutputDir()
 
     @Inject abstract FileSystemOperations getFileOps()
@@ -129,8 +131,15 @@ abstract class StageWallpapersTask extends DefaultTask {
     @TaskAction
     void stage() {
         fileOps.sync {
-            from(sourceDir) { include "*.qoi" }
-            into(outputDir.dir("wallpaper"))
+            into(outputDir)
+            from(sourceDir) {
+                include "*.qoi"
+                into "wallpaper"
+            }
+            from(companionDir) {
+                include "heic.js", "heic.wasm"
+                into "companion"
+            }
         }
     }
 }
@@ -148,10 +157,11 @@ androidComponents {
         }
         variant.sources.jniLibs.addGeneratedSourceDirectory(task, CargoNdkTask::getOutputDir)
 
-        def stage = tasks.register("stageWallpapers${cap}", StageWallpapersTask) {
+        def stage = tasks.register("stageAssets${cap}", StageAssetsTask) {
             sourceDir.set(new File(lumeRepoRoot, "crates/lume-core/assets/wallpaper"))
-            outputDir.set(layout.buildDirectory.dir("wallpaperAssets/${variant.name}"))
+            companionDir.set(new File(lumeRepoRoot, "crates/lume-core/assets/companion/heic"))
+            outputDir.set(layout.buildDirectory.dir("lumeAssets/${variant.name}"))
         }
-        variant.sources.assets.addGeneratedSourceDirectory(stage, StageWallpapersTask::getOutputDir)
+        variant.sources.assets.addGeneratedSourceDirectory(stage, StageAssetsTask::getOutputDir)
     }
 }

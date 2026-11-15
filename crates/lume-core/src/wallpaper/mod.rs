@@ -4,11 +4,34 @@
 //! assets (the APK's `assets/` on Android, the repository on the desktop), not embedded in the
 //! library: the APK carries one copy of each. Sharp stars drawn as points on top when present.
 
+pub mod custom;
+
 use crate::i18n::StringId;
-use std::sync::OnceLock;
+use crate::memory::Buffer;
+use std::sync::{Arc, OnceLock};
+
+/// An RGB picture, 3 bytes per pixel, row by row. Its pixels are a [`Buffer`]: a full-size picture
+/// has its own mapping, which goes back to the system as soon as the picture is dropped.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub rgb: Buffer,
+}
+
+impl Image {
+    /// A picture of `width` x `height` filled with black.
+    pub fn black(width: u32, height: u32) -> Image {
+        Image {
+            width,
+            height,
+            rgb: Buffer::zeroed(width as usize * height as usize * 3),
+        }
+    }
+}
 
 /// Reads a wallpaper asset (a file name such as `aurora-1920x1080.qoi`) from the platform.
-pub type AssetReader = fn(&str) -> Option<Vec<u8>>;
+pub type AssetReader = fn(&str) -> Option<Buffer>;
 
 static ASSET_READER: OnceLock<AssetReader> = OnceLock::new();
 
@@ -22,7 +45,7 @@ pub fn set_asset_reader(reader: AssetReader) {
 fn default_reader() -> Option<AssetReader> {
     Some(|name| {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpaper");
-        std::fs::read(dir.join(name)).ok()
+        Buffer::read_file(&dir.join(name), None).ok()
     })
 }
 
@@ -39,6 +62,11 @@ pub fn set_cache_dir(dir: std::path::PathBuf) {
     let _ = CACHE_DIR.set(dir);
 }
 
+/// The cache directory, when the platform set one.
+pub fn cache_dir() -> Option<&'static std::path::Path> {
+    CACHE_DIR.get().map(|dir| dir.as_path())
+}
+
 static READY_NOTIFIER: OnceLock<fn()> = OnceLock::new();
 
 /// Sets what the platform does when a wallpaper prepared off the frame loop is ready (Android: wake the
@@ -47,14 +75,70 @@ pub fn set_ready_notifier(notifier: fn()) {
     let _ = READY_NOTIFIER.set(notifier);
 }
 
-/// Reads and decodes the wallpaper on a worker thread; the receiver gets the RGB (or `None` when the
-/// asset is missing or invalid) and then the platform is notified.
-pub fn load_in_background(id: WallpaperId) -> std::sync::mpsc::Receiver<Option<Vec<u8>>> {
+/// Where the picture of a [`WallpaperId`] comes from.
+#[derive(Clone, Copy, Debug)]
+pub enum Source {
+    /// One of the catalog's, from the APK's assets.
+    Catalog(&'static Wallpaper),
+    /// "Minha imagem": the Confirm screen's picture, the cache or the result in `files/` (see [`custom`]).
+    Custom,
+}
+
+impl Source {
+    /// The source of `id`.
+    pub fn of(id: WallpaperId) -> Source {
+        match id {
+            WallpaperId::Custom => Source::Custom,
+            catalog => Source::Catalog(catalog.wallpaper()),
+        }
+    }
+
+    /// Reads the picture (blocking: off the frame loop). "Minha imagem" without a usable picture
+    /// gives the Aurora, as the configuration does with an unknown wallpaper.
+    pub fn load(self) -> Option<Arc<Image>> {
+        match self {
+            Source::Catalog(wallpaper) => wallpaper.load_rgb().map(|rgb| {
+                Arc::new(Image {
+                    width: wallpaper.width,
+                    height: wallpaper.height,
+                    rgb,
+                })
+            }),
+            Source::Custom => custom::load_current(
+                CACHE_DIR.get().map(|dir| dir.as_path()),
+                lume_version::VERSION,
+            )
+            .or_else(|| Source::Catalog(&AURORA).load()),
+        }
+    }
+}
+
+/// Tells the platform that a wallpaper picture is done off the frame loop (Apply).
+pub fn notify_ready() {
+    if let Some(notify) = READY_NOTIFIER.get() {
+        notify();
+    }
+}
+
+/// The size of the picture that covers a render buffer of `width` x `height` keeping 16:9 (the
+/// wallpaper texture's size).
+pub fn cover_size(width: u32, height: u32) -> (u32, u32) {
+    if u64::from(width) * 9 >= u64::from(height) * 16 {
+        (width, (width * 9).div_ceil(16))
+    } else {
+        ((height * 16).div_ceil(9), height)
+    }
+}
+
+/// Reads and decodes the wallpaper on a worker thread; the receiver gets the picture (or `None` when
+/// the asset is missing or invalid) and then the platform is notified.
+pub fn load_in_background(id: WallpaperId) -> std::sync::mpsc::Receiver<Option<Arc<Image>>> {
     let (sender, receiver) = std::sync::mpsc::channel();
+    let source = Source::of(id);
     let spawned = std::thread::Builder::new()
         .name("lume-wallpaper".into())
         .spawn(move || {
-            let _ = sender.send(id.wallpaper().load_rgb());
+            let _ = sender.send(source.load());
             if let Some(notify) = READY_NOTIFIER.get() {
                 notify();
             }
@@ -65,7 +149,7 @@ pub fn load_in_background(id: WallpaperId) -> std::sync::mpsc::Receiver<Option<V
     receiver
 }
 
-fn read_asset(name: &str) -> Option<Vec<u8>> {
+fn read_asset(name: &str) -> Option<Buffer> {
     let reader = ASSET_READER.get().copied().or_else(default_reader)?;
     reader(name)
 }
@@ -86,7 +170,7 @@ impl Wallpaper {
     /// Reads the 24-bit raw RGB buffer (`width * height * 3` bytes), from the cache when it has it and
     /// otherwise by decoding the asset (and then keeping the result in the cache). `None` when the asset
     /// is missing or invalid.
-    pub fn load_rgb(&self) -> Option<Vec<u8>> {
+    pub fn load_rgb(&self) -> Option<Buffer> {
         self.load_rgb_cached(
             CACHE_DIR.get().map(|dir| dir.as_path()),
             lume_version::VERSION,
@@ -99,21 +183,22 @@ impl Wallpaper {
         dir.join(format!("wallpaper-{}-{version}.rgb", self.asset))
     }
 
-    fn load_rgb_cached(&self, cache: Option<&std::path::Path>, version: &str) -> Option<Vec<u8>> {
+    fn load_rgb_cached(&self, cache: Option<&std::path::Path>, version: &str) -> Option<Buffer> {
         let started = std::time::Instant::now();
         let size = (self.width * self.height * 3) as usize;
         let file = cache.map(|dir| self.cache_file(dir, version));
-        if let Some(rgb) = file.as_ref().and_then(|file| std::fs::read(file).ok()) {
-            if rgb.len() == size {
-                log::info!(
-                    "wallpaper {}: from the cache in {} ms",
-                    self.asset,
-                    started.elapsed().as_millis()
-                );
-                return Some(rgb);
-            }
-            // A broken file (cut short by a crash): made again below.
+        if let Some(rgb) = file
+            .as_ref()
+            .and_then(|file| Buffer::read_file(file, Some(size)).ok())
+        {
+            log::info!(
+                "wallpaper {}: from the cache in {} ms",
+                self.asset,
+                started.elapsed().as_millis()
+            );
+            return Some(rgb);
         }
+        // No cache, or a broken one (cut short by a crash, another size): made again.
         let rgb = self.decode_asset()?;
         log::info!(
             "wallpaper {}: decoded in {} ms",
@@ -123,28 +208,21 @@ impl Wallpaper {
         if let (Some(dir), Some(file)) = (cache, file) {
             // Only the wallpaper in use stays: the others (and the old versions) are deleted. Written
             // to a temporary name and renamed, so a reader never sees half of a file.
-            let _ = std::fs::create_dir_all(dir);
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let name = entry.file_name();
-                    if name.to_string_lossy().starts_with("wallpaper-") && entry.path() != file {
-                        let _ = std::fs::remove_file(entry.path());
-                    }
-                }
-            }
-            let temporary = file.with_extension("tmp");
-            if std::fs::write(&temporary, &rgb).is_ok()
-                && std::fs::rename(&temporary, &file).is_err()
-            {
-                let _ = std::fs::remove_file(&temporary);
+            if let Some(name) = file.file_name() {
+                custom::store_cache(dir, &name.to_string_lossy(), &rgb);
             }
         }
         Some(rgb)
     }
 
-    fn decode_asset(&self) -> Option<Vec<u8>> {
+    fn decode_asset(&self) -> Option<Buffer> {
         let bytes = read_asset(self.asset)?;
-        let (header, rgb) = qoi::decode_to_vec(&bytes).ok()?;
+        let header = qoi::decode_header(&*bytes).ok()?;
+        if header.channels != qoi::Channels::Rgb {
+            return None;
+        }
+        let mut rgb = Buffer::zeroed(header.n_bytes());
+        qoi::decode_to_buf(&mut rgb, &*bytes).ok()?;
         let valid = header.width == self.width
             && header.height == self.height
             && rgb.len() == (self.width * self.height * 3) as usize;
@@ -152,7 +230,7 @@ impl Wallpaper {
     }
 
     /// Like [`Wallpaper::load_rgb`], for tests.
-    pub fn decompress_rgb(&self) -> Vec<u8> {
+    pub fn decompress_rgb(&self) -> Buffer {
         self.load_rgb()
             .unwrap_or_else(|| panic!("cannot read the wallpaper asset {}", self.asset))
     }
@@ -173,7 +251,7 @@ pub fn decompress_thumbnails() -> Vec<u8> {
     miniz_oxide::inflate::decompress_to_vec(THUMBNAILS_DEFLATED).expect("corrupt thumbnails")
 }
 
-/// Identifiers for the 6 wallpapers in the catalog.
+/// Identifiers for the 6 wallpapers in the catalog, and "Minha imagem" ([`WallpaperId::Custom`]).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum WallpaperId {
     #[default]
@@ -183,6 +261,8 @@ pub enum WallpaperId {
     MistyForest,
     GlassFacade,
     SynthwaveGrid,
+    /// The user's own image ("Minha imagem"), sent from the phone; not in [`WallpaperId::ALL`].
+    Custom,
 }
 
 impl WallpaperId {
@@ -196,7 +276,8 @@ impl WallpaperId {
         WallpaperId::SynthwaveGrid,
     ];
 
-    /// The 0-based index of this wallpaper in the catalog (0 to 5).
+    /// The 0-based index of this wallpaper in the catalog (0 to 5; 6 for "Minha imagem", whose
+    /// thumbnail takes the atlas' free slot after the catalog's).
     pub const fn index(&self) -> usize {
         match self {
             WallpaperId::Aurora => 0,
@@ -205,6 +286,7 @@ impl WallpaperId {
             WallpaperId::MistyForest => 3,
             WallpaperId::GlassFacade => 4,
             WallpaperId::SynthwaveGrid => 5,
+            WallpaperId::Custom => 6,
         }
     }
 
@@ -217,6 +299,7 @@ impl WallpaperId {
             WallpaperId::MistyForest => "misty_forest",
             WallpaperId::GlassFacade => "glass_facade",
             WallpaperId::SynthwaveGrid => "synthwave_grid",
+            WallpaperId::Custom => "custom",
         }
     }
 
@@ -230,6 +313,7 @@ impl WallpaperId {
             "misty_forest" => Some(WallpaperId::MistyForest),
             "glass_facade" => Some(WallpaperId::GlassFacade),
             "synthwave_grid" => Some(WallpaperId::SynthwaveGrid),
+            "custom" => Some(WallpaperId::Custom),
             _ => None,
         }
     }
@@ -243,6 +327,7 @@ impl WallpaperId {
             WallpaperId::MistyForest => StringId::WallpaperMistyForest,
             WallpaperId::GlassFacade => StringId::WallpaperGlassFacade,
             WallpaperId::SynthwaveGrid => StringId::WallpaperSynthwaveGrid,
+            WallpaperId::Custom => StringId::WallpaperCustom,
         }
     }
 
@@ -259,7 +344,8 @@ impl WallpaperId {
         )
     }
 
-    /// The wallpaper metadata, RGB buffer and stars.
+    /// The wallpaper metadata, RGB buffer and stars. For [`WallpaperId::Custom`] only the size and the
+    /// (absent) stars mean something: its picture comes through [`Source::Custom`].
     pub fn wallpaper(&self) -> &'static Wallpaper {
         match self {
             WallpaperId::Aurora => &AURORA,
@@ -268,6 +354,7 @@ impl WallpaperId {
             WallpaperId::MistyForest => &MISTY_FOREST,
             WallpaperId::GlassFacade => &GLASS_FACADE,
             WallpaperId::SynthwaveGrid => &SYNTHWAVE_GRID,
+            WallpaperId::Custom => &CUSTOM,
         }
     }
 }
@@ -318,6 +405,14 @@ static SYNTHWAVE_GRID: Wallpaper = Wallpaper {
         env!("OUT_DIR"),
         "/wallpaper_synthwave_grid_stars.rs"
     )),
+};
+
+/// "Minha imagem": a 1920x1080 picture without stars, framed from the user's source.
+static CUSTOM: Wallpaper = Wallpaper {
+    width: WIDTH,
+    height: HEIGHT,
+    asset: "custom",
+    stars: &[],
 };
 
 /// The default wallpaper (Aurora).
@@ -477,5 +572,27 @@ mod tests {
             assert_eq!(WallpaperId::from_str(s), Some(id));
         }
         assert_eq!(WallpaperId::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn custom_has_its_own_identifier_and_the_catalog_keeps_its_six() {
+        assert_eq!(WallpaperId::from_str("custom"), Some(WallpaperId::Custom));
+        assert_eq!(WallpaperId::Custom.as_str(), "custom");
+        assert!(!WallpaperId::ALL.contains(&WallpaperId::Custom));
+        let names: Vec<&str> = WallpaperId::ALL.iter().map(|id| id.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "aurora",
+                "mountain_stars",
+                "mirror_lake",
+                "misty_forest",
+                "glass_facade",
+                "synthwave_grid"
+            ]
+        );
+        // Its thumbnail goes to the atlas' first free slot.
+        let uv = WallpaperId::Custom.thumb_uv();
+        assert_eq!((uv.x, uv.y), (128.0 / 640.0, 0.5));
     }
 }

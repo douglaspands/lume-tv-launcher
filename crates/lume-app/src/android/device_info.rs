@@ -57,15 +57,15 @@ fn storage() -> Option<(u64, u64)> {
     Some((stat.f_blocks as u64 * unit, stat.f_bavail as u64 * unit))
 }
 
-/// How the TV reaches the network and its IPv4 address, from the interfaces that have one.
+/// The interfaces that have an IPv4 address (name and address), loopback left out.
 ///
 /// `getifaddrs` is blocked for apps on Android 11, but listing the IPv4 interfaces with
-/// `SIOCGIFCONF` is not.
-fn network() -> Option<(Link, Ipv4Addr)> {
+/// `SIOCGIFCONF` is not. Also the companion server's provider (it listens on one of them).
+pub fn interfaces() -> Vec<(String, Ipv4Addr)> {
     // SAFETY: a plain datagram socket, closed below.
     let socket = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if socket < 0 {
-        return None;
+        return Vec::new();
     }
     // SAFETY: an all-zero `ifreq` is a valid value.
     let mut requests: [libc::ifreq; 16] = unsafe { std::mem::zeroed() };
@@ -80,16 +80,10 @@ fn network() -> Option<(Link, Ipv4Addr)> {
     // SAFETY: `socket` is the descriptor opened above.
     unsafe { libc::close(socket) };
     if result != 0 {
-        return None;
+        return Vec::new();
     }
     let count = config.ifc_len as usize / std::mem::size_of::<libc::ifreq>();
-    // Wired beats wireless beats anything else (a tunnel, a mobile link).
-    let rank = |link: Link| match link {
-        Link::Ethernet => 0,
-        Link::WiFi => 1,
-        Link::Other => 2,
-    };
-    let mut best: Option<(Link, Ipv4Addr)> = None;
+    let mut list = Vec::new();
     for request in &requests[..count.min(requests.len())] {
         // SAFETY: the name is NUL-terminated (the array was zeroed and the kernel fills it).
         let name = unsafe { CStr::from_ptr(request.ifr_name.as_ptr()) }.to_string_lossy();
@@ -105,6 +99,21 @@ fn network() -> Option<(Link, Ipv4Addr)> {
         if name == "lo" || address.is_unspecified() || address.is_loopback() {
             continue;
         }
+        list.push((name.into_owned(), address));
+    }
+    list
+}
+
+/// How the TV reaches the network and its IPv4 address, from the interfaces that have one.
+fn network() -> Option<(Link, Ipv4Addr)> {
+    // Wired beats wireless beats anything else (a tunnel, a mobile link).
+    let rank = |link: Link| match link {
+        Link::Ethernet => 0,
+        Link::WiFi => 1,
+        Link::Other => 2,
+    };
+    let mut best: Option<(Link, Ipv4Addr)> = None;
+    for (name, address) in interfaces() {
         let link = if name.starts_with("wlan") {
             Link::WiFi
         } else if name.starts_with("eth") {

@@ -112,5 +112,5 @@ Segunda TV de teste: AIWA SMART TV (KTC, 1280x720, ~913 MB de RAM, `low_ram`). O
 
 ## Orçamentos (spec `resource-efficiency`)
 
-PSS até 64 MB em primeiro plano e 20 MB em segundo; APK até 40 MB (subiram com os papéis de parede em Full HD; hoje 21,6 MB, com uma cópia de cada papel em `assets/`); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
+Memória privada suja (`Private Dirty` do `TOTAL`, sem `GL mtrack`/`EGL mtrack`) até 32 MB em primeiro plano e 10 MB em segundo, em cada TV; o PSS é só referência por aparelho (na AIWA com Android 14 o driver gráfico e o sistema já somam uns 34 MB que o Lume não controla). Buffers grandes (imagens, corpo do envio, assets) usam `memory::Buffer`, que devolve a memória ao sistema ao ser solto. APK até 40 MB (hoje 22,1 MB, com uma cópia de cada papel em `assets/` e o decodificador HEIC da página); no máximo 1% de quadros de 33 ms ou mais na navegação; retorno a quente
 até 300 ms; o laço não pede quadros parado além do relógio. Última medida (2026-10-21, `docs/device-notes.md`): TCL com 14,7 MB de PSS em primeiro plano e 16,9 MB em segundo, APK de 21,6 MB, 0 de 454 quadros perdidos no dock e 1,5% na grade (7 de 459), primeiro quadro a frio em 89 a 98 ms.

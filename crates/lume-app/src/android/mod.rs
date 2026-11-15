@@ -16,6 +16,7 @@ use android_activity::{AndroidApp, AndroidAppWaker, InputStatus, MainEvent, Poll
 use bridge::{unix_seconds, Bridge};
 use egl::Graphics;
 use lume_core::app::{Effect, Key};
+use lume_core::memory::Buffer;
 use lume_core::render::Backend;
 use lume_core::shell::protocol::Changed;
 use lume_core::shell::Shell;
@@ -49,13 +50,24 @@ pub(crate) fn wake_loop() {
 /// The app, for reading the wallpapers from the APK's assets.
 static APP: OnceLock<AndroidApp> = OnceLock::new();
 
-/// Reads `assets/wallpaper/<name>` from the APK (the NDK's `AAssetManager`; no Java).
-fn read_wallpaper_asset(name: &str) -> Option<Vec<u8>> {
-    let path = std::ffi::CString::new(format!("wallpaper/{name}")).ok()?;
+/// Reads `assets/<dir>/<name>` from the APK (the NDK's `AAssetManager`, there since API 9; no Java).
+/// The bytes go into a [`Buffer`]: a large one has a mapping of its own, given back when dropped.
+fn read_asset(dir: &str, name: &str) -> Option<Buffer> {
+    let path = std::ffi::CString::new(format!("{dir}/{name}")).ok()?;
     let mut asset = APP.get()?.asset_manager().open(&path)?;
-    let mut bytes = Vec::with_capacity(asset.length());
-    std::io::Read::read_to_end(&mut asset, &mut bytes).ok()?;
+    let mut bytes = Buffer::zeroed(asset.length());
+    std::io::Read::read_exact(&mut asset, &mut bytes).ok()?;
     Some(bytes)
+}
+
+/// A wallpaper of the catalog (`assets/wallpaper/`).
+fn read_wallpaper_asset(name: &str) -> Option<Buffer> {
+    read_asset("wallpaper", name)
+}
+
+/// A shared file of the phone page, the HEIC decoder (`assets/companion/`).
+fn read_companion_asset(name: &str) -> Option<Buffer> {
+    read_asset("companion", name)
 }
 
 /// Called by `LumeActivity.onNewIntent` (Java thread) to say Home was pressed.
@@ -156,6 +168,11 @@ fn android_main(app: AndroidApp) {
     let _ = APP.set(app.clone());
     lume_core::wallpaper::set_asset_reader(read_wallpaper_asset);
     lume_core::wallpaper::set_ready_notifier(wallpaper_ready);
+    // The phone companion listens on one of the interfaces SIOCGIFCONF lists, and wakes the loop
+    // with its news.
+    lume_core::companion::set_interface_provider(device_info::interfaces);
+    lume_core::companion::set_notifier(wake_loop);
+    lume_core::companion::set_library_reader(read_companion_asset);
 
     let Some(files) = app.internal_data_path() else {
         log::error!("no internal data directory");
@@ -234,6 +251,10 @@ impl Runtime {
             self.process_input();
             if WALLPAPER_READY.swap(false, Ordering::SeqCst) {
                 self.shell.invalidate();
+            }
+            // The phone companion and Apply work off the loop; their news wake it.
+            for effect in self.shell.poll_background(self.now_ms()) {
+                self.run_effect(effect);
             }
             if HOME_PRESSED.swap(false, Ordering::SeqCst) {
                 self.send_key(Key::Home);
@@ -651,6 +672,7 @@ impl Runtime {
 
     fn draw(&mut self) {
         let now = self.now_ms();
+        let frame_started = Instant::now();
         // The frame that ends the reveal is drawn after it stops being "revealing": it counts too.
         let revealing = self.shell.is_revealing();
         let Some(frame) = self.shell.build_frame(now) else {
@@ -670,6 +692,14 @@ impl Runtime {
         let _: Color = background;
         graphics.backend().render(&viewport, background, &frame);
         let swapped = graphics.egl.swap_buffers();
+        // A frame that takes this long is a visible stall: logged, with what the backend was doing.
+        let took = frame_started.elapsed().as_millis();
+        if took >= 100 {
+            log::info!(
+                "slow frame: {took} ms (wallpaper uploading: {})",
+                graphics.backend().wallpaper_uploading()
+            );
+        }
         if let Err(e) = &swapped {
             log::warn!("{e}");
         } else if let Some(from) = self.first_frame_from.take() {

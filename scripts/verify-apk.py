@@ -11,6 +11,8 @@ Checks, using only the Python standard library:
     aligned to 16 KB (Android 15+ on 16 KB page devices);
   - every wallpaper is in assets/wallpaper/ exactly once, stored, and none is inside a native library
     (the wallpapers are read from the assets: a copy in each liblume.so would repeat them per ABI);
+  - the HEIC decoder of the phone page (heic.js, heic.wasm) is in assets/companion/ exactly once and
+    no native library embeds a WebAssembly module;
   - the manifest does not ask for QUERY_ALL_PACKAGES;
   - the manifest declares leanback as a feature and the version name, when given.
 
@@ -97,6 +99,7 @@ def main() -> int:
             else:
                 print(f"{name}: stored, aligned (segments {sorted(set(hex(a) for a in alignments))})")
 
+        names_all = [i.filename for i in apk.infolist()]
         wallpapers = [i for i in apk.infolist() if i.filename.startswith("assets/wallpaper/")]
         names = [i.filename for i in wallpapers]
         print(f"wallpapers: {len(wallpapers)} in assets/wallpaper/")
@@ -115,6 +118,18 @@ def main() -> int:
             # An image in any other format (deflate, raw) would show up as a much bigger library.
             if libraries[name].file_size > MAX_LIBRARY_MB * 1024 * 1024:
                 problems.append(f"{name} is {libraries[name].file_size / 1048576:.1f} MB, over {MAX_LIBRARY_MB} MB: it must not embed wallpapers")
+
+        # The HEIC decoder of the phone page: once in assets/companion/, never inside a library.
+        for wanted in ("assets/companion/heic.js", "assets/companion/heic.wasm"):
+            count = names_all.count(wanted)
+            if count != 1:
+                problems.append(f"{wanted} appears {count} times in the APK (one expected)")
+        if "assets/companion/heic.wasm" in names_all:
+            print(f"HEIC decoder: assets/companion/heic.wasm, {apk.getinfo('assets/companion/heic.wasm').file_size / 1024:.0f} KB")
+        for name in sorted(libraries):
+            # "\0asm" and the version: the start of a WebAssembly module.
+            if b"\x00asm\x01\x00\x00\x00" in apk.read(name):
+                problems.append(f"{name} embeds a WebAssembly module")
 
         manifest = apk.read("AndroidManifest.xml")
         for permission in FORBIDDEN_PERMISSIONS:

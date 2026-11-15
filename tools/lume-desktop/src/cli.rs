@@ -21,10 +21,12 @@ pub struct Options {
     /// Take the screenshot this many ms after the first splash frame (lume leaves and comes back
     /// after the keys), to see the splash and its reveal.
     pub splash: Option<u64>,
+    /// The picture the `confirm` screen shows, as if the phone had sent it (PNG of 1920x1080).
+    pub image: Option<PathBuf>,
 }
 
 pub const USAGE: &str = "\
-usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] [--favorites N] [--splash MS] [--screenshot SCREEN FILE.png]
+usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] [--favorites N] [--splash MS] [--image FILE.png] [--screenshot SCREEN FILE.png]
 
   --size WxH               surface size, e.g. 1280x720 (default) or 1920x1080
   --locale TAG             language to show, e.g. pt-BR or en
@@ -34,6 +36,7 @@ usage: lume-desktop [--size WxH] [--locale TAG] [--pseudo-locale] [--keys LIST] 
   --favorites N            put the first N demo apps in the dock (0 to 12)
   --splash MS              come back to lume after the keys and shoot MS ms after the first splash
                            frame (no icons load here: the reveal starts at 600)
+  --image FILE.png         the picture the confirm screen shows, 1920x1080 (default: a made-up photo)
   --screenshot SCREEN FILE render SCREEN to a PNG file and exit
 ";
 
@@ -48,6 +51,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
         clock_12h: false,
         favorites: None,
         splash: None,
+        image: None,
     };
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
@@ -89,6 +93,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Options, String> 
                         .map_err(|_| format!("invalid splash time '{ms}'"))?,
                 );
             }
+            "--image" => options.image = Some(PathBuf::from(value("--image")?)),
             "--screenshot" => {
                 let screen = value("--screenshot")?;
                 let file = value("--screenshot")?;

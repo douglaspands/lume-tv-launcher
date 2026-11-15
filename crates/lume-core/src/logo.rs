@@ -56,6 +56,29 @@ pub fn draw_mark(list: &mut DisplayList, rect: Rect, square: Color, glyph: Color
     list.fill(Rect::new(cx - r, cy - r, 2.0 * r, 2.0 * r), r, paint);
 }
 
+/// The numbers of the phone page's SVG logo (a 100x100 box), as `build.rs` writes them from these
+/// constants: the page's logo is this one.
+#[cfg(test)]
+pub(crate) fn svg_numbers() -> Vec<String> {
+    let k = |v: f32| ((v * 100.0 * 1000.0).round() / 1000.0).to_string();
+    let foot = BOTTOM - FOOT_TOP;
+    vec![
+        k(CORNER),
+        k(STEM_X),
+        k(STEM_TOP),
+        k(STEM_WIDTH),
+        k(BOTTOM - STEM_TOP),
+        k(STEM_WIDTH / 2.0),
+        k(FOOT_TOP),
+        k(FOOT_RIGHT - STEM_X),
+        k(foot),
+        k(foot / 2.0),
+        k(DOT_X),
+        k(DOT_Y),
+        k(DOT_RADIUS),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,11 +2,14 @@
 
 include!(concat!(env!("OUT_DIR"), "/third_party_generated.rs"));
 
-/// Fonts and icons embedded in the app: name, license.
+/// Fonts, icons, images and the phone page's HEIC decoder shipped in the app: name, license. The
+/// decoder's versions follow `assets/companion/heic/SOURCES.txt` (a test checks them).
 pub const ASSETS: &[(&str, &str)] = &[
     ("Plus Jakarta Sans (font)", "SIL Open Font License 1.1"),
     ("Lucide (icons)", "ISC License"),
     ("Wallpapers (images)", "Unsplash License"),
+    ("libheif 1.23.7 (HEIC decoder, phone page)", "LGPL-3.0"),
+    ("libde265 1.1.3 (HEIC decoder, phone page)", "LGPL-3.0"),
 ];
 
 static LINES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
@@ -52,6 +55,20 @@ mod tests {
         assert!(!lines.iter().any(|l| l.starts_with("lume-")));
         // Every entry says which license it is under.
         assert!(CRATES.iter().all(|(_, _, license)| !license.is_empty()));
+    }
+
+    #[test]
+    fn the_heic_decoder_is_listed_with_the_versions_it_was_built_from() {
+        let sources = include_str!("../assets/companion/heic/SOURCES.txt");
+        for library in ["libheif", "libde265"] {
+            let built = sources
+                .lines()
+                .find_map(|l| l.trim().strip_prefix(&format!("{library} ")))
+                .and_then(|rest| rest.split_whitespace().next())
+                .unwrap_or_else(|| panic!("{library} is not in SOURCES.txt"));
+            let line = format!("{library} {built} (HEIC decoder, phone page): LGPL-3.0");
+            assert!(lines().contains(&line), "{line} is missing");
+        }
     }
 
     #[test]

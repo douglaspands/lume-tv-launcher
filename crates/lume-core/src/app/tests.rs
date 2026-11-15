@@ -875,10 +875,10 @@ fn editor_fits_six_cards_per_line_with_no_horizontal_overflow() {
         .collect();
     open_editor(&mut rig);
     let rows = rig.app.focus.rows();
-    // Row 0 is the wallpaper cards row (one item per wallpaper)
+    // Row 0 is the wallpaper cards row (one item per wallpaper, and the phone card)
     assert_eq!(
         rows[0].items.len(),
-        crate::wallpaper::WallpaperId::ALL.len()
+        crate::wallpaper::WallpaperId::ALL.len() + 1
     );
     // Row 1 is ROUND_FAVORITES (1 item)
     assert_eq!(rows[1].items.len(), 1);

@@ -3,6 +3,7 @@
 use crate::catalog::known::KnownApp;
 use crate::catalog::Catalog;
 use crate::storage::{self, Kv, StorageError};
+use crate::wallpaper::custom::Applied;
 use crate::wallpaper::WallpaperId;
 use std::path::Path;
 
@@ -21,6 +22,9 @@ pub struct HomeConfig {
     pub round_favorites: bool,
     /// Active wallpaper choice.
     pub wallpaper: WallpaperId,
+    /// "Minha imagem", when there is one: its framing and the revision of its result. The source
+    /// itself is a file (`files/wallpaper/custom.qoi`).
+    pub custom: Option<Applied>,
 }
 
 impl HomeConfig {
@@ -40,6 +44,7 @@ impl HomeConfig {
             favorites: installed.into_iter().take(FIRST_USE_FAVORITES).collect(),
             round_favorites: true,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         }
     }
 
@@ -92,6 +97,34 @@ impl HomeConfig {
         before != self.favorites.len()
     }
 
+    /// Drops "Minha imagem" when its picture is not in `files/` any more (logged), going back to the
+    /// Aurora if it was the active wallpaper. Returns `true` when something changed.
+    pub fn reconcile_custom(&mut self, files: &Path) -> bool {
+        if self.custom.is_none() || crate::wallpaper::custom::has_kept(files) {
+            return false;
+        }
+        log::warn!("custom wallpaper: the picture is missing, back to the Aurora");
+        self.forget_custom();
+        true
+    }
+
+    /// Removes "Minha imagem": deletes its picture, thumbnail and cached results, forgets its keys and
+    /// goes back to the Aurora when it was the active wallpaper. The caller saves the configuration.
+    pub fn remove_custom(&mut self, files: &Path, cache: Option<&Path>) {
+        crate::wallpaper::custom::remove(files, cache);
+        self.forget_custom();
+        crate::wallpaper::custom::set_applied(None);
+        crate::wallpaper::custom::set_thumbnail(None);
+    }
+
+    /// Forgets "Minha imagem" (its files are deleted by the caller); the Aurora when it was active.
+    pub fn forget_custom(&mut self) {
+        self.custom = None;
+        if self.wallpaper == WallpaperId::Custom {
+            self.wallpaper = WallpaperId::Aurora;
+        }
+    }
+
     // ---- storage ------------------------------------------------------------------------
 
     fn to_kv(&self) -> Kv {
@@ -102,7 +135,16 @@ impl HomeConfig {
             if self.round_favorites { "1" } else { "0" },
         );
         kv.set("wallpaper", self.wallpaper.as_str());
+        if let Some(custom) = &self.custom {
+            kv.set("custom_rev", custom.rev.to_string());
+        }
         kv
+    }
+
+    /// "Minha imagem" from its key: `None` without `custom_rev`. The framing keys a development
+    /// version wrote (`custom_fit`, `custom_zoom`...) are ignored: the TV keeps the framed result.
+    fn custom_from_kv(kv: &Kv) -> Option<Applied> {
+        kv.parse::<u32>("custom_rev").map(|rev| Applied { rev })
     }
 
     /// Reads a file's values, repairing anything out of range, and `None` when the favorites are
@@ -117,14 +159,17 @@ impl HomeConfig {
         favorites.truncate(MAX_FAVORITES);
         // Round is the default: a file without the key (an older version) gets it too.
         let round_favorites = kv.get("round_favorites").is_none_or(|value| value == "1");
+        let custom = Self::custom_from_kv(kv);
         let wallpaper = kv
             .get("wallpaper")
             .and_then(WallpaperId::from_str)
+            .filter(|id| *id != WallpaperId::Custom || custom.is_some())
             .unwrap_or(WallpaperId::Aurora);
         Some(HomeConfig {
             favorites,
             round_favorites,
             wallpaper,
+            custom,
         })
     }
 
@@ -183,6 +228,7 @@ mod tests {
             favorites: vec![NETFLIX.into(), YOUTUBE.into(), SPOTIFY.into()],
             round_favorites: false,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         }
     }
 
@@ -235,6 +281,7 @@ mod tests {
             favorites: ["a", "b", "c", "spotify", "e"].map(String::from).to_vec(),
             round_favorites: false,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         };
         // Spotify, in position 4 (index 3), moves left.
         assert!(config.move_favorite_left(3));
@@ -252,6 +299,7 @@ mod tests {
             favorites: vec!["a".into()],
             round_favorites: false,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         };
         assert!(config.add_favorite("chrome"));
         assert_eq!(config.favorites, ["a", "chrome"]);
@@ -267,6 +315,7 @@ mod tests {
             favorites: (0..11).map(|i| format!("app{i}")).collect(),
             round_favorites: false,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         };
         assert!(!config.favorites_full());
         assert!(config.add_favorite("twelfth"));
@@ -314,6 +363,7 @@ mod tests {
             favorites: vec![],
             round_favorites: false,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         };
         let path = temp("empty");
         config.save(&path).unwrap();
@@ -326,6 +376,7 @@ mod tests {
             favorites: vec![NETFLIX.into()],
             round_favorites: true,
             wallpaper: WallpaperId::Aurora,
+            custom: None,
         };
         let path = temp("round-favs-true");
         config.save(&path).unwrap();
@@ -393,6 +444,7 @@ mod tests {
             favorites: vec![NETFLIX.into()],
             round_favorites: false,
             wallpaper: WallpaperId::MirrorLake,
+            custom: None,
         };
         let path = temp("wallpaper-roundtrip");
         config.save(&path).unwrap();
@@ -422,5 +474,93 @@ mod tests {
         storage::save(&path, 1, &kv).unwrap();
         let config = HomeConfig::load(&path).unwrap();
         assert_eq!(config.wallpaper, WallpaperId::Aurora);
+    }
+
+    #[test]
+    fn my_image_round_trips_with_only_its_revision() {
+        let mut config = sample();
+        config.wallpaper = WallpaperId::Custom;
+        config.custom = Some(Applied { rev: 7 });
+        let path = temp("custom");
+        config.save(&path).unwrap();
+        assert_eq!(HomeConfig::load(&path), Some(config));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("custom_rev=7"), "{text}");
+        assert!(!text.contains("custom_fit"), "{text}");
+    }
+
+    #[test]
+    fn an_old_file_without_the_custom_keys_opens_with_the_aurora() {
+        let path = temp("old-custom");
+        let mut kv = Kv::new();
+        kv.set_list("favorites", [NETFLIX]);
+        kv.set("wallpaper", "custom");
+        storage::save(&path, VERSION, &kv).unwrap();
+        let config = HomeConfig::load(&path).unwrap();
+        assert_eq!(config.wallpaper, WallpaperId::Aurora);
+        assert_eq!(config.custom, None);
+    }
+
+    #[test]
+    fn the_framing_keys_of_a_development_version_are_ignored() {
+        let path = temp("custom-range");
+        let mut kv = Kv::new();
+        kv.set_list("favorites", [NETFLIX]);
+        kv.set("wallpaper", "custom");
+        kv.set("custom_fit", "tile");
+        kv.set("custom_scale", "400");
+        kv.set("custom_zoom", "x");
+        kv.set("custom_x", "-300");
+        kv.set("custom_tile", "mirror");
+        kv.set("custom_rev", "2");
+        storage::save(&path, VERSION, &kv).unwrap();
+        let config = HomeConfig::load(&path).unwrap();
+        // The framing keys of a development version are ignored: the revision is enough.
+        assert_eq!(config.wallpaper, WallpaperId::Custom);
+        assert_eq!(config.custom, Some(Applied { rev: 2 }));
+    }
+
+    #[test]
+    fn a_missing_source_falls_back_to_the_aurora() {
+        let files = temp("reconcile").parent().unwrap().to_path_buf();
+        let mut config = sample();
+        config.wallpaper = WallpaperId::Custom;
+        config.custom = Some(Applied { rev: 1 });
+        assert!(config.reconcile_custom(&files));
+        assert_eq!(
+            (config.wallpaper, config.custom),
+            (WallpaperId::Aurora, None)
+        );
+        assert!(!config.reconcile_custom(&files));
+    }
+
+    #[test]
+    fn removing_my_image_deletes_its_files_and_keys_and_goes_back_to_the_aurora() {
+        use crate::wallpaper::{custom, Image};
+        let dir = temp("remove").parent().unwrap().to_path_buf();
+        let (files, cache) = (dir.join("files"), dir.join("cache"));
+        let result = Image::black(custom::WIDTH, custom::HEIGHT);
+        let applied = Applied { rev: 1 };
+        custom::apply(&files, Some(&cache), "1.0", &result, applied).unwrap();
+        let mut config = sample();
+        config.wallpaper = WallpaperId::Custom;
+        config.custom = Some(applied);
+        let path = dir.join("config.v1");
+        config.remove_custom(&files, Some(&cache));
+        config.save(&path).unwrap();
+        assert!(!custom::has_kept(&files));
+        assert!(std::fs::read_dir(&cache).unwrap().next().is_none());
+        assert_eq!(config.wallpaper, WallpaperId::Aurora);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("custom"), "{text}");
+        // Not the active one: the wallpaper stays.
+        let mut config = sample();
+        config.wallpaper = WallpaperId::MirrorLake;
+        config.custom = Some(applied);
+        config.remove_custom(&files, Some(&cache));
+        assert_eq!(
+            (config.wallpaper, config.custom),
+            (WallpaperId::MirrorLake, None)
+        );
     }
 }

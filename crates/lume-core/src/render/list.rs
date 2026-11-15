@@ -4,6 +4,9 @@ use super::geometry::Rect;
 use crate::theme::{Color, ComputedStyle, Paint, Shadow};
 use crate::wallpaper::WallpaperId;
 
+/// The blur of [`DisplayList::fill_crisp`]: far below a pixel at any scale.
+const CRISP_BLUR: f32 = 0.002;
+
 /// How a rounded rectangle is painted.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RectKind {
@@ -117,6 +120,21 @@ impl DisplayList {
 
     pub fn fill(&mut self, rect: Rect, radius: f32, paint: Paint) {
         self.rect(rect, radius, RectKind::Fill(paint), 1.0);
+    }
+
+    /// A square-cornered rectangle without the edge ramp: a pixel either is inside or is not. Only
+    /// for rectangles on whole render-buffer pixels (the QR modules), whose edges must not blend.
+    pub fn fill_crisp(&mut self, rect: Rect, color: Color) {
+        // A shadow with an almost zero blur is the step function of the distance.
+        self.rect(
+            rect,
+            0.0,
+            RectKind::Shadow {
+                color,
+                blur: CRISP_BLUR,
+            },
+            1.0,
+        );
     }
 
     pub fn ring(&mut self, rect: Rect, radius: f32, width: f32, color: Color) {
