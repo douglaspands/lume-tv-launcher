@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Duas opções de instalação
-Cada README SHALL oferecer duas opções, nesta ordem: a Opção 1, por um assistente de IA (um agente de linha de comando capaz de rodar comandos no computador), com um prompt pronto para colar; e a Opção 2, manual, com os passos atuais. A Opção 2 SHALL manter o conteúdo dos 6 passos existentes, ajustado apenas para não citar versão do APK. Onde o passo 6 manda desativar o launcher original como último recurso, SHALL mandar desativar também o serviço de recomendações (`com.google.android.tvrecommendations`), que fica tentando reativar o launcher do Android e congela o Lume; e a seção "Voltar ao launcher original" SHALL reativar os dois.
+Cada README SHALL oferecer duas opções, nesta ordem: a Opção 1, por um assistente de IA (um agente de linha de comando capaz de rodar comandos no computador), com um prompt pronto para colar; e a Opção 2, manual, com os 6 passos atuais, sem citar versão do APK. O último recurso do passo 6 SHALL desativar o launcher original junto com o serviço de recomendações (`com.google.android.tvrecommendations`), e "Voltar ao launcher original" SHALL reativar os dois.
 
 #### Scenario: Escolha da opção
 - **WHEN** o leitor chega à seção de instalação
@@ -16,7 +16,7 @@ Cada README SHALL oferecer duas opções, nesta ordem: a Opção 1, por um assis
 - **THEN** o README manda rodar `pm enable` para `com.google.android.tvlauncher` e para `com.google.android.tvrecommendations` antes de `adb uninstall app.lume.tv`
 
 ### Requirement: Prompt para assistente de IA
-O prompt da Opção 1 SHALL estar escrito no idioma de cada README e SHALL instruir o assistente a verificar o adb, baixar o APK do repositório, pedir o IP da TV, conectar, instalar com `adb install`, confirmar `Success` e definir o Lume como Home com `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity`. Se o Home continuar abrindo o launcher original, o prompt SHALL instruir o assistente a pedir a confirmação do usuário e então desativar o launcher original e o serviço de recomendações (`com.google.android.tvrecommendations`) juntos, nunca só o launcher.
+O prompt da Opção 1 SHALL estar no idioma de cada README e SHALL instruir o assistente a verificar o adb, baixar o APK do repositório, pedir o IP da TV, conectar, instalar com `adb install`, confirmar `Success` e definir o Lume como Home com `set-home-activity`. Se o Home continuar abrindo o launcher original, SHALL pedir a confirmação do usuário e desativar o launcher e o serviço de recomendações juntos, nunca só o launcher.
 
 #### Scenario: Passos do prompt
 - **WHEN** o assistente segue o prompt
