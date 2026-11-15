@@ -49,5 +49,7 @@
 
 ## Workflow follow-up
 
+- No fim da implementação, antes do arquivamento: avaliar com o autor o tamanho do APK (hoje 22,34 MB, +0,27 MB sobre a `main`), discutindo tuning e possíveis remoções.
+
 - Commits por tema só quando o autor pedir.
 - Fechamento com `/opsx:archive` e merge squash na `main`.
