@@ -702,6 +702,8 @@ anterior da `main` (`2e7421d`):
 | `lib/arm64-v8a/liblume.so` | 1,69 MB | 3,31 MB | +1,62 MB |
 | `lib/armeabi-v7a/liblume.so` | 1,25 MB | 2,23 MB | +0,98 MB |
 
+- Sem o teste de velocidade (build `b411a30`, depois da retirada): APK de 22,37 MB (`ls -l`; 21,33 MB no `verify-apk.py`),
+  +0,30 MB sobre a `main`; o resto da diferença acima era o cliente HTTPS.
 - O aumento vem do cliente HTTPS do teste de velocidade (`ureq` 3.1.2, `rustls` 0.23 com `ring` 0.17 e `webpki-roots` 1.0),
   do AAudio (`ndk` com a feature `audio`) e do código das seis ferramentas. Fica abaixo dos 3 MB que o design pede para
   reavaliar.
