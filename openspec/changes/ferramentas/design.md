@@ -13,7 +13,7 @@ A motivação e o escopo estão no proposal.md. Pontos do estado atual que molda
 
 **Goals:**
 - Custo zero fora das Ferramentas: nenhum estado, thread, stream ou arquivo vivo.
-- Tudo em Rust, exceto o sinal do Wi-Fi, que é o único Java autorizado.
+- Tudo em Rust, sem Java.
 - Padrões de tela em pixel físico, sem escala nem suavização.
 - Testes que rodam em thread nunca travam o laço de desenho.
 
@@ -26,7 +26,7 @@ A motivação e o escopo estão no proposal.md. Pontos do estado atual que molda
 ## Decisions
 
 ### D1. Estado por ferramenta em `Option<Box<ToolState>>`
-O `LumeApp` ganha `tool: Option<Box<ToolState>>`, onde `ToolState` é um enum com uma variante por ferramenta (`Screen`, `Picture`, `Remote`, `Audio`, `Network`, `Storage`). Ele é criado em `open_tool` e vira `None` em `back_from_tool`. O `Box` mantém o `LumeApp` pequeno quando não há ferramenta aberta. O código fica em `crates/lume-core/src/app/tools/`, com um arquivo por ferramenta. Na `Screen` entram duas variantes: `Tools` (o menu) e `Tool(ToolKind)`.
+O `LumeApp` ganha `tool: Option<Box<ToolState>>`, onde `ToolState` é um enum com uma variante por ferramenta (`Display`, `Picture`, `Remote`, `Audio`, `Storage`). Ele é criado em `open_tool` e vira `None` em `back_from_tool`. O `Box` mantém o `LumeApp` pequeno quando não há ferramenta aberta. O código fica em `crates/lume-core/src/app/tools/`, com um arquivo por ferramenta. Na `Screen` entram duas variantes: `Tools` (o menu) e `Tool(ToolKind)`.
 - *Alternativa*: estados sempre alocados em campos do `LumeApp`. Foi descartada porque contradiz o pedido de ativação sob demanda e deixa buffers vivos o tempo todo.
 - *Alternativa*: bibliotecas `.so` separadas carregadas com `dlopen`. Foi descartada porque o código que não roda já não entra no PSS (as páginas de código são mapeadas do arquivo e só sobem ao ser tocadas), e isso complicaria o build e a verificação do APK.
 
@@ -41,11 +41,8 @@ O `lume-core` só descreve o que quer, e a plataforma (`lume-app`) cria e destr�
 ### D3. Teste de velocidade da internet (retirado)
 O teste contra `speed.cloudflare.com` com `ureq` + `rustls` + `webpki-roots` chegou a ser implementado e medido na TCL (48 ms, 92/80 Mbps), e foi retirado por decisão do autor em 2026-11-15, junto com o cliente HTTPS (cerca de 2,6 MB no APK). A ferramenta Rede ficou só com dados locais, e o Lume segue sem abrir conexões.
 
-### D4. Sinal do Wi-Fi: comando `wifi-signal` no `LumeBridge`
-`LumeBridge.handle(ctx, "wifi-signal", "")` lê `WifiManager.getConnectionInfo()` e responde com uma linha `rssi\tlinkMbps\tfreqMHz`, ou com vazio quando não há conexão Wi-Fi ou ela é indisponível. O SSID não é lido. O parser fica em `shell/protocol.rs`, com teste. A leitura segue o padrão `stats_due` (a cada 2 s, só com a ferramenta Rede visível e a interface parada). `getConnectionInfo` está obsoleto a partir da API 31, mas funciona nas duas TVs (API 28 e 30). A troca por `NetworkCapabilities` fica registrada como pendência (Open Questions). O método é chamado pelo `handle` já mantido, então não precisa de regra `-keep` nova. Isso é conferido no build de release.
-
-### D5. Gateway
-O gateway sai da linha da rota padrão de `/proc/net/route`. No Android 10 ou mais, o acesso a `/proc/net` pode ser negado a apps. Nesse caso, a tela mostra "—", como diz a spec, sem recorrer a Java.
+### D4 e D5. Sinal do Wi-Fi e gateway (retirados)
+A ferramenta Rede lia o sinal do Wi-Fi por um comando Java `wifi-signal` no `LumeBridge` (com `ACCESS_WIFI_STATE`) e o gateway por um dump de rotas via netlink em Rust. Sem o teste de velocidade (D3), o autor achou que ela não trazia nada útil e a retirou em 2026-11-15, com o Java e a permissão.
 
 ### D6. Padrões em pixel físico
 Os padrões não passam pelo canvas lógico. Um caminho de desenho próprio (`ToolPainter`) recebe o tamanho físico do viewport e usa `glClear` para as cores sólidas e as linhas da grade e da borda de overscan desenhadas como retângulos de 1 px físico, com `glScissor` + `glClear`. Assim não há shader nem suavização. As rampas usam um quad com cor por vértice em coordenadas físicas, e o dithering segue a regra de degradês sem faixas. O destravamento de pixel usa `glScissor` só na janela de 64x64 físicos, e a cor muda a cada quadro em sequência fixa (R, G, B, branco, preto). O texto (`.toast`) usa o painter normal por cima.
@@ -78,5 +75,4 @@ O change é aditivo, sem migração de dados. O rollback é reverter o merge. In
 
 ## Open Questions
 
-- Trocar `WifiManager.getConnectionInfo()` (obsoleto na API 31) por `ConnectivityManager`/`NetworkCapabilities.getTransportInfo()` quando aparecer uma TV com Android 12 ou mais. O formato da resposta do bridge não muda.
 - ~~O tamanho do arquivo de teste de armazenamento pode cair para 32 MB se a AIWA ficar lenta demais.~~ Resolvido: ficam 64 MB, por decisão do autor (a TCL termina em cerca de 2 s).

@@ -1,7 +1,7 @@
 ## 1. Base: menu Ferramentas e ciclo de vida
 
 - [x] 1.1 Adicionar `Screen::Tools` e `Screen::Tool(ToolKind)`, os `FocusId` do menu e das ferramentas em `ids`, e o módulo `app/tools/` com `ToolState` em `Option<Box<_>>` (D1); teste em `app/tests.rs` que confirma `tool == None` depois de voltar às Configurações
-- [x] 1.2 Adicionar o item "Ferramentas" às Configurações (entre "Informações da TV" e "Sobre o Lume") e o menu com as seis ferramentas, com a descrição do item em foco no `.panel` à direita e rolagem da lista (com o conteúdo em y=152, `page::PLAIN_CONTENT_TOP`, os seis itens no passo de 88 cabem sem rolar); testes de navegação (abrir, Voltar passo a passo com o foco no item de origem) e `the_layout_is_on_the_ruler` cobrindo os 5 itens
+- [x] 1.2 Adicionar o item "Ferramentas" às Configurações (entre "Informações da TV" e "Sobre o Lume") e o menu com as ferramentas (cinco, depois da retirada da Rede), com a descrição do item em foco no `.panel` à direita e rolagem da lista (com o conteúdo em y=152, `page::PLAIN_CONTENT_TOP`, os itens no passo de 88 cabem sem rolar); testes de navegação (abrir, Voltar passo a passo com o foco no item de origem) e `the_layout_is_on_the_ruler` cobrindo os 5 itens
 - [x] 1.3 Criar os `Effect` `KeepScreenOn`, `Audio`, `StartTest`/`CancelTest` (D2) e emitir `KeepScreenOn(true/false)` ao entrar e sair do menu; garantir `Stop`/`CancelTest` em `Shell::sleep`; testes unitários dos efeitos emitidos
 - [x] 1.4 Na plataforma Android, tratar `KeepScreenOn` com `AndroidApp::set_window_flags`, e criar o canal `mpsc` e a thread `lume-test` com cancelamento por `AtomicBool`, lidos no laço com `try_recv` e no máximo 4 redesenhos por segundo; verificar com `cargo clippy --workspace --all-targets` limpo e, no emulador, que o protetor de tela não aparece com o menu aberto
 - [x] 1.5 Criar o aviso de flashes (cartão `.menu` com "Iniciar"/"Cancelar", foco em "Cancelar") e o `.toast` de rodapé com tempo de 3 s, reaproveitáveis pelas ferramentas; testes de que Voltar no aviso não inicia o modo
@@ -31,12 +31,6 @@
 - [ ] 5.2 Ativar a feature `audio` do `ndk` e abrir e fechar o stream AAudio pelo `Effect::Audio` (D2), com "Áudio indisponível" se falhar; verificar no emulador que o som toca no canal certo e que o stream fecha ao sair e com Home
 - [x] 5.3 Implementar a tela Áudio (Esquerdo, Direito, Os dois, Varredura com a frequência atual e Sincronia com o quadrado de 50 ms, ajuste de ±300 ms em passos de 10 e o texto "atrasado/adiantado", D8); testes do ajuste e de que o ajuste é descartado ao sair
 - [ ] 5.4 Verificar a sincronia na TCL pelo alto-falante da TV e, se houver, por uma soundbar; registrar o atraso percebido em `docs/device-notes.md`
-
-## 6. Ferramenta Rede
-
-- [x] 6.1 Reaproveitar `network()` para o tipo e o IP, e ler o gateway de `/proc/net/route` com "—" quando for negado (D5); leitura a cada 2 s só com a tela visível e a interface parada; teste do parser de `/proc/net/route`
-- [x] 6.2 (Java autorizado) Adicionar o comando `wifi-signal` em `LumeBridge.java` e a permissão `ACCESS_WIFI_STATE` no manifesto (D4), mais o parser em `shell/protocol.rs` com testes; verificar no build de release (ProGuard) que o comando responde na TCL
-- [x] 6.3 Mostrar o sinal (dBm, barra, classificação pelas faixas da spec, link e faixa de frequência), só com Wi-Fi; testes de classificação nos limites -55, -67 e -75
 
 ## 7. Ferramenta Armazenamento
 

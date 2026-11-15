@@ -52,14 +52,14 @@ O menu Ferramentas SHALL usar o layout da tela de Configurações: caminho no to
 
 #### Scenario: Último item visível
 - **WHEN** o foco desce até "Armazenamento", o sexto item
-- **THEN** a lista não rola: os seis itens já estão inteiros na área segura, e o painel à direita fica parado
+- **THEN** a lista não rola: os cinco itens já estão inteiros na área segura, e o painel à direita fica parado
 
 ### Requirement: Telas de ferramenta na régua
-As telas de cada ferramenta SHALL usar o caminho completo no topo, o conteúdo começando em y=152 (tela secundária sem subtítulo), itens de ação `.settings-item` à esquerda e os resultados (valores, barras, histórico) num `.panel` à direita, com rótulos em `--text-muted` e valores em `--text`, como as linhas de Informações da TV. As barras (sinal do Wi-Fi, progresso de teste) SHALL usar as cores e a forma da barra de memória do painel de estatísticas.
+As telas de cada ferramenta SHALL usar o caminho completo no topo, o conteúdo começando em y=152 (tela secundária sem subtítulo), itens de ação `.settings-item` à esquerda e os resultados (valores, barras, histórico) num `.panel` à direita, com rótulos em `--text-muted` e valores em `--text`, como as linhas de Informações da TV. As barras (progresso de teste, espaço usado) SHALL usar as cores e a forma da barra de memória do painel de estatísticas.
 
 #### Scenario: Resultados no painel
-- **WHEN** a ferramenta Rede é desenhada em 1280x720 com a conexão Wi-Fi
-- **THEN** os itens de ação ficam à esquerda, e os rótulos, valores e a barra do sinal ficam no `.panel` à direita, na régua de 4 px
+- **WHEN** a ferramenta Armazenamento é desenhada em 1280x720 depois de um teste
+- **THEN** o item de ação fica à esquerda, e os rótulos, valores e as barras ficam no `.panel` à direita, na régua de 4 px
 
 ### Requirement: Aviso de flashes e textos sobre os padrões
 O aviso de flashes SHALL usar o cartão claro de sobreposição (`.menu`), com o texto do aviso e os botões "Iniciar" e "Cancelar". Textos sobre os padrões de tela cheia (nome do padrão, dica, tempo restante) SHALL usar um `.toast` no rodapé da tela, que some depois de 3 segundos.

@@ -758,3 +758,10 @@ anterior da `main` (`2e7421d`):
 - Sinal do Wi-Fi (tarefa 6.2): a ferramenta Rede mostrou -50 dBm ("Excelente"), 26 Mbps · 2,4 GHz e o gateway
   192.168.232.1. O autor aceitou esta verificação no lugar da TCL, que está no cabo; o comando `wifi-signal` roda dentro de
   `LumeBridge.handle`, que o ProGuard já mantém (`-keep class app.lume.tv.LumeBridge { *; }`).
+
+### Ferramenta Rede retirada (2026-11-15)
+
+Depois da retirada do teste de velocidade, o autor retirou também a ferramenta Rede (conexão, gateway e sinal do Wi-Fi), por
+não trazer nada útil. Saíram com ela o comando Java `wifi-signal`, a permissão `ACCESS_WIFI_STATE` e a leitura de rotas por
+netlink. As medidas de gateway e de Wi-Fi acima ficam como registro. O menu Ferramentas tem cinco itens, e as permissões
+voltam a ser `REQUEST_DELETE_PACKAGES` e `INTERNET`.
