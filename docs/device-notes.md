@@ -815,3 +815,7 @@ e Início de novo (PSS / privada, MB). `main` = `a30f8cc`, branch = `b539131-dir
   cai sozinho em seguida.
 - Sincronia de áudio e imagem (tarefa 5.4), TCL pelo alto-falante da TV: o autor viu o bipe e o quadrado juntos, sem precisar
   de ajuste. Soundbar não testada.
+- Limpeza de retenção "Cores" de 10 min na AIWA (tarefa 8.5; o autor achou 30 min longo demais), com o "Permanecer
+  ativo" (`stay_on_while_plugged_in`) desligado só durante o teste, para valer o desligamento por inatividade de 5 min
+  (`screen_off_timeout` = 300000): `mWakefulness=Awake` e o Lume em foco nas 12 leituras, a cada minuto, das 13:12 às 13:23.
+  Ao fim, a tela Tela voltou sozinha com o foco em "Iniciar", e o `stay_on_while_plugged_in` voltou a 3.

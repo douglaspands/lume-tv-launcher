@@ -49,7 +49,7 @@
 - [x] 8.2 Gerar as capturas no desktop (menu e cada ferramenta, `--locale en` e `pt-BR`) e conferir a régua com `scripts/measure-ink.py`
 - [x] 8.3 Gerar o APK de release (`scripts/container-build.sh release`) e verificar com `uv run scripts/verify-apk.py` (até 40 MB) e `aapt dump permissions` (só as três permissões); registrar o aumento do APK em `docs/device-notes.md`
 - [x] 8.4 Medir na TCL e na AIWA: PSS antes de entrar, durante os testes e depois de voltar (até 2 MB de diferença), quadros perdidos no teste de movimento e ausência de quadros com padrão estático (`dumpsys SurfaceFlinger --latency`); registrar em `docs/device-notes.md` (AIWA medida em 2026-11-15: ferramentas até +1,8 MB, 0 quadros perdidos no Movimento, padrão parado sem quadros; a TCL foi dispensada pelo autor)
-- [ ] 8.5 Confirmar na TCL e na AIWA que a tela não apaga numa limpeza de 30 minutos e que Voltar e Home interrompem cada modo e liberam os recursos
+- [x] 8.5 Confirmar na TCL e na AIWA que a tela não apaga numa limpeza de 30 minutos e que Voltar e Home interrompem cada modo e liberam os recursos (AIWA em 2026-11-15, com limpeza de 10 min a pedido do autor: a tela ficou acesa até o fim; Voltar e Home conferidos pelo autor nas duas TVs)
 - [x] 8.6 Validar com `openspec validate ferramentas --strict`
 - [x] 8.7 Revisar a tela Sobre (revisado de novo com o Log: sem componente novo, o `logcat` é do sistema) (Configurações do Lume › Sobre o Lume): sem componente novo depois da retirada do teste de velocidade (a lista de crates vem do `cargo tree`); verificar com `cargo run -p lume-desktop -- --screenshot about`
 
