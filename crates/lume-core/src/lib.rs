@@ -12,6 +12,7 @@ pub mod i18n;
 pub mod icons;
 pub mod keys;
 pub mod licenses;
+pub mod logfile;
 pub mod logo;
 pub mod render;
 pub mod shell;

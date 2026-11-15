@@ -102,7 +102,9 @@ abstract class CargoNdkTask extends DefaultTask {
 
     @TaskAction
     void build() {
-        def args = ["cargo", "ndk"]
+        // Linked against the minSdk's NDK platform: AAudio (the audio tool) exists from API 26, and
+        // cargo-ndk's default (21) has no libaaudio.
+        def args = ["cargo", "ndk", "--platform", "28"]
         abis.get().each { args += ["-t", it] }
         args += ["-o", outputDir.get().asFile.absolutePath, "build", "-p", "lume-app"]
         if (release.get()) args += ["--release"]

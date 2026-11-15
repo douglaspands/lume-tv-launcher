@@ -687,3 +687,135 @@ Base: `v0.6.1` (`dist/lume-0.6.1.apk`). Change: APK de release `lume-2e7421d-dir
   mesmo jeito e ficam abaixo dos 64 MB.
 - Na TV (4.2), o foco da grade, o menu de contexto (menu claro, item em `--primary`), o tile sem sombra, a abertura a frio e o
   retorno a quente ficaram como esperado. O emulador `tv_api28` não existe mais nesta máquina, então a checagem foi feita na TCL.
+
+## Ferramentas (change `ferramentas`, 2026-11-15)
+
+### Tamanho do APK (tarefa 8.3)
+
+Build de release no container (`scripts/container-build.sh release`), `arm64-v8a` e `armeabi-v7a`, comparado com o build
+anterior da `main` (`2e7421d`):
+
+| Medida | Antes | Depois | Diferença |
+|---|---|---|---|
+| APK (`ls -l`) | 22,07 MB | 24,70 MB | +2,63 MB |
+| APK (`verify-apk.py`, limite 40 MB) | n/d | 23,55 MB | n/a |
+| `lib/arm64-v8a/liblume.so` | 1,69 MB | 3,31 MB | +1,62 MB |
+| `lib/armeabi-v7a/liblume.so` | 1,25 MB | 2,23 MB | +0,98 MB |
+
+- Sem o teste de velocidade (build `b411a30`, depois da retirada): APK de 22,37 MB (`ls -l`; 21,33 MB no `verify-apk.py`),
+  +0,30 MB sobre a `main`; o resto da diferença acima era o cliente HTTPS.
+- O aumento vem do cliente HTTPS do teste de velocidade (`ureq` 3.1.2, `rustls` 0.23 com `ring` 0.17 e `webpki-roots` 1.0),
+  do AAudio (`ndk` com a feature `audio`) e do código das seis ferramentas. Fica abaixo dos 3 MB que o design pede para
+  reavaliar.
+- Permissões (`aapt dump permissions`): `REQUEST_DELETE_PACKAGES`, `INTERNET` e `ACCESS_WIFI_STATE`, só essas.
+- O `cargo ndk` passou a ligar contra a plataforma 28 (`--platform 28` em `android/app/build.gradle`, igual ao `minSdk`): no
+  padrão dele (21) não existe `libaaudio`, e o link falhava.
+
+### TCL 55C715, build de release `4043000-dirty` (2026-11-15)
+
+| Medida | Valor | Orçamento ou critério |
+|---|---|---|
+| `KEEP_SCREEN_ON` na janela | ligado no menu Ferramentas e nas ferramentas, desligado nas Configurações | `diagnostic-tools` |
+| PSS nas Configurações, antes de entrar | 18,3 MB | n/a |
+| PSS com um tom tocando (Áudio) | 20,0 MB | 64 MB |
+| PSS no teste de velocidade | 19,4 a 21,0 MB | 64 MB |
+| PSS no teste de armazenamento | 20,3 a 21,4 MB | 64 MB |
+| PSS de volta às Configurações | 19,6 MB (+1,3 MB) | até 2 MB acima |
+| Thread `lume-test` depois dos testes | nenhuma | n/a |
+| Padrão sólido parado (vermelho, sem dica) | 0 quadros em 10 s | sem quadros |
+| Teste de movimento | ~62 quadros/s, 0 de 868 com 33 ms ou mais | até 1% |
+| Grade em 1920x1080 (`screencap`) | 33 linhas verticais, todas de 1 px | 1 px físico |
+| AudioTrack do Lume | criado ao tocar, removido ao parar e com Home (`media.audio_flinger`) | sem stream parado |
+| Teste de velocidade (Ethernet; retirado depois, ver abaixo) | latência 48 ms, download 92 Mbps, upload 80 Mbps | n/a |
+| Teste de armazenamento (64 MB) | escrita 44,8 MB/s, leitura 163,5 MB/s, cerca de 2 s no total | até 20 s |
+| Controle remoto | Menu (82) e Bookmark (174) com os nomes certos; Voltar duas vezes sai | `remote-mapping` |
+
+- Gateway: o Android põe a rota padrão em tabelas por rede (`default via 192.168.0.1 dev eth0 table 1003`), e a tabela
+  principal, a única de `/proc/net/route`, não tem rota padrão; por ela o gateway saía sempre "—". A leitura passou a ser um
+  dump de rotas por netlink (`RTM_GETROUTE`, todas as tabelas, em Rust), com `/proc/net/route` de reserva: a TCL mostra
+  192.168.0.1.
+- A TCL roda o Lume em `armeabi-v7a` (`ro.product.cpu.abilist` = `armeabi-v7a,armeabi`), num Cortex-A55 (`CPU part 0xd05`)
+  com NEON, VFPv4, `idiva` e CRC32.
+- A TCL está no cabo, então a seção do Wi-Fi não aparece e o comando `wifi-signal` não foi exercitado nela.
+- O teste de velocidade foi retirado por decisão do autor (2026-11-15), com o `ureq`/`rustls`: a ferramenta Rede ficou só
+  com dados locais e o Lume voltou a não abrir conexões. A medida abaixo fica como registro.
+- Referência do teste de velocidade: o PC na mesma rede, contra o mesmo serviço com `curl`, mediu 334 Mbps de download e
+  151 Mbps de upload, com 100 a 300 ms até o primeiro byte. Não serve de comparação: os 92 Mbps da TCL batem com uma porta
+  Ethernet de 100 Mbit/s (a velocidade do link não é legível pelo `adb shell`). Falta comparar com um medidor rodando na
+  própria TV.
+- Limpeza de retenção "Cores" de 30 min sem tocar no controle, com o desligamento por inatividade da TCL em 5 min
+  (`screen_off_timeout` = 300000): `mWakefulness=Awake` e o Lume em foco nas 7 leituras, a cada 4 min 40 s, das 01:05 às
+  01:38. Ao fim, a tela Tela voltou sozinha com o foco em "Iniciar".
+- A 64 MB, a TCL termina o teste de armazenamento muito abaixo dos 20 s. O autor decidiu manter os 64 MB sem medir a
+  AIWA (2026-11-15): mesmo dez vezes mais lenta, ela ficaria perto do limite.
+
+### Emulador `tv_api28` (Android 9, x86, build de debug, 2026-11-15)
+
+- Texto em russo (tarefa 1.6): Configurações, menu Ferramentas e as seis ferramentas sem corte nem sobreposição.
+- Controle remoto (tarefa 4.2, com `scripts/emulator.sh key` e `adb shell input keyevent`): Menu (82), Bookmark (174, "Favorito"),
+  setas e OK com o nome e o `KEYCODE_*` certos; F1 (131) como "Não usada"; Cima repetido aparece como "Cima ×2"; Voltar
+  duas vezes sai. O volume (24) abre o painel de volume do sistema e não chega ao Lume, então não entra no histórico.
+- Sinal do Wi-Fi (tarefa 6.2): a ferramenta Rede mostrou -50 dBm ("Excelente"), 26 Mbps · 2,4 GHz e o gateway
+  192.168.232.1. O autor aceitou esta verificação no lugar da TCL, que está no cabo; o comando `wifi-signal` roda dentro de
+  `LumeBridge.handle`, que o ProGuard já mantém (`-keep class app.lume.tv.LumeBridge { *; }`).
+
+### Ferramenta Rede retirada (2026-11-15)
+
+Depois da retirada do teste de velocidade, o autor retirou também a ferramenta Rede (conexão, gateway e sinal do Wi-Fi), por
+não trazer nada útil. Saíram com ela o comando Java `wifi-signal`, a permissão `ACCESS_WIFI_STATE` e a leitura de rotas por
+netlink. As medidas de gateway e de Wi-Fi acima ficam como registro. O menu Ferramentas tem cinco itens, e as permissões
+voltam a ser `REQUEST_DELETE_PACKAGES` e `INTERNET`.
+
+### Medição controlada na AIWA e ferramenta Log (2026-11-15, build `b539131-dirty`)
+
+Navegação pelo `adb shell input keyevent`, uma ferramenta por vez, com captura de tela em cada passo (`dumpsys meminfo`,
+`TOTAL`: PSS e privada = Private Dirty + Private Clean).
+
+| Momento | PSS | Privada |
+|---|---|---|
+| Menu Ferramentas, 20 s parado | 48,5 MB | 41,3 MB |
+| Tela, padrões de cor | 47,7 MB | 40,6 MB |
+| Imagem, Movimento | 48,2 MB | 41,0 MB |
+| Áudio, tom nos dois canais | 48,7 MB | 41,3 MB |
+| Armazenamento, durante e no fim do teste | 49,5–49,8 MB | 42,2–42,4 MB |
+| Log aberto | 50,1 MB | 42,3 MB |
+| Início, 20 s depois de sair | 50,3 MB | 42,5 MB |
+
+- As ferramentas somam no máximo 1,8 MB sobre o menu (limite de 2 MB da spec).
+- Movimento: 0 de 1013 intervalos de 33 ms ou mais, a 60 quadros por segundo (o maior, 18 ms).
+- Padrão parado: nenhum quadro novo em 5 s (`SurfaceFlinger --latency`).
+- Armazenamento: 17,0 e 17,3 MB/s de escrita, 111,9 e 135,4 MB/s de leitura. Iniciar, cancelar e reiniciar três vezes
+  seguidas terminou em "Teste concluído" (correção do arquivo por execução).
+- O nível geral da AIWA (48 a 50 MB de PSS) está acima da referência antiga (39 a 43 MB), que é de antes de outras changes
+  já na `main`. Para saber se vem desta branch, falta medir um build da `main` do mesmo jeito.
+- Contagem de quadros sem saber a tela: a coleta passiva (amostras a cada 3 s, só com o app em foco) não serve, porque as
+  ferramentas desenham de propósito a 4 quadros por segundo (varredura, progresso) e esses intervalos parecem perdas.
+- `logcat`: o buffer principal guarda 64 KB na AIWA (cerca de 13 s de histórico) e 256 KB na TCL (cerca de 4 min). As linhas
+  do Lume somem antes de alguém abrir o Log, por isso ele lê o arquivo próprio `files/lume.log` (rotação em 256 KB). Na
+  AIWA, o Log mostrou as linhas desde a abertura (`lume ... starting`, `first frame`, `interface ready`).
+- `dumpsys meminfo` dispara uma coleta de lixo explícita no processo medido (pausa de cerca de 0,1 ms), sem efeito nos quadros.
+
+### AIWA: build da `main` contra o da branch (2026-11-15)
+
+Mesmo roteiro para os dois, duas rodadas cada, instalando do zero: Início parado 30 e 60 s, aba Apps, Configurações do Lume
+e Início de novo (PSS / privada, MB). `main` = `a30f8cc`, branch = `b539131-dirty` (ferramentas, sem abrir nenhuma).
+
+| Momento | `main` (1ª) | `main` (2ª) | branch (1ª) | branch (2ª) |
+|---|---|---|---|---|
+| Início, 30 s | 47,5 / 41,4 | 61,9 / 56,0 | 62,0 / 55,8 | 63,5 / 57,6 |
+| Início, 60 s | 55,0 / 48,8 | 51,0 / 45,2 | 50,7 / 44,5 | 51,8 / 46,0 |
+| Apps, 10 s | 55,8 / 49,6 | 51,9 / 46,1 | 51,4 / 45,2 | 53,1 / 47,3 |
+| Configurações, 10 s | 56,4 / 50,1 | 52,0 / 46,2 | 51,0 / 44,8 | 53,1 / 47,2 |
+| Início de volta, 20 s | 56,5 / 50,2 | 52,1 / 46,3 | 51,2 / 45,0 | 53,0 / 47,1 |
+
+- A branch não muda a memória da AIWA: depois de assentar, as duas ficam entre 51 e 56 MB de PSS, e a diferença entre
+  rodadas do mesmo build (até 5 MB) é maior que a diferença entre os builds.
+- A subida sobre a referência antiga (39 a 43 MB) já está na `main`, de changes anteriores.
+- Nas duas, o pico logo depois da abertura chega a 62–64 MB de PSS, encostado no orçamento de 64 MB em primeiro plano. Ele
+  cai sozinho em seguida.
+- Sincronia de áudio e imagem (tarefa 5.4), TCL pelo alto-falante da TV: o autor viu o bipe e o quadrado juntos, sem precisar
+  de ajuste. Soundbar não testada.
+- Limpeza de retenção "Cores" de 10 min na AIWA (tarefa 8.5; o autor achou 30 min longo demais), com o "Permanecer
+  ativo" (`stay_on_while_plugged_in`) desligado só durante o teste, para valer o desligamento por inatividade de 5 min
+  (`screen_off_timeout` = 300000): `mWakefulness=Awake` e o Lume em foco nas 12 leituras, a cada minuto, das 13:12 às 13:23.
+  Ao fim, a tela Tela voltou sozinha com o foco em "Iniciar", e o `stay_on_while_plugged_in` voltou a 3.

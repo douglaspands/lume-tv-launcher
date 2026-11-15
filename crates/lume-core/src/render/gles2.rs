@@ -9,9 +9,11 @@ use super::batch::{
     QUAD_INDICES,
 };
 use super::geometry::Rect;
+use super::pattern::{circle_segments, PatternOp};
 use super::shaders::{
-    BAYER_4X4, IMAGE_FRAGMENT, RECT_FRAGMENT, RECT_VERTEX, REDUCE_FRAGMENT, REDUCE_VERTEX,
-    TEXT_FRAGMENT, TEX_VERTEX, WALLPAPER_FRAGMENT, WALLPAPER_VERTEX,
+    BAYER_4X4, IMAGE_FRAGMENT, PATTERN_FRAGMENT, PATTERN_VERTEX, RECT_FRAGMENT, RECT_VERTEX,
+    REDUCE_FRAGMENT, REDUCE_VERTEX, TEXT_FRAGMENT, TEX_VERTEX, WALLPAPER_FRAGMENT,
+    WALLPAPER_VERTEX,
 };
 use super::{Backend, Viewport};
 use crate::text::{TextEngine, Update};
@@ -87,6 +89,19 @@ pub struct Gles2Backend {
     bayer: Option<Texture>,
     /// Whether the wallpaper is dithered (tests compare it with and without).
     dither: bool,
+    /// What draws the Tools' ramps, slanted lines and circles: made the first time a pattern needs
+    /// it, so lume pays nothing for it outside the Tools.
+    pattern: Option<PatternProgram>,
+    /// The vertices of one pattern operation (x, y and a premultiplied color), reused.
+    pattern_vertices: Vec<f32>,
+}
+
+/// The program and buffer of the Tools' patterns that `glClear` cannot draw.
+struct PatternProgram {
+    program: glow::Program,
+    u_surface: Option<glow::UniformLocation>,
+    u_dither: Option<glow::UniformLocation>,
+    vbo: glow::Buffer,
 }
 
 impl Gles2Backend {
@@ -160,6 +175,8 @@ impl Gles2Backend {
                 wallpaper_thumbs: None,
                 bayer: None,
                 dither: true,
+                pattern: None,
+                pattern_vertices: Vec::new(),
             })
         }
     }
@@ -820,6 +837,10 @@ impl Gles2Backend {
             if let Some(upload) = self.uploading.take() {
                 self.gl.delete_texture(upload.source);
             }
+            if let Some(pattern) = self.pattern.take() {
+                self.gl.delete_program(pattern.program);
+                self.gl.delete_buffer(pattern.vbo);
+            }
         }
     }
 
@@ -901,6 +922,9 @@ impl Backend for Gles2Backend {
             let [r, g, b, a] = clear.to_f32();
             gl.clear_color(r * a, g * a, b * a, a);
             gl.clear(glow::COLOR_BUFFER_BIT);
+            if !frame.pattern.is_empty() {
+                self.draw_pattern(viewport, &frame.pattern);
+            }
             if frame.batches.is_empty() {
                 return;
             }
@@ -1012,12 +1036,153 @@ impl Backend for Gles2Backend {
 }
 
 impl Gles2Backend {
+    /// Draws the test pattern of a Tool in device pixels (D6): solid colors and rectangles with
+    /// `glClear` (a scissored one for the rectangles), which has no shader and no smoothing; the
+    /// ramps, slanted lines and circles with the pattern program, without blending.
+    unsafe fn draw_pattern(&mut self, viewport: &Viewport, ops: &[PatternOp]) {
+        let height = viewport.height as i32;
+        self.gl.disable(glow::BLEND);
+        for op in ops {
+            match *op {
+                PatternOp::Fill(color) => {
+                    self.gl.disable(glow::SCISSOR_TEST);
+                    clear_with(&self.gl, color);
+                }
+                PatternOp::Rect(rect, color) => {
+                    if rect.w <= 0 || rect.h <= 0 {
+                        continue;
+                    }
+                    let [x, y, w, h] = rect.scissor(height);
+                    self.gl.enable(glow::SCISSOR_TEST);
+                    self.gl.scissor(x, y, w, h);
+                    clear_with(&self.gl, color);
+                    self.gl.disable(glow::SCISSOR_TEST);
+                }
+                PatternOp::Gradient(rect, [top_left, top_right, bottom_right, bottom_left]) => {
+                    let (x0, y0) = (rect.x as f32, rect.y as f32);
+                    let (x1, y1) = ((rect.x + rect.w) as f32, (rect.y + rect.h) as f32);
+                    self.pattern_vertices.clear();
+                    for (x, y, color) in [
+                        (x0, y0, top_left),
+                        (x1, y0, top_right),
+                        (x0, y1, bottom_left),
+                        (x1, y1, bottom_right),
+                    ] {
+                        push_vertex(&mut self.pattern_vertices, x, y, color);
+                    }
+                    self.draw_pattern_vertices(viewport, glow::TRIANGLE_STRIP, true);
+                }
+                PatternOp::Line { from, to, color } => {
+                    self.pattern_vertices.clear();
+                    for (x, y) in [from, to] {
+                        // The centers of the pixels, so the line is the one of the pixels named.
+                        push_vertex(
+                            &mut self.pattern_vertices,
+                            x as f32 + 0.5,
+                            y as f32 + 0.5,
+                            color,
+                        );
+                    }
+                    self.draw_pattern_vertices(viewport, glow::LINES, false);
+                }
+                PatternOp::Circle {
+                    center,
+                    radius,
+                    color,
+                } => {
+                    let segments = circle_segments(radius);
+                    let (cx, cy) = (center.0 as f32 + 0.5, center.1 as f32 + 0.5);
+                    self.pattern_vertices.clear();
+                    for i in 0..segments {
+                        let angle = i as f32 / segments as f32 * std::f32::consts::TAU;
+                        push_vertex(
+                            &mut self.pattern_vertices,
+                            cx + radius as f32 * angle.cos(),
+                            cy + radius as f32 * angle.sin(),
+                            color,
+                        );
+                    }
+                    self.draw_pattern_vertices(viewport, glow::LINE_LOOP, false);
+                }
+            }
+        }
+    }
+
+    /// Draws `pattern_vertices` with the pattern program, made on first use.
+    unsafe fn draw_pattern_vertices(&mut self, viewport: &Viewport, mode: u32, dither: bool) {
+        if self.pattern.is_none() {
+            match link(
+                &self.gl,
+                PATTERN_VERTEX,
+                PATTERN_FRAGMENT,
+                &["a_pos", "a_color"],
+            ) {
+                Ok(shader) => match self.gl.create_buffer() {
+                    Ok(vbo) => {
+                        self.pattern = Some(PatternProgram {
+                            u_surface: shader.u_surface,
+                            u_dither: self.gl.get_uniform_location(shader.program, "u_dither"),
+                            program: shader.program,
+                            vbo,
+                        });
+                    }
+                    Err(e) => {
+                        self.gl.delete_program(shader.program);
+                        log::warn!("pattern buffer: {e}");
+                    }
+                },
+                Err(e) => log::warn!("pattern program: {e}"),
+            }
+        }
+        let Some(pattern) = &self.pattern else {
+            return;
+        };
+        let gl = &self.gl;
+        gl.use_program(Some(pattern.program));
+        gl.uniform_2_f32(
+            pattern.u_surface.as_ref(),
+            viewport.width as f32,
+            viewport.height as f32,
+        );
+        gl.uniform_1_f32(pattern.u_dither.as_ref(), if dither { 1.0 } else { 0.0 });
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(pattern.vbo));
+        gl.buffer_data_u8_slice(
+            glow::ARRAY_BUFFER,
+            bytemuck::cast_slice(&self.pattern_vertices),
+            glow::STREAM_DRAW,
+        );
+        let stride = 6 * size_of::<f32>() as i32;
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, stride, 0);
+        gl.enable_vertex_attrib_array(1);
+        gl.vertex_attrib_pointer_f32(1, 4, glow::FLOAT, false, stride, 8);
+        // The other arrays may still point at last frame's buffers: this program reads none.
+        for index in 2..7u32 {
+            gl.disable_vertex_attrib_array(index);
+        }
+        gl.draw_arrays(mode, 0, (self.pattern_vertices.len() / 6) as i32);
+        gl.bind_buffer(glow::ARRAY_BUFFER, None);
+    }
+
     unsafe fn bind_texture(&self, texture: Option<&Texture>, program: &ShaderProgram) {
         self.gl.active_texture(glow::TEXTURE0);
         self.gl
             .bind_texture(glow::TEXTURE_2D, texture.map(|t| t.texture));
         self.gl.uniform_1_i32(program.u_texture.as_ref(), 0);
     }
+}
+
+/// Clears the bound buffer (or its scissor box) to `color`, premultiplied as every frame is.
+unsafe fn clear_with(gl: &glow::Context, color: Color) {
+    let [r, g, b, a] = color.to_f32();
+    gl.clear_color(r * a, g * a, b * a, a);
+    gl.clear(glow::COLOR_BUFFER_BIT);
+}
+
+/// One vertex of the pattern program: the position and the premultiplied color.
+fn push_vertex(vertices: &mut Vec<f32>, x: f32, y: f32, color: Color) {
+    let [r, g, b, a] = color.to_f32();
+    vertices.extend_from_slice(&[x, y, r * a, g * a, b * a, a]);
 }
 
 /// Converts a logical clip rectangle to a GL scissor box (device pixels, origin bottom-left).

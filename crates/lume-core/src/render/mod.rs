@@ -4,6 +4,7 @@ mod batch;
 mod geometry;
 mod gles2;
 mod list;
+mod pattern;
 mod shaders;
 
 pub use batch::{
@@ -12,6 +13,7 @@ pub use batch::{
 pub use geometry::Rect;
 pub use gles2::Gles2Backend;
 pub use list::{Cmd, DisplayList, RectCmd, RectKind, TexturedCmd};
+pub use pattern::{PatternOp, PixelRect};
 
 use crate::theme::Color;
 

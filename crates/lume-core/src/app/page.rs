@@ -12,6 +12,9 @@ const TITLE_BASELINE: f32 = 116.0;
 const SUBTITLE_BASELINE: f32 = 152.0;
 /// Where the content of a secondary screen starts: 58 below the subtitle's baseline.
 pub const CONTENT_TOP: f32 = 212.0;
+/// Where the content of a secondary screen without subtitle starts: 36 below the title's baseline
+/// (the editor and the Tools).
+pub const PLAIN_CONTENT_TOP: f32 = 152.0;
 /// Space on each side of the "›" between two steps of the breadcrumb.
 const SEPARATOR_GAP: f32 = 8.0;
 

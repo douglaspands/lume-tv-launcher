@@ -94,6 +94,11 @@ impl Viewer {
                 Effect::OpenTvSetting { setting } => {
                     println!("open TV setting {setting:?}")
                 }
+                // The desktop has no window flags, sound or test thread: the tools say so.
+                Effect::KeepScreenOn(on) => println!("keep the screen on: {on}"),
+                Effect::Audio(command) => println!("audio: {command:?} (not on the desktop)"),
+                Effect::StartTest(kind) => println!("test {kind:?} (not on the desktop)"),
+                Effect::CancelTest => println!("cancel the test"),
             }
         }
         self.needs_frame = true;

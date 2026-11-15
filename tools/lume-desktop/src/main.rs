@@ -78,7 +78,8 @@ fn main() {
         "empty" => screenshot::save(path, width, height, screenshot::draw_empty),
         "logo" => screenshot::save(path, width, height, screenshot::draw_logo),
         "banner" => screenshot::save(path, width, height, screenshot::draw_banner),
-        "home" | "apps" | "settings" | "tvinfo" | "about" | "editor" => {
+        "home" | "apps" | "settings" | "tvinfo" | "about" | "editor" | "tools" | "tool-display"
+        | "tool-picture" | "tool-remote" | "tool-audio" | "tool-storage" => {
             let setup = Setup {
                 locale: options.locale.clone(),
                 pseudo_locale: options.pseudo_locale,
@@ -92,8 +93,17 @@ fn main() {
                 "apps" => "up,right,ok",
                 "settings" => to_settings,
                 "tvinfo" => "up,right,down,down,right,ok,down,down,ok",
-                "about" => "up,right,down,down,right,ok,down,down,down,ok",
+                "about" => "up,right,down,down,right,ok,down,down,down,down,ok",
                 "editor" => "up,right,down,down,right,ok,ok",
+                // The Tools menu, then each tool by its place in the menu.
+                "tools" => "up,right,down,down,right,ok,down,down,down,ok",
+                "tool-display" => "up,right,down,down,right,ok,down,down,down,ok,ok",
+                "tool-picture" => "up,right,down,down,right,ok,down,down,down,ok,down,ok",
+                "tool-remote" => "up,right,down,down,right,ok,down,down,down,ok,down,down,ok",
+                "tool-audio" => "up,right,down,down,right,ok,down,down,down,ok,down,down,down,ok",
+                "tool-storage" => {
+                    "up,right,down,down,right,ok,down,down,down,ok,down,down,down,down,ok"
+                }
                 _ => "",
             };
             let mut keys = demo::parse_keys(route).unwrap_or_else(|e| fail(&e));
@@ -127,7 +137,7 @@ fn main() {
                 .and_then(|pixels| png_out::write_rgba(path, width, height, &pixels))
         }
         other => fail(&format!(
-            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor, keymap)"
+            "unknown screen '{other}' (available: empty, logo, banner, home, apps, settings, tvinfo, about, editor, keymap, tools, tool-display, tool-picture, tool-remote, tool-audio, tool-storage)"
         )),
     };
     match result {

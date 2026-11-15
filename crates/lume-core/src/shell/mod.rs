@@ -40,7 +40,14 @@ pub struct Shell {
     list: DisplayList,
     /// Something changed that has not been drawn yet.
     dirty: bool,
+    /// A tool's test progress that is waiting for its frame (at most 4 frames a second for progress).
+    tool_frame_at: Option<u64>,
+    /// When the last frame for a tool's progress was asked.
+    last_tool_frame: Option<u64>,
 }
+
+/// The least time between two frames asked by the progress of a test (4 a second).
+const TOOL_PROGRESS_MS: u64 = 250;
 
 impl Shell {
     /// Loads the saved data and builds the launcher.
@@ -90,6 +97,8 @@ impl Shell {
             display: None,
             list: DisplayList::new(),
             dirty: true,
+            tool_frame_at: None,
+            last_tool_frame: None,
         }
     }
 
@@ -136,8 +145,9 @@ impl Shell {
     }
 
     /// Another app is in front: drops the glyph atlas and every other buffer used for drawing.
-    pub fn sleep(&mut self) {
-        self.app.went_to_background();
+    /// Returns what the platform must release (a sound playing, a running test).
+    pub fn sleep(&mut self) -> Vec<Effect> {
+        let effects = self.app.went_to_background();
         self.app.icons.clear();
         if let Some(text) = &mut self.text {
             text.release();
@@ -145,6 +155,8 @@ impl Shell {
         self.text = None;
         self.display = None;
         self.list = DisplayList::new();
+        self.tool_frame_at = None;
+        effects
     }
 
     pub fn viewport(&self) -> Option<Viewport> {
@@ -403,8 +415,10 @@ impl Shell {
         if self.dirty {
             return Some(Duration::ZERO);
         }
-        self.app
-            .next_deadline(now_ms)
+        [self.app.next_deadline(now_ms), self.tool_frame_at]
+            .into_iter()
+            .flatten()
+            .min()
             .map(|at| Duration::from_millis(at.saturating_sub(now_ms)))
     }
 
@@ -433,6 +447,39 @@ impl Shell {
     pub fn set_stats(&mut self, stats: crate::stats::Stats, now_ms: u64) {
         self.app.apply_stats(stats, now_ms);
         self.dirty = true;
+    }
+
+    /// Something the platform tells the open tool (test progress, audio, a reading). The frame it
+    /// asks for comes at most 4 times a second.
+    pub fn tool_event(&mut self, event: crate::app::tools::ToolEvent, now_ms: u64) {
+        self.app.tool_event(event, now_ms);
+        let at = self
+            .last_tool_frame
+            .map_or(now_ms, |last| (last + TOOL_PROGRESS_MS).max(now_ms));
+        if at <= now_ms {
+            self.last_tool_frame = Some(now_ms);
+            self.dirty = true;
+        } else if self.tool_frame_at.is_none() {
+            self.tool_frame_at = Some(at);
+        }
+    }
+
+    /// How long until the open tool wants a reading from the platform, with the interface at rest.
+    pub fn tool_reading_timeout(&self, now_ms: u64) -> Option<Duration> {
+        if !self.is_active() || self.is_busy(now_ms) {
+            return None;
+        }
+        self.app
+            .tool_reading_deadline(now_ms)
+            .map(|(_, at)| Duration::from_millis(at.saturating_sub(now_ms)))
+    }
+
+    /// The reading the open tool wants now, if any.
+    pub fn tool_reading_due(&self, now_ms: u64) -> Option<crate::app::tools::ReadingKind> {
+        if self.tool_reading_timeout(now_ms) != Some(Duration::ZERO) {
+            return None;
+        }
+        self.app.tool_reading_deadline(now_ms).map(|(kind, _)| kind)
     }
 
     /// Whether the TV information screen waits for the platform's reading and the interface is at
@@ -483,6 +530,9 @@ impl Shell {
             }
         }
         self.dirty = false;
+        if self.tool_frame_at.take().is_some() {
+            self.last_tool_frame = Some(now_ms);
+        }
         Some(Frame::build(&self.list))
     }
 

@@ -114,6 +114,8 @@ pub struct Frame {
     pub image_vertices: Vec<TexVertex>,
     pub batches: Vec<Batch>,
     pub wallpaper_id: Option<crate::wallpaper::WallpaperId>,
+    /// The test pattern of a Tool, in device pixels, drawn right after the clear.
+    pub pattern: Vec<super::pattern::PatternOp>,
 }
 
 impl Frame {
@@ -125,6 +127,7 @@ impl Frame {
         }
         let mut frame = builder.frame;
         frame.wallpaper_id = list.wallpaper_id();
+        frame.pattern = list.pattern_ops().to_vec();
         frame
     }
 

@@ -8,6 +8,8 @@
 mod bridge;
 mod device_info;
 mod egl;
+mod file_log;
+mod tools;
 
 use android_activity::input::{InputEvent, KeyAction};
 use android_activity::{AndroidApp, AndroidAppWaker, InputStatus, MainEvent, PollEvent};
@@ -32,6 +34,11 @@ static WALLPAPER_READY: AtomicBool = AtomicBool::new(false);
 
 fn wallpaper_ready() {
     WALLPAPER_READY.store(true, Ordering::SeqCst);
+    wake_loop();
+}
+
+/// Wakes the loop from another thread (it may be blocked in `poll_events`).
+pub(crate) fn wake_loop() {
     if let Ok(guard) = WAKER.lock() {
         if let Some(waker) = guard.as_ref() {
             waker.wake();
@@ -136,15 +143,13 @@ struct Runtime {
     ready_from: Option<Instant>,
     /// Size of the render buffer, once a window exists.
     running: bool,
+    /// The resources of the Tools (audio, test thread), alive only while a tool uses them.
+    tools: tools::Tools,
 }
 
 #[no_mangle]
 fn android_main(app: AndroidApp) {
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_max_level(log::LevelFilter::Info)
-            .with_tag("lume"),
-    );
+    file_log::init();
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
     log::info!("lume {} starting", lume_version::VERSION);
     *WAKER.lock().expect("waker lock") = Some(app.create_waker());
@@ -156,6 +161,8 @@ fn android_main(app: AndroidApp) {
         log::error!("no internal data directory");
         return;
     };
+    // From here on the log also goes to files/lume.log, for the Log tool.
+    file_log::open(&files);
     // The app's cache directory (next to `files/`): the decoded wallpaper is kept there between wake-ups.
     if let Some(cache) = files.parent().map(|parent| parent.join("cache")) {
         lume_core::wallpaper::set_cache_dir(cache);
@@ -186,6 +193,7 @@ fn android_main(app: AndroidApp) {
         reveal_frames: Vec::new(),
         icon_times: IconTimes::default(),
         running: true,
+        tools: tools::Tools::new(files.clone()),
     };
     runtime.run();
     log::info!("lume stopped");
@@ -215,6 +223,7 @@ impl Runtime {
                 [
                     self.shell.next_timeout(self.now_ms()),
                     self.shell.stats_timeout(self.now_ms()),
+                    self.shell.tool_reading_timeout(self.now_ms()),
                 ]
                 .into_iter()
                 .flatten()
@@ -229,6 +238,11 @@ impl Runtime {
             if HOME_PRESSED.swap(false, Ordering::SeqCst) {
                 self.send_key(Key::Home);
             }
+            // The progress of a test: the shell asks for at most 4 frames a second for it.
+            for event in self.tools.poll() {
+                let now = self.now_ms();
+                self.shell.tool_event(event, now);
+            }
             // The clock's seconds move on by themselves; the shell only asks for a frame when the minute turns.
             self.shell.tick_clock(unix_seconds());
             if self.graphics.is_some() && self.shell.frame_due(self.now_ms()) {
@@ -242,6 +256,10 @@ impl Runtime {
                     // Try again in a while instead of on every turn of the loop.
                     self.shell.stats_failed(now);
                 }
+            }
+            if let Some(kind) = self.shell.tool_reading_due(now) {
+                let event = self.tools.read(kind);
+                self.shell.tool_event(event, self.now_ms());
             }
             if self.shell.device_info_due(now) {
                 let gpu = self.graphics.as_mut().map(|g| g.backend().gpu_strings());
@@ -342,7 +360,11 @@ impl Runtime {
         self.icons_failed.clear();
         self.dock_failed.clear();
         self.icons_pending = false;
-        self.shell.sleep();
+        for effect in self.shell.sleep() {
+            self.run_effect(effect);
+        }
+        // Whatever the shell asked, nothing of the Tools runs while lume is away.
+        self.tools.release();
         if had_graphics {
             purge_memory();
             log::info!("window gone: renderer, glyph atlas and fonts released (dormant)");
@@ -395,7 +417,17 @@ impl Runtime {
                         let app = self.shell.app();
                         // The keys lume does not use (volume, power...) stay for the system, and
                         // so they do not disappear; while a key is being recorded, all are lume's.
+                        // The remote control test shows every code, the unused ones too; the
+                        // volume keys are shown and still left to the system.
+                        let remote_test = app.is_remote_test_open();
+                        if remote_test && matches!(code, 24 | 25 | 164) {
+                            if key.action() == KeyAction::Down {
+                                pressed_codes.push(code);
+                            }
+                            return InputStatus::Unhandled;
+                        }
                         let used = app.is_listening_key()
+                            || remote_test
                             || app.keys.action_for(code).is_some()
                             || lume_core::keys::from_android(code).is_some();
                         if !used {
@@ -476,6 +508,15 @@ impl Runtime {
             }
             // The shell already saved these.
             Effect::SaveConfig | Effect::SaveUsage | Effect::SaveKeys => {}
+            Effect::KeepScreenOn(on) => tools::Tools::keep_screen_on(&self.app, on),
+            Effect::Audio(command) => {
+                let now = self.now_ms();
+                for event in self.tools.audio(command, now) {
+                    self.shell.tool_event(event, now);
+                }
+            }
+            Effect::StartTest(kind) => self.tools.start_test(kind),
+            Effect::CancelTest => self.tools.cancel_test(),
         }
     }
 

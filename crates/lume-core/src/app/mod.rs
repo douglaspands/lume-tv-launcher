@@ -18,6 +18,7 @@ mod settings;
 mod splash;
 #[cfg(test)]
 mod tests;
+pub mod tools;
 mod topbar;
 
 /// Fails when a layout measure is off the 4-unit ruler (see "Régua de layout" in the
@@ -78,6 +79,13 @@ pub mod ids {
     pub const SETTINGS_BASE: FocusId = 3000;
     /// The items of the context menu (only their focus animations use these).
     pub const MENU_BASE: FocusId = 5000;
+    /// The items of the Tools menu, one per tool.
+    pub const TOOLS_BASE: FocusId = 6000;
+    /// The items inside the tools: 100 per tool, in the menu order (`ToolKind::first_id`).
+    pub const TOOL_BASE: FocusId = 6100;
+    /// The buttons of the flash warning (only their focus animations use these).
+    pub const WARNING_START: FocusId = 6900;
+    pub const WARNING_CANCEL: FocusId = 6901;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,6 +123,14 @@ pub enum Effect {
     SaveUsage,
     /// The key mapping changed and must be written to disk.
     SaveKeys,
+    /// Keep the screen on (no screen saver, no sleep) while the Tools are open, or stop.
+    KeepScreenOn(bool),
+    /// Plays or stops a sound of the audio tool.
+    Audio(tools::AudioCommand),
+    /// Starts a test on the platform's `lume-test` thread (only one runs at a time).
+    StartTest(tools::TestKind),
+    /// Cancels the running test, if any, and deletes what it left behind.
+    CancelTest,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,6 +149,10 @@ pub enum Screen {
     KeyMapPickApp,
     /// Choosing the settings screen a key will open (opened from the key mapping).
     KeyMapPickSetting,
+    /// The Tools menu (opened from the settings).
+    Tools,
+    /// A tool (opened from the Tools menu).
+    Tool(tools::ToolKind),
 }
 
 /// What is animated.
@@ -255,6 +275,10 @@ pub struct LumeApp {
     interface_ready: bool,
     /// Where the top bar starts in the display list, on the main screens.
     bar_start: Option<usize>,
+    /// The state of the open tool: exists only while a tool is on screen.
+    tool: Option<Box<tools::ToolState>>,
+    /// Whether the platform was asked to keep the screen on (the Tools are open).
+    keep_screen_on: bool,
     now_ms: u64,
 }
 
@@ -316,6 +340,8 @@ impl LumeApp {
             woke_before: false,
             interface_ready: false,
             bar_start: None,
+            tool: None,
+            keep_screen_on: false,
             now_ms: 0,
         }
     }
@@ -369,8 +395,9 @@ impl LumeApp {
         if key != Key::Home {
             self.return_point = None;
         }
-        let effects = self.dispatch_key(key);
+        let mut effects = self.dispatch_key(key);
         self.note_return_point(&effects);
+        self.sync_tools(&mut effects);
         effects
     }
 
@@ -402,6 +429,11 @@ impl LumeApp {
         // 1. Listening for a key: Back cancels, a reserved key is refused, any other is recorded.
         if self.is_listening_key() {
             return self.listening_code(code);
+        }
+        // The remote control test sees every code before the mapping, and runs none of them.
+        if let Some(mut effects) = self.tool_keycode(code) {
+            self.sync_tools(&mut effects);
+            return effects;
         }
 
         // 2. Otherwise check custom mapping table:
@@ -442,7 +474,9 @@ impl LumeApp {
             vec![]
         };
         // A shortcut that leaves lume is something to come back from, like OK on a tile.
+        let mut effects = effects;
         self.note_return_point(&effects);
+        self.sync_tools(&mut effects);
         effects
     }
 
@@ -467,6 +501,14 @@ impl LumeApp {
     }
 
     fn screen_key(&mut self, key: Key) -> Vec<Effect> {
+        // A tool takes the keys it wants first; Home always does what it always does.
+        if let Screen::Tool(kind) = self.screen {
+            if key != Key::Home {
+                if let Some(effects) = self.tool_key(kind, key) {
+                    return effects;
+                }
+            }
+        }
         match key {
             Key::Up | Key::Down if self.screen == Screen::About => {
                 self.scroll_about(if key == Key::Up { -1.0 } else { 1.0 });
@@ -529,6 +571,8 @@ impl LumeApp {
             Screen::KeyMap => return self.activate_keymap(id),
             Screen::KeyMapPickApp => return self.activate_pick_app(id),
             Screen::KeyMapPickSetting => return self.activate_pick_setting(id),
+            Screen::Tools => return self.activate_tools(id),
+            Screen::Tool(_) => return vec![],
         }
         match id {
             ids::GEAR => vec![Effect::OpenAndroidSettings],
@@ -571,6 +615,14 @@ impl LumeApp {
                 self.pending_focus = Some(PendingFocus::Id(settings::ITEM_ABOUT));
                 vec![]
             }
+            Screen::Tools => {
+                self.back_from_tools();
+                vec![]
+            }
+            Screen::Tool(kind) => {
+                self.back_from_tool(kind);
+                vec![]
+            }
             Screen::TvInfo => {
                 self.back_from_tv_info();
                 vec![]
@@ -609,8 +661,9 @@ impl LumeApp {
     }
 
     /// lume left the screen (another app is in front).
-    pub fn went_to_background(&mut self) {
+    pub fn went_to_background(&mut self) -> Vec<Effect> {
         self.foreground = false;
+        self.tools_to_background()
     }
 
     /// lume is on the screen again.
@@ -727,6 +780,9 @@ impl LumeApp {
         if let Some(at) = self.splash_deadline() {
             consider(at);
         }
+        if let Some(at) = self.tool_deadline(now_ms) {
+            consider(at);
+        }
         deadline
     }
 
@@ -834,11 +890,14 @@ impl LumeApp {
             }
         }
         self.splash_frame_start(now_ms);
-        p.wallpaper_at(
-            self.config.wallpaper,
-            self.screen != Screen::Main(Tab::Home),
-            self.wallpaper_reveal(),
-        );
+        // A full-screen pattern of the Tools is drawn on the cleared frame, without wallpaper.
+        if !self.tool_fullscreen() {
+            p.wallpaper_at(
+                self.config.wallpaper,
+                self.screen != Screen::Main(Tab::Home),
+                self.wallpaper_reveal(),
+            );
+        }
         self.content_start = p.list.len();
         self.bar_start = None;
         match self.screen {
@@ -851,6 +910,8 @@ impl LumeApp {
             Screen::KeyMap => self.draw_keymap(p),
             Screen::KeyMapPickApp => self.draw_pick_app(p),
             Screen::KeyMapPickSetting => self.draw_pick_setting(p),
+            Screen::Tools => self.draw_tools(p),
+            Screen::Tool(kind) => self.draw_tool(p, kind),
         }
         self.draw_context_menu(p);
         self.draw_toast(p);

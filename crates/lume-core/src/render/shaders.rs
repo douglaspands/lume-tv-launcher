@@ -264,3 +264,47 @@ void main() {
     gl_FragColor = color;
 }
 "#;
+
+/// The Tools' test patterns that `glClear` cannot draw (ramps, slanted lines and circles), in device
+/// pixels of the render buffer (origin at the top left), with no canvas scale (D6).
+pub const PATTERN_VERTEX: &str = r#"#version 100
+attribute vec2 a_pos;    // device pixels, origin at the top left
+attribute vec4 a_color;  // premultiplied
+
+uniform vec2 u_surface;
+
+varying vec4 v_color;
+
+void main() {
+    gl_Position = vec4(a_pos.x / u_surface.x * 2.0 - 1.0, 1.0 - a_pos.y / u_surface.y * 2.0, 0.0, 1.0);
+    v_color = a_color;
+}
+"#;
+
+/// The vertex color, plus +-0.5 of a color level of ordered dither when `u_dither` is 1 (the ramps,
+/// which would band otherwise; see "Degradês sem faixas de cor" in the `design-system` spec).
+pub const PATTERN_FRAGMENT: &str = r#"#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+uniform float u_dither;
+
+varying vec4 v_color;
+
+// The same 4x4 ordered (Bayer) threshold as the rectangles' gradients.
+float dither() {
+    vec2 p = mod(floor(gl_FragCoord.xy), 4.0);
+    vec2 low = mod(p, 2.0);
+    vec2 high = floor(p / 2.0);
+    float level = 4.0 * mod(2.0 * low.x + 3.0 * low.y, 4.0) + mod(2.0 * high.x + 3.0 * high.y, 4.0);
+    return ((level + 0.5) / 16.0 - 0.5) / 255.0;
+}
+
+void main() {
+    gl_FragColor = v_color;
+    gl_FragColor.rgb += u_dither * dither() * v_color.a;
+}
+"#;

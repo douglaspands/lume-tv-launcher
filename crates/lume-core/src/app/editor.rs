@@ -31,7 +31,7 @@ const CARD_NAME_HEIGHT: f32 = 56.0;
 const CARD_CONTROLS_HEIGHT: f32 = 60.0;
 const CARD_GAP: f32 = 16.0;
 /// Where the content starts: 36 below the title's baseline at 116 (no subtitle).
-const TOP: f32 = 152.0;
+const TOP: f32 = super::page::PLAIN_CONTENT_TOP;
 const ROW_HEIGHT: f32 = 64.0;
 const ROW_GAP: f32 = 16.0;
 const WALLPAPER_CARD_WIDTH: f32 = 178.0;

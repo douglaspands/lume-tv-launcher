@@ -21,4 +21,4 @@ glow = { version = "0.18", default-features = false }
 jni = "0.22"
 khronos-egl = { version = "6", features = ["dynamic"] }
 libc = "0.2"
-ndk = "0.9"
+ndk = { version = "0.9", features = ["audio"] }
