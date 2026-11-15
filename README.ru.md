@@ -60,8 +60,9 @@
 4. Выполни `adb connect <ip>:5555`, затем `adb devices`. Напомни мне принять запрос «Разрешить отладку по USB?» на телевизоре (Всегда разрешать) и выполни обе команды снова, пока телевизор не появится как `device`.
 5. Выполни `adb install <путь к APK>` и убедись, что вывелось `Success`.
 6. Выполни `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity`, чтобы сделать Lume главным экраном.
+7. Попроси меня нажать кнопку Home на пульте. Если всё ещё открывается штатный лаунчер, объясни, что крайняя мера — отключить штатный лаунчер и службу рекомендаций Android TV вместе (никогда не только лаунчер: служба рекомендаций пытается включить его снова, и Lume зависает), и попроси моего подтверждения. Если я соглашусь, выполни `adb shell pm disable-user --user 0 com.google.android.tvlauncher` и `adb shell pm disable-user --user 0 com.google.android.tvrecommendations` и объясни, как отменить это командами `adb shell pm enable com.google.android.tvlauncher` и `adb shell pm enable com.google.android.tvrecommendations`.
 
-Не выполняй других команд, меняющих телевизор (например, `pm disable-user`), пока я не попрошу, и спрашивай меня перед запуском всего, чего нет в списке выше.
+Кроме шага 7, не выполняй других команд, меняющих телевизор (например, `pm disable-user`), пока я не попрошу, и спрашивай меня перед запуском всего, чего нет в списке выше.
 ```
 
 ### Вариант 2: вручную
@@ -132,18 +133,22 @@ adb install "C:\Users\User\Downloads\lume.apk"
    adb shell cmd package set-home-activity app.lume.tv/.LumeActivity
    ```
 
-3. Некоторые телевизоры игнорируют это и продолжают открывать свой лаунчер. В крайнем случае можно отключить штатный лаунчер (он не удаляется, и его можно включить снова):
+3. Некоторые телевизоры игнорируют это и продолжают открывать свой лаунчер. В крайнем случае можно отключить штатный лаунчер вместе со службой рекомендаций Android TV (ни то ни другое не удаляется, и их можно включить снова):
 
    ```
    adb shell pm disable-user --user 0 com.google.android.tvlauncher
+   adb shell pm disable-user --user 0 com.google.android.tvrecommendations
    ```
+
+   Всегда отключайте оба пакета: если отключён только лаунчер, служба рекомендаций пытается включить его снова, и Lume зависает. Если на вашем телевизоре нет одного из этих пакетов, команда завершится ошибкой, ничего не изменив; её можно игнорировать.
 
 ### Вернуться к штатному лаунчеру
 
-Удалите Lume и, если вы отключали штатный лаунчер, включите его снова:
+Удалите Lume и, если вы отключали штатный лаунчер и службу рекомендаций, включите их снова:
 
 ```
 adb shell pm enable com.google.android.tvlauncher
+adb shell pm enable com.google.android.tvrecommendations
 adb uninstall app.lume.tv
 ```
 
@@ -195,7 +200,7 @@ cargo run -p lume-desktop -- --screenshot home home.png
 cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screenshot home focus.png
 ```
 
-`--keys` сначала нажимает клавиши (`up down left right ok back home`), `--locale` выбирает язык, а `--pseudo-locale` растягивает все тексты на 40 %, чтобы найти макеты, в которые они не помещаются. Снимки в этом README сделаны с `--favorites 8`, `LUME_NO_SYNTHETIC_ICONS=1` (плитки показывают свой цвет и букву) и, для русского, `LUME_FALLBACK_FONT` с путём к шрифту с кириллицей (на телевизоре её даёт система).
+`--keys` сначала нажимает клавиши (`up down left right ok back home`), `--locale` выбирает язык, а `--pseudo-locale` растягивает все тексты на 40 %, чтобы найти макеты, в которые они не помещаются. Снимки в этом README сделаны с `--favorites 8` и `LUME_NO_SYNTHETIC_ICONS=1` (плитки показывают свой цвет и букву).
 
 ### Сборка в контейнере (рекомендуется)
 

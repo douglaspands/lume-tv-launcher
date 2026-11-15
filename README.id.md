@@ -60,8 +60,9 @@ Saya ingin memasang launcher Lume di Android TV saya memakai adb. Tolong lakukan
 4. Jalankan `adb connect <ip>:5555` lalu `adb devices`. Ingatkan saya untuk menerima pesan "Izinkan debugging USB?" di TV (Selalu izinkan), lalu jalankan kedua perintah lagi sampai TV saya tampil sebagai `device`.
 5. Jalankan `adb install <lokasi APK>` dan pastikan muncul `Success`.
 6. Jalankan `adb shell cmd package set-home-activity app.lume.tv/.LumeActivity` agar Lume menjadi layar beranda.
+7. Minta saya menekan tombol Home pada remote. Jika masih membuka launcher asli, jelaskan bahwa pilihan terakhir adalah menonaktifkan launcher asli dan layanan rekomendasi Android TV bersamaan (jangan hanya launcher-nya: layanan rekomendasi mencoba mengaktifkannya lagi dan membuat Lume membeku) lalu minta konfirmasi saya. Jika saya setuju, jalankan `adb shell pm disable-user --user 0 com.google.android.tvlauncher` dan `adb shell pm disable-user --user 0 com.google.android.tvrecommendations`, lalu jelaskan cara membatalkannya dengan `adb shell pm enable com.google.android.tvlauncher` dan `adb shell pm enable com.google.android.tvrecommendations`.
 
-Jangan jalankan perintah lain yang mengubah TV (seperti `pm disable-user`) kecuali saya minta, dan tanyakan dulu sebelum menjalankan sesuatu yang tidak ada dalam daftar di atas.
+Selain langkah 7, jangan jalankan perintah lain yang mengubah TV (seperti `pm disable-user`) kecuali saya minta, dan tanyakan dulu sebelum menjalankan sesuatu yang tidak ada dalam daftar di atas.
 ```
 
 ### Opsi 2: manual
@@ -132,18 +133,22 @@ Jika muncul `Success`, Lume sudah terpasang.
    adb shell cmd package set-home-activity app.lume.tv/.LumeActivity
    ```
 
-3. Beberapa TV mengabaikannya dan tetap membuka launcher-nya sendiri. Sebagai pilihan terakhir, Anda dapat menonaktifkan launcher asli (tidak dihapus dan dapat diaktifkan lagi):
+3. Beberapa TV mengabaikannya dan tetap membuka launcher-nya sendiri. Sebagai pilihan terakhir, Anda dapat menonaktifkan launcher asli bersama layanan rekomendasi Android TV (keduanya tidak dihapus dan dapat diaktifkan lagi):
 
    ```
    adb shell pm disable-user --user 0 com.google.android.tvlauncher
+   adb shell pm disable-user --user 0 com.google.android.tvrecommendations
    ```
+
+   Selalu nonaktifkan keduanya: jika hanya launcher yang dinonaktifkan, layanan rekomendasi terus mencoba mengaktifkannya lagi dan Lume membeku. Jika TV Anda tidak memiliki salah satu paket ini, perintahnya gagal tanpa mengubah apa pun; abaikan saja.
 
 ### Kembali ke launcher asli
 
-Hapus Lume, dan jika Anda menonaktifkan launcher asli, aktifkan lagi:
+Hapus Lume, dan jika Anda menonaktifkan launcher asli dan layanan rekomendasi, aktifkan keduanya lagi:
 
 ```
 adb shell pm enable com.google.android.tvlauncher
+adb shell pm enable com.google.android.tvrecommendations
 adb uninstall app.lume.tv
 ```
 
@@ -195,7 +200,7 @@ cargo run -p lume-desktop -- --screenshot home home.png
 cargo run -p lume-desktop -- --size 1920x1080 --keys down,right,right --screenshot home focus.png
 ```
 
-`--keys` menekan tombol terlebih dahulu (`up down left right ok back home`), `--locale` memilih bahasa, dan `--pseudo-locale` memperpanjang semua teks 40% untuk menemukan tata letak yang tidak muat. Gambar di README ini dibuat dengan `--favorites 8`, `LUME_NO_SYNTHETIC_ICONS=1` (kotak menampilkan warna dan hurufnya) dan, untuk bahasa Rusia, `LUME_FALLBACK_FONT` yang menunjuk ke font dengan huruf Sirilik (di TV, huruf itu disediakan sistem).
+`--keys` menekan tombol terlebih dahulu (`up down left right ok back home`), `--locale` memilih bahasa, dan `--pseudo-locale` memperpanjang semua teks 40% untuk menemukan tata letak yang tidak muat. Gambar di README ini dibuat dengan `--favorites 8` dan `LUME_NO_SYNTHETIC_ICONS=1` (kotak menampilkan warna dan hurufnya).
 
 ### Build dengan container (disarankan)
 
