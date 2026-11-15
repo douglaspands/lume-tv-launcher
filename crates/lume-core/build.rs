@@ -3,6 +3,7 @@
 //! - `themes/lume/theme.css` -> `theme_generated.rs`
 //! - `android/app/src/main/res/values*/strings.xml` -> `strings_generated.rs`
 //! - `assets/wallpaper/<id>-*` -> `wallpaper_<id>_stars.rs`
+//! - `assets/companion/index.html` + the theme + `src/logo.rs` -> `companion_page.html`
 //!
 //! Warnings are forwarded as `cargo:warning`; any error fails the build.
 
@@ -17,7 +18,8 @@ fn main() {
     println!("cargo:rerun-if-changed=../lume-app/Cargo.toml");
     compile_keys(&manifest);
     compile_strings(&manifest);
-    compile_theme(&manifest);
+    let sheet = compile_theme(&manifest);
+    compile_companion(&manifest, &sheet);
     compile_wallpaper(&manifest);
     list_third_party(&manifest);
 }
@@ -265,7 +267,7 @@ fn compile_wallpaper(manifest: &std::path::Path) {
     }
 }
 
-fn compile_theme(manifest: &std::path::Path) {
+fn compile_theme(manifest: &std::path::Path) -> lume_css::Stylesheet {
     let theme_path = manifest.join("../../themes/lume/theme.css");
     println!("cargo:rerun-if-changed={}", theme_path.display());
 
@@ -291,6 +293,109 @@ fn compile_theme(manifest: &std::path::Path) {
     let code = generate(&parsed.stylesheet);
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("theme_generated.rs");
     std::fs::write(out, code).expect("cannot write theme_generated.rs");
+    parsed.stylesheet
+}
+
+/// The phone page: the template with the theme's colors and shapes and the logo as SVG, drawn from
+/// the same constants as `src/logo.rs`, so the page never drifts from the TV.
+fn compile_companion(manifest: &std::path::Path, sheet: &lume_css::Stylesheet) {
+    let template_path = manifest.join("assets/companion/index.html");
+    let logo_path = manifest.join("src/logo.rs");
+    println!("cargo:rerun-if-changed={}", template_path.display());
+    println!("cargo:rerun-if-changed={}", logo_path.display());
+    let mut page = std::fs::read_to_string(&template_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", template_path.display()));
+    let css_color = |name: &str| {
+        let c = sheet
+            .color_variable(&format!("--{name}"))
+            .unwrap_or_else(|| panic!("the theme has no color --{name}"));
+        if c.a == 255 {
+            format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b)
+        } else {
+            format!(
+                "rgba({}, {}, {}, {:.3})",
+                c.r,
+                c.g,
+                c.b,
+                f32::from(c.a) / 255.0
+            )
+        }
+    };
+    for name in [
+        "bg",
+        "surface",
+        "surface-row",
+        "border",
+        "primary",
+        "on-primary",
+        "text",
+        "text-muted",
+        "danger-fg",
+    ] {
+        page = page.replace(&format!("{{{{{name}}}}}"), &css_color(name));
+    }
+    for name in ["radius", "shape-lg"] {
+        let px = sheet
+            .length_variable(&format!("--{name}"))
+            .unwrap_or_else(|| panic!("the theme has no length --{name}"));
+        page = page.replace(&format!("{{{{{name}}}}}"), &format!("{px}px"));
+    }
+    let logo = std::fs::read_to_string(&logo_path).expect("cannot read src/logo.rs");
+    let svg = logo_svg(&logo, &css_color("primary"), &css_color("bg"));
+    page = page.replace("{{logo}}", &svg);
+    if let Some(at) = page.find("{{") {
+        panic!(
+            "assets/companion/index.html: unknown value {}",
+            &page[at..page[at..].find("}}").map_or(page.len(), |e| at + e + 2)]
+        );
+    }
+    let out = PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("companion_page.html");
+    std::fs::write(out, page).expect("cannot write companion_page.html");
+}
+
+/// The logo mark of `src/logo.rs` as SVG in a 100x100 box: the rounded square, the two bars of the
+/// L and the dot, read from the `const NAME: f32 = value;` lines.
+fn logo_svg(source: &str, square: &str, glyph: &str) -> String {
+    let constant = |name: &str| -> f32 {
+        source
+            .lines()
+            .find_map(|line| {
+                let rest = line.trim().strip_prefix(&format!("const {name}: f32 = "))?;
+                rest.trim_end_matches(';').trim().parse().ok()
+            })
+            .unwrap_or_else(|| panic!("src/logo.rs has no const {name}: f32"))
+    };
+    let k = |v: f32| (v * 100.0 * 1000.0).round() / 1000.0;
+    let (corner, stem_x, stem_w, stem_top) = (
+        constant("CORNER"),
+        constant("STEM_X"),
+        constant("STEM_WIDTH"),
+        constant("STEM_TOP"),
+    );
+    let (bottom, foot_right, foot_top) = (
+        constant("BOTTOM"),
+        constant("FOOT_RIGHT"),
+        constant("FOOT_TOP"),
+    );
+    let (dot_x, dot_y, dot_r) = (constant("DOT_X"), constant("DOT_Y"), constant("DOT_RADIUS"));
+    let foot_h = bottom - foot_top;
+    format!(
+        r#"<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="{}" fill="{square}"/><g fill="{glyph}"><rect x="{}" y="{}" width="{}" height="{}" rx="{}"/><rect x="{}" y="{}" width="{}" height="{}" rx="{}"/><circle cx="{}" cy="{}" r="{}"/></g></svg>"#,
+        k(corner),
+        k(stem_x),
+        k(stem_top),
+        k(stem_w),
+        k(bottom - stem_top),
+        k(stem_w / 2.0),
+        k(stem_x),
+        k(foot_top),
+        k(foot_right - stem_x),
+        k(foot_h),
+        k(foot_h / 2.0),
+        k(dot_x),
+        k(dot_y),
+        k(dot_r),
+    )
 }
 
 fn generate(sheet: &lume_css::Stylesheet) -> String {
