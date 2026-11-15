@@ -60,6 +60,12 @@ pub enum MenuAction {
     RestoreDefault,
     /// Key mapping: takes the shortcut of the row away, with all its keys.
     RemoveShortcut,
+    /// "Minha imagem": makes it the wallpaper.
+    UseImage,
+    /// "Minha imagem": opens the Receive image screen for another picture.
+    ReplaceImage,
+    /// "Minha imagem": deletes it, after a confirmation.
+    RemoveImage,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,6 +84,8 @@ pub enum Origin {
     Dock(usize),
     /// A row of the key mapping screen (its focus id): the menu opens under it.
     KeyRow(FocusId),
+    /// A wallpaper mini-card of the editor (its focus id): the menu opens beside it.
+    WallpaperCard(FocusId),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -190,6 +198,7 @@ impl LumeApp {
         let menu = match self.screen {
             Screen::Main(Tab::Apps) => self.grid_menu(id),
             Screen::Main(Tab::Home) => self.dock_menu(id),
+            Screen::Editor => self.image_menu(id),
             _ => None,
         };
         if let Some(menu) = menu {
@@ -270,6 +279,26 @@ impl LumeApp {
         items.push(item(MenuAction::RemoveFromHome));
         items.push(item(MenuAction::AppInfo));
         Some(ContextMenu::new(Origin::Dock(index), package, items))
+    }
+
+    /// The menu of "Minha imagem" in the editor (none on the empty phone card or the catalog's).
+    fn image_menu(&self, id: FocusId) -> Option<ContextMenu> {
+        if id != super::editor::PHONE_CARD || self.config.custom.is_none() || self.editor.confirm {
+            return None;
+        }
+        let item = |action| MenuItem {
+            action,
+            enabled: true,
+        };
+        Some(ContextMenu::new(
+            Origin::WallpaperCard(id),
+            String::new(),
+            vec![
+                item(MenuAction::UseImage),
+                item(MenuAction::ReplaceImage),
+                item(MenuAction::RemoveImage),
+            ],
+        ))
     }
 
     /// A key while the menu is open: the focus stays in it.
@@ -366,6 +395,16 @@ impl LumeApp {
                     package: package.to_string(),
                 }]
             }
+            MenuAction::UseImage => {
+                if self.config.custom.is_some()
+                    && self.config.wallpaper != crate::wallpaper::WallpaperId::Custom
+                {
+                    self.config.wallpaper = crate::wallpaper::WallpaperId::Custom;
+                    return vec![Effect::SaveConfig];
+                }
+            }
+            MenuAction::ReplaceImage => self.open_receive(),
+            MenuAction::RemoveImage => self.confirm_remove_image(),
             // The menus of the key mapping screen go through `run_key_menu_action`.
             _ => {}
         }
@@ -402,6 +441,9 @@ impl LumeApp {
             MenuAction::AddKey => StringId::KeymapAddKey,
             MenuAction::RestoreDefault => StringId::KeymapRestoreAction,
             MenuAction::RemoveShortcut => StringId::KeymapRemoveAction,
+            MenuAction::UseImage => StringId::MenuUseImage,
+            MenuAction::ReplaceImage => StringId::MenuReplaceImage,
+            MenuAction::RemoveImage => StringId::MenuRemoveImage,
             MenuAction::RemoveKey(code) => {
                 let key = match keycode_parts(code, &t) {
                     (name, Some(code)) => format!("{name} {code}"),
@@ -478,7 +520,7 @@ impl LumeApp {
         let safe = p.display.safe_area();
         let panel = match menu.origin {
             Origin::Dock(_) => dock_panel(anchor, (width, height), safe),
-            Origin::Grid(_) => grid_panel(anchor, (width, height), safe),
+            Origin::Grid(_) | Origin::WallpaperCard(_) => grid_panel(anchor, (width, height), safe),
             Origin::KeyRow(_) => row_panel(anchor, (width, height), safe),
         };
         // It rises a little into place as it fades in, and sinks as it fades out.

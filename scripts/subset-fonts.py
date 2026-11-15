@@ -67,6 +67,8 @@ ICONS = {
     "play": "PLAY",
     "eye": "EYE",
     "eye-off": "EYE_OFF",
+    "smartphone": "PHONE",
+    "minus": "MINUS",
 }
 
 # Kerning pairs smaller than this many font units (of 1000 per em) are invisible
@@ -196,10 +198,25 @@ class _Flattener(BasePen):
 
 
 def _svg_polylines(svg: str):
-    """The polylines of every <path> and <circle> of a Lucide icon, in grid units (y down)."""
+    """The polylines of every <path>, <rect> and <circle> of a Lucide icon, in grid units (y down)."""
     pen = _Flattener()
     for d in re.findall(r'<path[^>]*\sd="([^"]+)"', svg):
         parse_path(d, pen)
+    for attrs in re.findall(r"<rect([^>]*)>", svg):
+        def get(name, default=0.0):
+            found = re.search(r"\s" + name + r'="([-\d.]+)"', attrs)
+            return float(found.group(1)) if found else default
+        x, y, w, h = get("x"), get("y"), get("width"), get("height")
+        r = min(get("rx", get("ry")), w / 2, h / 2)
+        # A rounded rectangle as a closed path: the sides, and a quarter circle at each corner.
+        points = []
+        corners = ((x + w - r, y + r, -90), (x + w - r, y + h - r, 0), (x + r, y + h - r, 90), (x + r, y + r, 180))
+        for cx, cy, start in corners:
+            steps = 8 if r > 0 else 1
+            for i in range(steps + 1):
+                angle = math.radians(start + 90 * i / steps)
+                points.append((cx + r * math.cos(angle), cy + r * math.sin(angle), i in (0, steps)))
+        pen.lines.append((points, True))
     for attrs in re.findall(r"<circle([^>]*)>", svg):
         get = lambda name: float(re.search(name + r'="([-\d.]+)"', attrs).group(1))
         cx, cy, r = get("cx"), get("cy"), get("r")

@@ -16,6 +16,28 @@ use std::collections::HashMap;
 pub const RESTORE: FocusId = 4001;
 pub const ROUND_FAVORITES: FocusId = 4002;
 pub const WALLPAPER_BASE: FocusId = 4100;
+/// The last mini-card: "+ From phone", or "Minha imagem" once there is one.
+pub const PHONE_CARD: FocusId = WALLPAPER_BASE + WallpaperId::ALL.len() as FocusId;
+/// The mini-cards: the phone's first, then the catalog.
+const CARD_COUNT: usize = WallpaperId::ALL.len() + 1;
+
+/// The place of a mini-card in the row: the phone card is the first, the catalog follows.
+fn card_slot(id: FocusId) -> usize {
+    if id == PHONE_CARD {
+        0
+    } else {
+        (id - WALLPAPER_BASE) as usize + 1
+    }
+}
+
+/// The mini-card at a place of the row.
+fn slot_card(slot: usize) -> FocusId {
+    if slot == 0 {
+        PHONE_CARD
+    } else {
+        WALLPAPER_BASE + slot as FocusId - 1
+    }
+}
 pub(super) const FAVORITE_BUTTON_BASE: FocusId = 4400;
 pub(super) const ADD_APP_BASE: FocusId = 4600;
 pub const CONFIRM_RESTORE: FocusId = 4900;
@@ -82,6 +104,8 @@ pub(super) struct EditorState {
     pub wallpaper_scroll_x: f32,
     /// Target horizontal scroll offset for wallpaper mini-cards.
     pub target_wallpaper_scroll_x: f32,
+    /// The open confirmation is the one of removing "Minha imagem" (not of restoring the defaults).
+    pub remove_image: bool,
 }
 
 impl LumeApp {
@@ -417,11 +441,11 @@ impl LumeApp {
         let focused_id = self.focus.current_id();
         let card_step = WALLPAPER_CARD_WIDTH + WALLPAPER_CARD_GAP;
         let max_scroll =
-            (WallpaperId::ALL.len() as f32 * card_step - WALLPAPER_CARD_GAP - inner_width).max(0.0);
+            (CARD_COUNT as f32 * card_step - WALLPAPER_CARD_GAP - inner_width).max(0.0);
 
         let focused_wp_index = focused_id.and_then(|fid| {
-            if (WALLPAPER_BASE..WALLPAPER_BASE + WallpaperId::ALL.len() as FocusId).contains(&fid) {
-                Some((fid - WALLPAPER_BASE) as usize)
+            if (WALLPAPER_BASE..WALLPAPER_BASE + CARD_COUNT as FocusId).contains(&fid) {
+                Some(card_slot(fid))
             } else {
                 None
             }
@@ -478,8 +502,10 @@ impl LumeApp {
                 vars::PRIMARY,
             );
 
-            let active_idx = focused_wp_index.unwrap_or_else(|| self.config.wallpaper.index());
-            let total = WallpaperId::ALL.len();
+            let active_idx = focused_wp_index.unwrap_or_else(|| {
+                card_slot(WALLPAPER_BASE + self.config.wallpaper.index() as FocusId)
+            });
+            let total = CARD_COUNT;
             let hint = if self.editor.wallpaper_scroll_x <= 4.0 {
                 format!("{} / {}  ›", active_idx + 1, total)
             } else if self.editor.wallpaper_scroll_x >= max_scroll - 4.0 {
@@ -499,9 +525,9 @@ impl LumeApp {
             );
         }
 
-        let mut items = Vec::with_capacity(WallpaperId::ALL.len());
-        for (i, _) in WallpaperId::ALL.iter().enumerate() {
-            let card_id = WALLPAPER_BASE + i as FocusId;
+        let mut items = Vec::with_capacity(CARD_COUNT);
+        for i in 0..CARD_COUNT {
+            let card_id = slot_card(i);
             let card_x = inner_left + i as f32 * card_step;
             let card_rect = Rect::new(card_x, cards_y, WALLPAPER_CARD_WIDTH, WALLPAPER_CARD_HEIGHT);
             layout.rects.insert(card_id, card_rect);
@@ -535,7 +561,8 @@ impl LumeApp {
 
             for (i, &id) in WallpaperId::ALL.iter().enumerate() {
                 let card_id = WALLPAPER_BASE + i as FocusId;
-                let card_x = inner_left + i as f32 * card_step - self.editor.wallpaper_scroll_x;
+                let card_x = inner_left + card_slot(card_id) as f32 * card_step
+                    - self.editor.wallpaper_scroll_x;
                 let card_rect = Rect::new(
                     card_x,
                     cards_y - scroll_y,
@@ -545,6 +572,24 @@ impl LumeApp {
 
                 if card_rect.right() >= inner_left && card_rect.x <= inner_left + inner_width {
                     self.draw_wallpaper_card(p, card_rect, id, card_id);
+                }
+            }
+            let phone_rect = Rect::new(
+                inner_left + card_slot(PHONE_CARD) as f32 * card_step
+                    - self.editor.wallpaper_scroll_x,
+                cards_y - scroll_y,
+                WALLPAPER_CARD_WIDTH,
+                WALLPAPER_CARD_HEIGHT,
+            );
+            self.anchor_context_menu(
+                super::context_menu::Origin::WallpaperCard(PHONE_CARD),
+                phone_rect,
+            );
+            if phone_rect.right() >= inner_left && phone_rect.x <= inner_left + inner_width {
+                if self.config.custom.is_some() {
+                    self.draw_wallpaper_card(p, phone_rect, WallpaperId::Custom, PHONE_CARD);
+                } else {
+                    self.draw_phone_card(p, phone_rect);
                 }
             }
 
@@ -628,6 +673,11 @@ impl LumeApp {
     ) {
         let is_focused = self.focus.current_id() == Some(card_id);
         let is_active = self.config.wallpaper == id;
+        // An image from the phone has no thumbnail until Apply wrote one: its color meanwhile.
+        if id == WallpaperId::Custom && crate::wallpaper::custom::thumbnail().is_none() {
+            p.list
+                .fill(rect, vars::SHAPE_MD, Paint::Solid(vars::SURFACE_ROW));
+        }
 
         let target_rect = if is_focused {
             rect.scaled_about_center(1.05)
@@ -708,6 +758,46 @@ impl LumeApp {
         let text_x = target_rect.x + 12.0;
         p.text
             .draw(p.list, &name, text_x, text_y, &label_style, label_color);
+    }
+
+    /// The empty phone card: `--surface` with a dashed outline of 2 in `--border`, the phone icon
+    /// and "+ From phone".
+    fn draw_phone_card(&mut self, p: &mut Painter, rect: Rect) {
+        let is_focused = self.focus.current_id() == Some(PHONE_CARD);
+        let rect = if is_focused {
+            rect.scaled_about_center(1.05)
+        } else {
+            rect
+        };
+        p.list
+            .fill(rect, vars::SHAPE_MD, Paint::Solid(vars::SURFACE));
+        if is_focused {
+            p.list.ring(rect, vars::SHAPE_MD, 3.0, vars::PRIMARY);
+        } else {
+            dashed_outline(p, rect, vars::SHAPE_MD, 2.0, vars::BORDER);
+        }
+        let icon = Rect::new(rect.x + (rect.w - 32.0) / 2.0, rect.y + 16.0, 32.0, 32.0);
+        let color = if is_focused {
+            vars::TEXT
+        } else {
+            vars::TEXT_MUTED
+        };
+        p.icon(icons::PHONE, icon, 32.0, color);
+        let label = self.translator.get(StringId::WallpaperFromPhone);
+        let style = if is_focused {
+            TextStyle::new(16.0, 700)
+        } else {
+            TextStyle::new(16.0, 500)
+        };
+        let w = p.text.measure(&label, &style);
+        p.text.draw(
+            p.list,
+            &label,
+            rect.x + (rect.w - w) / 2.0,
+            rect.bottom() - 12.0,
+            &style,
+            color,
+        );
     }
 
     fn draw_round_favorites_row(&mut self, p: &mut Painter, rect: Rect) {
@@ -913,7 +1003,20 @@ impl LumeApp {
         let width = 640.0;
         let height = 280.0;
         let dialog = Rect::new(640.0 - width / 2.0, 360.0 - height / 2.0, width, height);
-        let confirm_label = t.get(StringId::EditorRestoreConfirm).into_owned();
+        let (title_id, body_id, confirm_id) = if self.editor.remove_image {
+            (
+                StringId::EditorRemoveImageTitle,
+                StringId::EditorRemoveImageBody,
+                StringId::MenuRemoveImage,
+            )
+        } else {
+            (
+                StringId::EditorRestoreTitle,
+                StringId::EditorRestoreBody,
+                StringId::EditorRestoreConfirm,
+            )
+        };
+        let confirm_label = t.get(confirm_id).into_owned();
         let cancel_label = t.get(StringId::EditorCancel).into_owned();
         let button_style = p.style(&THEME.button, StateFlags::NONE);
         let confirm_w = (p.measure(&confirm_label, &button_style) + 56.0).max(140.0);
@@ -948,11 +1051,7 @@ impl LumeApp {
             let title_style = TextStyle::new(28.0, 800);
             let title = p
                 .text
-                .ellipsize(
-                    &t.get(StringId::EditorRestoreTitle),
-                    &title_style,
-                    width - 64.0,
-                )
+                .ellipsize(&t.get(title_id), &title_style, width - 64.0)
                 .into_owned();
             p.text.draw(
                 p.list,
@@ -963,7 +1062,7 @@ impl LumeApp {
                 vars::TEXT,
             );
             let body_style = TextStyle::new(18.0, 500);
-            let body = t.get(StringId::EditorRestoreBody).into_owned();
+            let body = t.get(body_id).into_owned();
             let mut line_y = dialog.y + 110.0;
             for line in wrap(p, &body, &body_style, width - 64.0) {
                 p.text.draw(
@@ -1010,18 +1109,43 @@ impl LumeApp {
             }
             RESTORE => {
                 self.editor.confirm = true;
+                self.editor.remove_image = false;
                 self.pending_focus = Some(PendingFocus::Id(CONFIRM_CANCEL));
                 return vec![];
             }
+            CONFIRM_RESTORE if self.editor.remove_image => {
+                self.close_confirm();
+                if let Some(files) = crate::wallpaper::custom::files_dir() {
+                    self.config
+                        .remove_custom(&files, crate::wallpaper::cache_dir());
+                }
+                return save;
+            }
             CONFIRM_RESTORE => {
+                // The image from the phone stays: only its use as the wallpaper goes.
+                let custom = self.config.custom;
                 self.config = HomeConfig::first_use(&self.catalog);
+                self.config.custom = custom;
                 self.editor.confirm = false;
                 self.pending_focus = Some(PendingFocus::Id(RESTORE));
                 return save;
             }
             CONFIRM_CANCEL => {
-                self.editor.confirm = false;
-                self.pending_focus = Some(PendingFocus::Id(RESTORE));
+                self.close_confirm();
+                return vec![];
+            }
+            PHONE_CARD => {
+                if self.config.custom.is_none() {
+                    self.open_receive();
+                    return vec![];
+                }
+                if self.config.wallpaper != WallpaperId::Custom {
+                    self.config.wallpaper = WallpaperId::Custom;
+                    return save;
+                }
+                // Already the wallpaper: OK opens its menu (use, replace, remove), so it
+                // can be changed without knowing the Menu button.
+                self.open_context_menu();
                 return vec![];
             }
             _ => {}
@@ -1074,10 +1198,28 @@ impl LumeApp {
         vec![Effect::SaveConfig]
     }
 
+    /// Closes the confirmation, the focus back on what opened it.
+    fn close_confirm(&mut self) {
+        self.editor.confirm = false;
+        let back_to = if self.editor.remove_image {
+            PHONE_CARD
+        } else {
+            RESTORE
+        };
+        self.editor.remove_image = false;
+        self.pending_focus = Some(PendingFocus::Id(back_to));
+    }
+
+    /// "Remove" of the menu of "Minha imagem": asks first.
+    pub(super) fn confirm_remove_image(&mut self) {
+        self.editor.confirm = true;
+        self.editor.remove_image = true;
+        self.pending_focus = Some(PendingFocus::Id(CONFIRM_CANCEL));
+    }
+
     pub(super) fn back_from_editor(&mut self) -> Vec<Effect> {
         if self.editor.confirm {
-            self.editor.confirm = false;
-            self.pending_focus = Some(PendingFocus::Id(RESTORE));
+            self.close_confirm();
             return vec![];
         }
         if self.editor.from_home {
@@ -1089,6 +1231,29 @@ impl LumeApp {
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::Id(super::settings::ITEM_HOME_SCREEN));
         vec![Effect::SaveConfig]
+    }
+}
+
+/// An outline of dashes along the straight sides of a rounded rectangle (the corners stay open).
+fn dashed_outline(p: &mut Painter, rect: Rect, radius: f32, width: f32, color: Color) {
+    const DASH: f32 = 8.0;
+    const GAP: f32 = 6.0;
+    let paint = Paint::Solid(color);
+    let mut x = rect.x + radius;
+    while x < rect.right() - radius {
+        let w = DASH.min(rect.right() - radius - x);
+        p.list.fill(Rect::new(x, rect.y, w, width), 0.0, paint);
+        p.list
+            .fill(Rect::new(x, rect.bottom() - width, w, width), 0.0, paint);
+        x += DASH + GAP;
+    }
+    let mut y = rect.y + radius;
+    while y < rect.bottom() - radius {
+        let h = DASH.min(rect.bottom() - radius - y);
+        p.list.fill(Rect::new(rect.x, y, width, h), 0.0, paint);
+        p.list
+            .fill(Rect::new(rect.right() - width, y, width, h), 0.0, paint);
+        y += DASH + GAP;
     }
 }
 

@@ -6,7 +6,10 @@
 //! (an animation, the clock), so the shell can sleep otherwise.
 
 mod apps;
+mod confirm;
 mod context_menu;
+#[cfg(test)]
+mod custom_tests;
 mod dock;
 mod dock_move;
 mod editor;
@@ -14,6 +17,8 @@ mod home;
 mod keymap;
 mod page;
 mod painter;
+pub mod qr;
+mod receive;
 mod settings;
 mod splash;
 #[cfg(test)]
@@ -153,6 +158,10 @@ pub enum Screen {
     Tools,
     /// A tool (opened from the Tools menu).
     Tool(tools::ToolKind),
+    /// Receiving a picture from the phone (opened from the editor's phone card).
+    ReceiveImage,
+    /// The picture from the phone in full screen, to apply or not (opened by an upload).
+    ConfirmImage,
 }
 
 /// What is animated.
@@ -277,6 +286,12 @@ pub struct LumeApp {
     bar_start: Option<usize>,
     /// The state of the open tool: exists only while a tool is on screen.
     tool: Option<Box<tools::ToolState>>,
+    /// The Receive image screen, while it is open (its server lives with it).
+    receive: Option<Box<receive::ReceiveState>>,
+    /// After Apply: the session that only tells the phone's page, until its server stops.
+    lingering: Option<crate::companion::Session>,
+    /// The picture the Confirm screen shows, while it is open (and Apply keeping it).
+    confirmation: Option<confirm::Confirmation>,
     /// Whether the platform was asked to keep the screen on (the Tools are open).
     keep_screen_on: bool,
     now_ms: u64,
@@ -297,6 +312,15 @@ impl LumeApp {
         translator: Translator,
         clock: WallClock,
     ) -> LumeApp {
+        // What "Minha imagem" is, for the renderer, and its thumbnail for the editor.
+        let files = crate::wallpaper::custom::files_dir();
+        let custom = files.as_ref().and(config.custom);
+        crate::wallpaper::custom::set_applied(custom);
+        crate::wallpaper::custom::set_thumbnail(
+            custom
+                .and(files.as_deref())
+                .and_then(crate::wallpaper::custom::load_thumbnail),
+        );
         LumeApp {
             catalog,
             icons: AppIcons::default(),
@@ -341,6 +365,9 @@ impl LumeApp {
             interface_ready: false,
             bar_start: None,
             tool: None,
+            receive: None,
+            lingering: None,
+            confirmation: None,
             keep_screen_on: false,
             now_ms: 0,
         }
@@ -501,6 +528,10 @@ impl LumeApp {
     }
 
     fn screen_key(&mut self, key: Key) -> Vec<Effect> {
+        // While Apply keeps the picture, only Home leaves the Confirm screen.
+        if self.screen == Screen::ConfirmImage && self.confirm_busy() && key != Key::Home {
+            return vec![];
+        }
         // A tool takes the keys it wants first; Home always does what it always does.
         if let Screen::Tool(kind) = self.screen {
             if key != Key::Home {
@@ -573,6 +604,8 @@ impl LumeApp {
             Screen::KeyMapPickSetting => return self.activate_pick_setting(id),
             Screen::Tools => return self.activate_tools(id),
             Screen::Tool(_) => return vec![],
+            Screen::ReceiveImage => return self.activate_receive(id),
+            Screen::ConfirmImage => return self.activate_confirm(id),
         }
         match id {
             ids::GEAR => vec![Effect::OpenAndroidSettings],
@@ -631,11 +664,14 @@ impl LumeApp {
             Screen::KeyMap => self.back_from_keymap(),
             Screen::KeyMapPickApp => self.back_from_picker(keymap::ADD_APP),
             Screen::KeyMapPickSetting => self.back_from_picker(keymap::ADD_SETTING),
+            Screen::ReceiveImage => self.close_receive(),
+            Screen::ConfirmImage => self.cancel_confirm(),
         }
     }
 
     /// The Home button: back to the Home tab, scrolled to the top, focus on its first element.
     pub fn go_home(&mut self) {
+        self.end_receive();
         self.editor = editor::EditorState::default();
         self.context_menu = None;
         self.end_dock_move_quietly();
@@ -663,12 +699,15 @@ impl LumeApp {
     /// lume left the screen (another app is in front).
     pub fn went_to_background(&mut self) -> Vec<Effect> {
         self.foreground = false;
+        // No port stays open while another app is in front.
+        self.receive_to_background();
         self.tools_to_background()
     }
 
     /// lume is on the screen again.
     pub fn came_to_foreground(&mut self) {
         self.foreground = true;
+        self.receive_to_foreground();
         self.wake_pending = true;
         self.foreground_since = None;
         self.start_splash();
@@ -783,7 +822,52 @@ impl LumeApp {
         if let Some(at) = self.tool_deadline(now_ms) {
             consider(at);
         }
+        if let Some(at) = self
+            .lingering
+            .as_ref()
+            .and_then(|s| s.next_wake_ms(self.now_ms))
+        {
+            consider(at);
+        }
+        if let Some(at) = self.receive_deadline(now_ms) {
+            consider(at);
+        }
         deadline
+    }
+
+    /// Takes what happened off the loop: the phone companion's news, the end of Apply on the Confirm
+    /// screen, and a source of "Minha imagem" found unreadable. `Some` (with what to save) when the
+    /// screen changed.
+    pub fn poll_background(&mut self, now_ms: u64) -> Option<Vec<Effect>> {
+        // `self.now_ms` stays the time of the last frame or key: the next frame of an animation is
+        // due one frame after it, and moving it here at every turn of the loop would push that
+        // deadline away forever (the splash and the focus would stop moving).
+        let mut changed = self.poll_companion(now_ms);
+        if let Some(session) = self.lingering.as_mut() {
+            session.poll(now_ms);
+            if !session.is_listening() {
+                self.lingering = None;
+            }
+        }
+        let mut effects = Vec::new();
+        if let Some(applied) = self.poll_apply() {
+            changed = true;
+            effects.extend(applied);
+        }
+        if crate::wallpaper::custom::take_broken() && self.config.custom.is_some() {
+            // The source could not be read: the Aurora, and the card goes back to "+ From phone".
+            self.config.forget_custom();
+            crate::wallpaper::custom::set_applied(None);
+            crate::wallpaper::custom::set_thumbnail(None);
+            effects.push(Effect::SaveConfig);
+            changed = true;
+        }
+        changed.then_some(effects)
+    }
+
+    /// Whether something off the loop may have news for the screen (the platform asks often).
+    pub fn waits_for_background(&self) -> bool {
+        self.companion_active() || self.confirm_busy()
     }
 
     /// Whether the settings are on screen and so the TV statistics are being read.
@@ -892,11 +976,14 @@ impl LumeApp {
         self.splash_frame_start(now_ms);
         // A full-screen pattern of the Tools is drawn on the cleared frame, without wallpaper.
         if !self.tool_fullscreen() {
-            p.wallpaper_at(
-                self.config.wallpaper,
-                self.screen != Screen::Main(Tab::Home),
-                self.wallpaper_reveal(),
-            );
+            // The Confirm screen shows the picture received, which is "Minha imagem" meanwhile, as
+            // the wallpaper would be: without darkening.
+            let (wallpaper, dimmed) = match self.screen {
+                Screen::ConfirmImage => (crate::wallpaper::WallpaperId::Custom, false),
+                Screen::Main(Tab::Home) => (self.config.wallpaper, false),
+                _ => (self.config.wallpaper, true),
+            };
+            p.wallpaper_at(wallpaper, dimmed, self.wallpaper_reveal());
         }
         self.content_start = p.list.len();
         self.bar_start = None;
@@ -912,6 +999,8 @@ impl LumeApp {
             Screen::KeyMapPickSetting => self.draw_pick_setting(p),
             Screen::Tools => self.draw_tools(p),
             Screen::Tool(kind) => self.draw_tool(p, kind),
+            Screen::ReceiveImage => self.draw_receive(p),
+            Screen::ConfirmImage => self.draw_confirm(p),
         }
         self.draw_context_menu(p);
         self.draw_toast(p);
