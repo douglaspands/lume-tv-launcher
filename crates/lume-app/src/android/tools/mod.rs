@@ -4,7 +4,6 @@
 
 mod audio;
 mod network;
-mod speed;
 mod storage;
 
 use super::bridge::Bridge;
@@ -94,7 +93,6 @@ impl Tools {
             std::thread::Builder::new()
                 .name("lume-test".into())
                 .spawn(move || match kind {
-                    TestKind::Speed => speed::run(&context),
                     TestKind::Storage => storage::run(&context),
                 });
         match thread {

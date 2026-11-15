@@ -17,8 +17,7 @@
 
     <!-- A normal permission, granted at install: Android lets an app open a socket only with it, and
          a socket is the only way left to list the network interfaces (the connection and address in
-         the TV information screen and the Network tool). Lume opens a connection only for the
-         internet speed test the user starts in the Network tool. -->
+         the TV information screen and the Network tool). Lume never opens a connection. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- A normal permission, granted at install: reads the Wi-Fi signal, link speed and band for

@@ -37,7 +37,7 @@
     <string name="tool_audio">Audio</string>
     <string name="tool_audio_desc">Left and right channels, sweep and audio sync</string>
     <string name="tool_network">Network</string>
-    <string name="tool_network_desc">Connection, Wi-Fi signal and internet speed</string>
+    <string name="tool_network_desc">Connection, gateway and Wi-Fi signal</string>
     <string name="tool_storage">Storage</string>
     <string name="tool_storage_desc">Write and read speed of the internal storage</string>
     <string name="tools_flash_title">Flashing colors</string>
@@ -267,23 +267,6 @@
     <string name="tool_network_good">Good</string>
     <string name="tool_network_fair">Fair</string>
     <string name="tool_network_weak">Weak</string>
-    <string name="tool_network_section_speed">INTERNET SPEED</string>
-    <string name="tool_network_latency">Latency</string>
-    <string name="tool_network_download">Download</string>
-    <string name="tool_network_upload">Upload</string>
-    <string name="tool_network_test">Test speed</string>
-    <string name="tool_network_cancel">Cancel test</string>
-    <string name="tool_network_notice">The test uses an external service (speed.cloudflare.com, by Cloudflare) and uses up to 35 MB of data.</string>
-    <string name="tool_network_measuring_latency">Measuring latency</string>
-    <string name="tool_network_measuring_download">Measuring download</string>
-    <string name="tool_network_measuring_upload">Measuring upload</string>
-    <string name="tool_network_done">Test complete</string>
-    <string name="tool_network_cancelled">Test cancelled</string>
-    <string name="tool_network_failed_offline">No internet access. Try again.</string>
-    <string name="tool_network_failed_server">The test service did not respond. Try again.</string>
-    <string name="tool_network_failed_timeout">Timed out. Try again.</string>
-    <string name="tool_network_unavailable">Test unavailable on this device</string>
-    <string name="tool_network_needs_connection">No connection: the test needs internet</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Up</string>
     <string name="tool_remote_key_down">Down</string>

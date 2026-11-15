@@ -32,7 +32,7 @@
     <string name="tool_audio">Audio</string>
     <string name="tool_audio_desc">Kanal kiri dan kanan, sapuan, dan sinkronisasi</string>
     <string name="tool_network">Jaringan</string>
-    <string name="tool_network_desc">Koneksi, sinyal Wi-Fi, dan kecepatan internet</string>
+    <string name="tool_network_desc">Koneksi, gateway, dan sinyal Wi-Fi</string>
     <string name="tool_storage">Penyimpanan</string>
     <string name="tool_storage_desc">Kecepatan tulis dan baca penyimpanan internal</string>
     <string name="tools_flash_title">Warna berkedip</string>
@@ -262,23 +262,6 @@
     <string name="tool_network_good">Baik</string>
     <string name="tool_network_fair">Cukup</string>
     <string name="tool_network_weak">Lemah</string>
-    <string name="tool_network_section_speed">KECEPATAN INTERNET</string>
-    <string name="tool_network_latency">Latensi</string>
-    <string name="tool_network_download">Unduh</string>
-    <string name="tool_network_upload">Unggah</string>
-    <string name="tool_network_test">Uji kecepatan</string>
-    <string name="tool_network_cancel">Batalkan uji</string>
-    <string name="tool_network_notice">Uji ini memakai layanan eksternal (speed.cloudflare.com, dari Cloudflare) dan memakai hingga 35 MB data.</string>
-    <string name="tool_network_measuring_latency">Mengukur latensi</string>
-    <string name="tool_network_measuring_download">Mengukur unduhan</string>
-    <string name="tool_network_measuring_upload">Mengukur unggahan</string>
-    <string name="tool_network_done">Uji selesai</string>
-    <string name="tool_network_cancelled">Uji dibatalkan</string>
-    <string name="tool_network_failed_offline">Tidak ada akses internet. Coba lagi.</string>
-    <string name="tool_network_failed_server">Layanan uji tidak merespons. Coba lagi.</string>
-    <string name="tool_network_failed_timeout">Waktu habis. Coba lagi.</string>
-    <string name="tool_network_unavailable">Uji tidak tersedia di perangkat ini</string>
-    <string name="tool_network_needs_connection">Tidak ada koneksi: uji memerlukan internet</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Atas</string>
     <string name="tool_remote_key_down">Bawah</string>

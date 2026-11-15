@@ -33,7 +33,7 @@ pub enum ToolKind {
     Remote,
     /// "Áudio": channels, sweep and audio/video sync.
     Audio,
-    /// "Rede": connection, Wi-Fi signal and internet speed.
+    /// "Rede": connection, gateway and Wi-Fi signal.
     Network,
     /// "Armazenamento": sequential write and read speed.
     Storage,
@@ -116,8 +116,6 @@ pub enum AudioCommand {
 /// A test that runs on the platform's `lume-test` thread.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TestKind {
-    /// The internet speed test (`network-diagnostics`).
-    Speed,
     /// The storage write and read test (`storage-diagnostics`).
     Storage,
 }
@@ -138,7 +136,6 @@ pub enum ToolEvent {
 /// Progress of a test, by test.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TestUpdate {
-    Speed(network::SpeedUpdate),
     Storage(storage::StorageUpdate),
 }
 
@@ -198,7 +195,7 @@ impl ToolState {
     fn release_effects(&self) -> Vec<Effect> {
         match self.kind() {
             ToolKind::Audio => vec![Effect::Audio(AudioCommand::Stop)],
-            ToolKind::Network | ToolKind::Storage => vec![Effect::CancelTest],
+            ToolKind::Storage => vec![Effect::CancelTest],
             _ => vec![],
         }
     }

@@ -1,93 +1,25 @@
-//! The Network tool (`network-diagnostics`): how the TV is connected (type, address, gateway), the
-//! Wi-Fi signal and an internet speed test that runs only when the user asks.
+//! The Network tool (`network-diagnostics`): how the TV is connected (type, address, gateway) and,
+//! on Wi-Fi, the signal. Everything is local: the tool never opens a connection.
 //!
 //! The platform reads the connection every 2 s while the tool is on screen ([`NetworkReading`],
-//! D4 and D5 in the `ferramentas` design) and runs the speed test on its `lume-test` thread
-//! ([`SpeedUpdate`], D3). This file holds the state machine, the drawing and the pure parts the
-//! platform uses (the `/proc/net/route` parser, the limits of the test, the median).
+//! D4 and D5 in the `ferramentas` design). This file holds the drawing and the pure parts the
+//! platform uses (the route parsers and the signal classes).
 
 use super::common::{
-    draw_panel, panel_bar, panel_heading, panel_rect, panel_row, wrapped_text, COLUMN_WIDTH,
-    PANEL_PAD_TOP, PANEL_ROW_HEIGHT, PANEL_ROW_PITCH,
+    draw_panel, panel_bar, panel_heading, panel_row, COLUMN_WIDTH, ITEMS_TOP, PANEL_PAD_TOP,
+    PANEL_ROW_HEIGHT, PANEL_ROW_PITCH, PANEL_WIDTH, PANEL_X,
 };
-use super::{TestKind, ToolEvent, ToolKey, ToolKind, ToolReading, ToolState};
+use super::{ToolEvent, ToolKey, ToolKind, ToolReading, ToolState};
 use crate::app::page::LEFT;
 use crate::app::painter::Painter;
 use crate::app::{Effect, Key, LumeApp};
 use crate::device_info::Link;
 use crate::i18n::{StringId, Translator};
 use crate::render::Rect;
-use crate::theme::{vars, StateFlags, THEME};
 use std::net::Ipv4Addr;
 
 /// How often the connection is read while the tool is on screen.
 pub const READING_MS: u64 = 2000;
-
-/// The limits of the speed test (D3): the download stops at 25 MB or 10 s, the upload at 10 MB or
-/// 10 s, whichever comes first.
-pub const DOWNLOAD_MAX_BYTES: u64 = 25_000_000;
-pub const UPLOAD_MAX_BYTES: u64 = 10_000_000;
-pub const PHASE_MS: u64 = 10_000;
-/// How long a connection may take to open (or a response to start) before the test fails.
-pub const CONNECT_MS: u64 = 5_000;
-/// The latency is the median of this many small requests.
-pub const LATENCY_PINGS: usize = 5;
-/// The buffer the download reads into and the upload sends from (reused, never grown).
-pub const BLOCK_BYTES: usize = 64 * 1024;
-/// The least time between two progress updates (the screen shows at most 4 per second).
-pub const PROGRESS_MS: u64 = 250;
-
-/// The phases of the speed test, in order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SpeedPhase {
-    /// The median time of [`LATENCY_PINGS`] empty requests, in ms.
-    Latency,
-    /// Mbps received.
-    Download,
-    /// Mbps sent.
-    Upload,
-}
-
-impl SpeedPhase {
-    pub const ALL: [SpeedPhase; 3] = [
-        SpeedPhase::Latency,
-        SpeedPhase::Download,
-        SpeedPhase::Upload,
-    ];
-
-    fn index(self) -> usize {
-        self as usize
-    }
-}
-
-/// Why the speed test stopped without a result.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SpeedFailure {
-    /// The service could not be reached: no internet, or the name does not resolve.
-    NoInternet,
-    /// The service answered with an error, or the secure connection failed.
-    Server,
-    /// Nothing came back in time.
-    Timeout,
-}
-
-/// Progress or result of the speed test, sent by the platform's `lume-test` thread.
-#[derive(Clone, Debug, PartialEq)]
-pub enum SpeedUpdate {
-    /// This platform cannot run the test (the desktop viewer).
-    Unavailable,
-    /// A phase is running: its partial value (ms or Mbps), when there is one yet, and how far it
-    /// is (0 to 1, by bytes or by time).
-    Progress {
-        phase: SpeedPhase,
-        value: Option<f32>,
-        fraction: f32,
-    },
-    /// The final value of a phase. The upload's ends the test.
-    Result { phase: SpeedPhase, value: f32 },
-    /// The test stopped; it can be started again.
-    Failed(SpeedFailure),
-}
 
 /// The Wi-Fi connection as the bridge's `wifi-signal` command tells it (D4).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -276,261 +208,36 @@ pub fn band_label(freq_mhz: u32, comma: bool) -> Option<String> {
     Some(format!("{band} GHz"))
 }
 
-/// The median of the latency samples (the mean of the two middle ones for an even count).
-pub fn median(samples: &[f32]) -> Option<f32> {
-    if samples.is_empty() {
-        return None;
-    }
-    let mut sorted = samples.to_vec();
-    sorted.sort_by(f32::total_cmp);
-    let middle = sorted.len() / 2;
-    Some(if sorted.len().is_multiple_of(2) {
-        (sorted[middle - 1] + sorted[middle]) / 2.0
-    } else {
-        sorted[middle]
-    })
-}
-
-/// Megabits per second for `bytes` moved in `ms`.
-pub fn mbps(bytes: u64, ms: f32) -> f32 {
-    if ms <= 0.0 {
-        return 0.0;
-    }
-    bytes as f32 * 8.0 / (ms * 1000.0)
-}
-
-/// A speed for the screen: one decimal below 10 Mbps, none above.
-fn format_mbps(value: f32, comma: bool) -> String {
-    let number = if value < 10.0 {
-        format!("{value:.1}")
-    } else {
-        format!("{value:.0}")
-    };
-    let number = if comma {
-        number.replace('.', ",")
-    } else {
-        number
-    };
-    format!("{number} Mbps")
-}
-
-fn format_value(phase: SpeedPhase, value: f32, comma: bool) -> String {
-    match phase {
-        SpeedPhase::Latency => format!("{value:.0} ms"),
-        _ => format_mbps(value, comma),
-    }
-}
-
-/// Where the speed test is.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SpeedState {
-    /// Never started since the tool opened.
-    Idle,
-    /// A phase is running, with how far it is.
-    Running {
-        phase: SpeedPhase,
-        fraction: f32,
-    },
-    /// All three values are final.
-    Done,
-    /// Back (or OK on "Cancelar teste") stopped it.
-    Cancelled,
-    Failed(SpeedFailure),
-    /// The platform cannot run it.
-    Unavailable,
-    /// OK was pressed without any connection: nothing was started.
-    NoConnection,
-}
-
 /// The tool's state, alive only while it is open.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct NetworkTool {
     /// The last reading, `None` until the first one arrives.
     reading: Option<NetworkReading>,
     /// When the last reading arrived (`None`: one is due now).
     read_at: Option<u64>,
-    speed: SpeedState,
-    /// The final value of each phase, by [`SpeedPhase::index`].
-    results: [Option<f32>; 3],
-    /// The partial value of the running phase.
-    partial: Option<f32>,
 }
 
 impl NetworkTool {
     pub(in crate::app) fn new(_now_ms: u64) -> NetworkTool {
-        NetworkTool {
-            reading: None,
-            read_at: None,
-            speed: SpeedState::Idle,
-            results: [None; 3],
-            partial: None,
-        }
-    }
-
-    pub fn speed(&self) -> SpeedState {
-        self.speed
-    }
-
-    fn running(&self) -> bool {
-        matches!(self.speed, SpeedState::Running { .. })
-    }
-
-    /// Whether the last reading says there is no connection at all (before the first reading the
-    /// test may start: the platform tells if it cannot run).
-    fn offline(&self) -> bool {
-        self.reading
-            .as_ref()
-            .is_some_and(|r| r.connection.is_none())
-    }
-
-    /// OK on the test item: starts the test, or cancels the running one.
-    fn toggle(&mut self) -> Vec<Effect> {
-        if self.running() {
-            return self.cancel();
-        }
-        if self.offline() {
-            self.speed = SpeedState::NoConnection;
-            return vec![];
-        }
-        self.speed = SpeedState::Running {
-            phase: SpeedPhase::Latency,
-            fraction: 0.0,
-        };
-        self.results = [None; 3];
-        self.partial = None;
-        vec![Effect::StartTest(TestKind::Speed)]
-    }
-
-    /// Stops the running test. The phases already measured keep their values; the partial value
-    /// of the interrupted phase never becomes final.
-    fn cancel(&mut self) -> Vec<Effect> {
-        self.speed = SpeedState::Cancelled;
-        self.partial = None;
-        vec![Effect::CancelTest]
-    }
-
-    /// Applies the test's progress. Updates of a test that is no longer running (sent before the
-    /// thread noticed the cancellation) are dropped.
-    fn update(&mut self, update: SpeedUpdate) {
-        if !self.running() {
-            return;
-        }
-        match update {
-            SpeedUpdate::Unavailable => self.speed = SpeedState::Unavailable,
-            SpeedUpdate::Progress {
-                phase,
-                value,
-                fraction,
-            } => {
-                self.speed = SpeedState::Running {
-                    phase,
-                    fraction: fraction.clamp(0.0, 1.0),
-                };
-                self.partial = value;
-            }
-            SpeedUpdate::Result { phase, value } => {
-                self.results[phase.index()] = Some(value);
-                self.partial = None;
-                self.speed = match phase {
-                    SpeedPhase::Latency => SpeedState::Running {
-                        phase: SpeedPhase::Download,
-                        fraction: 0.0,
-                    },
-                    SpeedPhase::Download => SpeedState::Running {
-                        phase: SpeedPhase::Upload,
-                        fraction: 0.0,
-                    },
-                    SpeedPhase::Upload => SpeedState::Done,
-                };
-            }
-            SpeedUpdate::Failed(failure) => {
-                self.speed = SpeedState::Failed(failure);
-                self.partial = None;
-            }
-        }
-    }
-
-    /// The value shown for a phase: final, partial while it runs, or a dash.
-    fn shown(&self, phase: SpeedPhase) -> Option<f32> {
-        match self.speed {
-            SpeedState::Running { phase: running, .. } if running == phase => self.partial,
-            _ => self.results[phase.index()],
-        }
-    }
-
-    /// The line under the notice: the phase running or how the test ended.
-    fn status(&self) -> Option<StringId> {
-        Some(match self.speed {
-            SpeedState::Idle => return None,
-            SpeedState::Running { phase, .. } => match phase {
-                SpeedPhase::Latency => StringId::ToolNetworkMeasuringLatency,
-                SpeedPhase::Download => StringId::ToolNetworkMeasuringDownload,
-                SpeedPhase::Upload => StringId::ToolNetworkMeasuringUpload,
-            },
-            SpeedState::Done => StringId::ToolNetworkDone,
-            SpeedState::Cancelled => StringId::ToolNetworkCancelled,
-            SpeedState::Failed(SpeedFailure::NoInternet) => StringId::ToolNetworkFailedOffline,
-            SpeedState::Failed(SpeedFailure::Server) => StringId::ToolNetworkFailedServer,
-            SpeedState::Failed(SpeedFailure::Timeout) => StringId::ToolNetworkFailedTimeout,
-            SpeedState::Unavailable => StringId::ToolNetworkUnavailable,
-            SpeedState::NoConnection => StringId::ToolNetworkNeedsConnection,
-        })
+        NetworkTool::default()
     }
 }
 
-/// The left column: the notice starts this far below the item, the status this far below the
-/// notice, and the progress bar this far below the status.
-const NOTICE_GAP: f32 = 24.0;
-const TEXT_PITCH: f32 = 24.0;
-const STATUS_GAP: f32 = 24.0;
-const PROGRESS_GAP: f32 = 36.0;
-const BAR_HEIGHT: f32 = 8.0;
-/// The panel: the first row of a section sits this far below its heading, the next heading this
-/// far below the last row, and the signal bar this far below the signal row.
+/// The panels: the first row sits this far below the heading; the signal bar this far below the
+/// signal row, and the link row this far below the signal row.
 const HEADING_TO_ROW: f32 = 40.0;
-const SECTION_GAP: f32 = 64.0;
 const SIGNAL_BAR_GAP: f32 = 32.0;
 const SIGNAL_LINK_GAP: f32 = 56.0;
-
-/// The panel's rows, from the top of its inner area, with or without the Wi-Fi section.
-struct PanelLayout {
-    /// The connection rows (type, address, gateway).
-    connection: [f32; 3],
-    /// The signal row, its bar and the link row.
-    wifi: Option<(f32, f32, f32)>,
-    speed_heading: f32,
-    speed: [f32; 3],
-    /// The panel's full height.
-    height: f32,
-}
-
-impl PanelLayout {
-    fn new(wifi: bool) -> PanelLayout {
-        let rows = |top: f32| [top, top + PANEL_ROW_PITCH, top + 2.0 * PANEL_ROW_PITCH];
-        let connection = rows(HEADING_TO_ROW);
-        let mut last = connection[2];
-        let wifi = wifi.then(|| {
-            let signal = last + PANEL_ROW_PITCH;
-            let link = signal + SIGNAL_LINK_GAP;
-            last = link;
-            (signal, signal + SIGNAL_BAR_GAP, link)
-        });
-        let speed_heading = last + SECTION_GAP;
-        let speed = rows(speed_heading + HEADING_TO_ROW);
-        let height = speed[2] + PANEL_ROW_HEIGHT + 2.0 * PANEL_PAD_TOP;
-        PanelLayout {
-            connection,
-            wifi,
-            speed_heading,
-            speed,
-            height,
-        }
-    }
-}
+const BAR_HEIGHT: f32 = 8.0;
+/// The connection panel (left column): heading and three rows.
+const CONNECTION_HEIGHT: f32 =
+    HEADING_TO_ROW + 2.0 * PANEL_ROW_PITCH + PANEL_ROW_HEIGHT + 2.0 * PANEL_PAD_TOP;
+/// The Wi-Fi panel (right column): heading, the signal with its bar, and the link.
+const WIFI_HEIGHT: f32 = HEADING_TO_ROW + SIGNAL_LINK_GAP + PANEL_ROW_HEIGHT + 2.0 * PANEL_PAD_TOP;
 
 impl LumeApp {
-    /// Opening the tool (its state was just created): effects for the platform. The first reading
-    /// is due at once ([`LumeApp::network_reading_deadline`]); nothing touches the network.
+    /// Opening the tool (its state was just created): the first reading is due at once
+    /// ([`LumeApp::network_reading_deadline`]); nothing touches the network.
     pub(in crate::app) fn network_open(&mut self) -> Vec<Effect> {
         vec![]
     }
@@ -542,47 +249,27 @@ impl LumeApp {
         }
     }
 
-    fn network_tool_mut(&mut self) -> Option<&mut NetworkTool> {
-        match self.tool.as_deref_mut() {
-            Some(ToolState::Network(tool)) => Some(tool),
-            _ => None,
-        }
-    }
-
+    /// The connection in a panel at the left and, on Wi-Fi, the signal in a panel at the right.
+    /// The tool has no action, so nothing takes the focus.
     pub(in crate::app) fn draw_network(&mut self, p: &mut Painter) {
         let t = self.translator;
+        self.draw_tool_items(p, &[], 0.0);
         let Some(tool) = self.network_tool() else {
             return;
         };
-        let label = if tool.running() {
-            StringId::ToolNetworkCancel
-        } else {
-            StringId::ToolNetworkTest
-        };
-        let id = ToolKind::Network.first_id();
-        let rects = self.draw_tool_items(p, &[(id, t.get(label).into_owned())], 0.0);
-        let Some(tool) = self.network_tool() else {
-            return;
-        };
-        draw_notice_and_status(p, &t, tool, rects[0]);
-        draw_network_panel(p, &t, tool);
+        let texts = panel_texts(&t, tool);
+        draw_connection_panel(p, &t, &texts);
+        if let Some(wifi) = &texts.wifi {
+            draw_wifi_panel(p, &t, wifi);
+        }
         self.draw_tool_header(p, ToolKind::Network);
     }
 
-    pub(in crate::app) fn network_key(&mut self, key: Key) -> ToolKey {
-        let focused = self.focused() == Some(ToolKind::Network.first_id());
-        let Some(tool) = self.network_tool_mut() else {
-            return ToolKey::Default;
-        };
-        match key {
-            Key::Ok if focused => ToolKey::Handled(tool.toggle()),
-            // Back first stops a running test; the next one closes the tool.
-            Key::Back if tool.running() => ToolKey::Handled(tool.cancel()),
-            _ => ToolKey::Default,
-        }
+    pub(in crate::app) fn network_key(&mut self, _key: Key) -> ToolKey {
+        ToolKey::Default
     }
 
-    /// The screen changes only with the platform's events (readings and progress).
+    /// The screen changes only with the platform's readings.
     pub(in crate::app) fn network_deadline(&self, _now_ms: u64) -> Option<u64> {
         None
     }
@@ -593,16 +280,11 @@ impl LumeApp {
 
     pub(in crate::app) fn network_event(&mut self, event: ToolEvent) {
         let now = self.now_ms;
-        let Some(tool) = self.network_tool_mut() else {
-            return;
-        };
-        match event {
-            ToolEvent::Reading(ToolReading::Network(reading)) => {
-                tool.reading = Some(reading);
-                tool.read_at = Some(now);
-            }
-            ToolEvent::Test(super::TestUpdate::Speed(update)) => tool.update(update),
-            _ => {}
+        if let (ToolEvent::Reading(ToolReading::Network(reading)), Some(ToolState::Network(tool))) =
+            (event, self.tool.as_deref_mut())
+        {
+            tool.reading = Some(reading);
+            tool.read_at = Some(now);
         }
     }
 
@@ -612,12 +294,6 @@ impl LumeApp {
         let tool = self.network_tool()?;
         Some(tool.read_at.map_or(now_ms, |at| at + READING_MS))
     }
-
-    /// The tool's state, for tests.
-    #[cfg(test)]
-    fn network_state(&self) -> &NetworkTool {
-        self.network_tool().expect("the network tool is open")
-    }
 }
 
 /// Whether numbers use a decimal comma (every language lume ships but English).
@@ -625,52 +301,14 @@ fn decimal_comma(t: &Translator) -> bool {
     !t.language().starts_with("en")
 }
 
-/// The external service notice under the test item, then the status line and, while a phase
-/// runs, its progress bar.
-fn draw_notice_and_status(p: &mut Painter, t: &Translator, tool: &NetworkTool, item: Rect) {
-    let muted = p.style(&THEME.breadcrumb, StateFlags::NONE);
-    let top = item.bottom() + NOTICE_GAP;
-    let notice = Rect::new(LEFT, top, COLUMN_WIDTH, TEXT_PITCH);
-    let lines = wrapped_text(
-        p,
-        &t.get(StringId::ToolNetworkNotice),
-        notice,
-        TEXT_PITCH,
-        &muted,
-    );
-    let Some(status) = tool.status() else {
-        return;
-    };
-    let mut strong = muted;
-    strong.color = vars::TEXT;
-    strong.font_weight = 700;
-    let status_top = top + lines as f32 * TEXT_PITCH + STATUS_GAP;
-    let lines = wrapped_text(
-        p,
-        &t.get(status),
-        Rect::new(LEFT, status_top, COLUMN_WIDTH, TEXT_PITCH),
-        TEXT_PITCH,
-        &strong,
-    );
-    if let SpeedState::Running { fraction, .. } = tool.speed {
-        let bar_top = status_top + (lines.max(1) - 1) as f32 * TEXT_PITCH + PROGRESS_GAP;
-        panel_bar(
-            p,
-            Rect::new(LEFT, bar_top, COLUMN_WIDTH, BAR_HEIGHT),
-            Some(fraction),
-        );
-    }
-}
-
-/// A label and its value, as one row of the panel shows them.
+/// A label and its value, as one row of a panel shows them.
 type PanelRow = (String, String);
 
-/// What the panel says, apart from where: the connection rows, the Wi-Fi rows (signal and link,
-/// only on Wi-Fi) with the signal bar, and the test's rows.
+/// What the panels say: the connection rows, and on Wi-Fi the signal and link rows with how full
+/// the signal bar is.
 struct PanelTexts {
     connection: [PanelRow; 3],
     wifi: Option<([PanelRow; 2], Option<f32>)>,
-    speed: [PanelRow; 3],
 }
 
 fn panel_texts(t: &Translator, tool: &NetworkTool) -> PanelTexts {
@@ -722,10 +360,6 @@ fn panel_texts(t: &Translator, tool: &NetworkTool) -> PanelTexts {
         )
     });
 
-    let value = |phase: SpeedPhase| {
-        tool.shown(phase)
-            .map_or_else(dash, |v| format_value(phase, v, comma))
-    };
     PanelTexts {
         connection: [
             (label(StringId::TvConnection), link),
@@ -733,56 +367,53 @@ fn panel_texts(t: &Translator, tool: &NetworkTool) -> PanelTexts {
             (label(StringId::ToolNetworkGateway), gateway),
         ],
         wifi,
-        speed: [
-            (
-                label(StringId::ToolNetworkLatency),
-                value(SpeedPhase::Latency),
-            ),
-            (
-                label(StringId::ToolNetworkDownload),
-                value(SpeedPhase::Download),
-            ),
-            (
-                label(StringId::ToolNetworkUpload),
-                value(SpeedPhase::Upload),
-            ),
-        ],
     }
 }
 
-/// The panel at the right: the connection, the Wi-Fi signal (only on Wi-Fi) and the test's values.
-fn draw_network_panel(p: &mut Painter, t: &Translator, tool: &NetworkTool) {
-    let texts = panel_texts(t, tool);
-    let layout = PanelLayout::new(texts.wifi.is_some());
-    let inner = draw_panel(p, panel_rect(layout.height));
-    let line = |y: f32| Rect::new(inner.x, inner.y + y, inner.w, PANEL_ROW_HEIGHT);
-
+/// The connection (type, address, gateway) in a panel in the left column.
+fn draw_connection_panel(p: &mut Painter, t: &Translator, texts: &PanelTexts) {
+    let inner = draw_panel(
+        p,
+        Rect::new(LEFT, ITEMS_TOP, COLUMN_WIDTH, CONNECTION_HEIGHT),
+    );
     panel_heading(p, inner, &t.get(StringId::ToolNetworkSectionConnection));
-    for ((label, value), y) in texts.connection.iter().zip(layout.connection) {
-        panel_row(p, line(y), label, value);
+    for (index, (label, value)) in texts.connection.iter().enumerate() {
+        let y = inner.y + HEADING_TO_ROW + index as f32 * PANEL_ROW_PITCH;
+        panel_row(
+            p,
+            Rect::new(inner.x, y, inner.w, PANEL_ROW_HEIGHT),
+            label,
+            value,
+        );
     }
-    if let (Some((rows, fraction)), Some((signal_y, bar_y, link_y))) = (&texts.wifi, layout.wifi) {
-        panel_row(p, line(signal_y), &rows[0].0, &rows[0].1);
-        let bar = Rect::new(inner.x, inner.y + bar_y, inner.w, BAR_HEIGHT);
-        panel_bar(p, bar, *fraction);
-        panel_row(p, line(link_y), &rows[1].0, &rows[1].1);
-    }
-    let heading = Rect::new(inner.x, inner.y + layout.speed_heading, inner.w, 20.0);
-    panel_heading(p, heading, &t.get(StringId::ToolNetworkSectionSpeed));
-    for ((label, value), y) in texts.speed.iter().zip(layout.speed) {
-        panel_row(p, line(y), label, value);
-    }
+}
+
+/// The Wi-Fi signal (with its bar) and link in a panel in the right column.
+fn draw_wifi_panel(p: &mut Painter, t: &Translator, wifi: &([PanelRow; 2], Option<f32>)) {
+    let (rows, fraction) = wifi;
+    let inner = draw_panel(p, Rect::new(PANEL_X, ITEMS_TOP, PANEL_WIDTH, WIFI_HEIGHT));
+    panel_heading(p, inner, &t.get(StringId::TvLinkWifi));
+    let line = |y: f32| Rect::new(inner.x, inner.y + y, inner.w, PANEL_ROW_HEIGHT);
+    panel_row(p, line(HEADING_TO_ROW), &rows[0].0, &rows[0].1);
+    let bar = Rect::new(
+        inner.x,
+        inner.y + HEADING_TO_ROW + SIGNAL_BAR_GAP,
+        inner.w,
+        BAR_HEIGHT,
+    );
+    panel_bar(p, bar, *fraction);
+    panel_row(
+        p,
+        line(HEADING_TO_ROW + SIGNAL_LINK_GAP),
+        &rows[1].0,
+        &rows[1].1,
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::tests::{open_tool, Rig};
-    use crate::app::tools::TestUpdate;
-
-    fn speed(update: SpeedUpdate) -> ToolEvent {
-        ToolEvent::Test(TestUpdate::Speed(update))
-    }
 
     fn reading(connection: Option<(Link, Ipv4Addr)>) -> ToolEvent {
         ToolEvent::Reading(ToolReading::Network(NetworkReading {
@@ -800,55 +431,80 @@ mod tests {
         Some((Link::WiFi, Ipv4Addr::new(192, 168, 1, 20)))
     }
 
-    /// Everything the screen says (item, status and panel), joined, after drawing a frame.
+    /// Everything the panels say, joined, after drawing a frame.
     fn frame_text(rig: &mut Rig) -> String {
         rig.frame();
         let t = rig.app.translator;
-        let tool = rig.app.network_state();
-        let texts = panel_texts(&t, tool);
-        let mut all = vec![t
-            .get(if tool.running() {
-                StringId::ToolNetworkCancel
-            } else {
-                StringId::ToolNetworkTest
-            })
-            .into_owned()];
-        all.extend(tool.status().map(|s| t.get(s).into_owned()));
-        let rows = texts
+        let texts = panel_texts(&t, rig.app.network_tool().expect("open"));
+        texts
             .connection
             .iter()
             .chain(texts.wifi.iter().flat_map(|(rows, _)| rows.iter()))
-            .chain(texts.speed.iter());
-        all.extend(rows.map(|(label, value)| format!("{label}: {value}")));
-        all.join("\n")
+            .map(|(label, value)| format!("{label}: {value}"))
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     #[test]
     fn the_layout_is_on_the_ruler() {
-        let with = PanelLayout::new(true);
-        let without = PanelLayout::new(false);
         crate::app::assert_on_ruler(&[
-            ("NOTICE_GAP", NOTICE_GAP),
-            ("TEXT_PITCH", TEXT_PITCH),
-            ("STATUS_GAP", STATUS_GAP),
-            ("PROGRESS_GAP", PROGRESS_GAP),
-            ("BAR_HEIGHT", BAR_HEIGHT),
             ("HEADING_TO_ROW", HEADING_TO_ROW),
-            ("SECTION_GAP", SECTION_GAP),
             ("SIGNAL_BAR_GAP", SIGNAL_BAR_GAP),
             ("SIGNAL_LINK_GAP", SIGNAL_LINK_GAP),
-            ("panel height with Wi-Fi", with.height),
-            ("panel height without Wi-Fi", without.height),
-            ("speed heading with Wi-Fi", with.speed_heading),
+            ("BAR_HEIGHT", BAR_HEIGHT),
+            ("CONNECTION_HEIGHT", CONNECTION_HEIGHT),
+            ("WIFI_HEIGHT", WIFI_HEIGHT),
         ]);
-        // The tallest panel stays inside the safe area of the 720 canvas.
-        let bottom = panel_rect(with.height).bottom();
-        assert!(bottom <= 720.0 - crate::display::SAFE_MARGIN_Y, "{bottom}");
-        let (_, bar, link) = with.wifi.unwrap();
+        // The bar sits between the signal and the link.
+        const { assert!(SIGNAL_BAR_GAP + BAR_HEIGHT < SIGNAL_LINK_GAP) };
+    }
+
+    #[test]
+    fn opening_reads_at_once_then_every_two_seconds_and_opens_no_connection() {
+        let mut rig = Rig::new();
+        let effects = open_tool(&mut rig, ToolKind::Network);
         assert!(
-            bar + BAR_HEIGHT < link,
-            "the bar sits between the signal and the link"
+            effects.iter().all(|e| matches!(e, Effect::KeepScreenOn(_))),
+            "no test, no connection: {effects:?}"
         );
+        let now = rig.now;
+        assert_eq!(rig.app.network_reading_deadline(now), Some(now));
+        rig.app.tool_event(reading(wifi()), now);
+        assert_eq!(
+            rig.app.network_reading_deadline(now),
+            Some(now + READING_MS)
+        );
+    }
+
+    #[test]
+    fn wifi_shows_the_signal_and_cable_hides_it() {
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Network);
+        rig.app.tool_event(reading(wifi()), rig.now);
+        let text = frame_text(&mut rig);
+        for expected in [
+            "Wi-Fi",
+            "192.168.1.20",
+            "192.168.1.1",
+            "-60 dBm · Bom",
+            "300 Mbps · 5 GHz",
+        ] {
+            assert!(text.contains(expected), "{expected} in {text}");
+        }
+        assert!(!text.contains("SSID"));
+        let cable = Some((Link::Ethernet, Ipv4Addr::new(10, 0, 0, 2)));
+        rig.app.tool_event(reading(cable), rig.now);
+        let text = frame_text(&mut rig);
+        assert!(text.contains("Cabo Ethernet"), "{text}");
+        assert!(!text.contains("dBm"), "no Wi-Fi panel on cable");
+    }
+
+    #[test]
+    fn back_closes_the_tool_at_once() {
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Network);
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &crate::app::Screen::Tools);
     }
 
     #[test]
@@ -975,205 +631,5 @@ mod tests {
         );
         assert_eq!(parse_default_gateway(""), None);
         assert_eq!(parse_default_gateway("h\nx y z\n"), None);
-    }
-
-    #[test]
-    fn median_and_speed() {
-        assert_eq!(median(&[]), None);
-        assert_eq!(median(&[30.0, 10.0, 250.0, 12.0, 11.0]), Some(12.0));
-        assert_eq!(median(&[10.0, 20.0]), Some(15.0));
-        assert_eq!(mbps(1_250_000, 1000.0), 10.0);
-        assert_eq!(mbps(1, 0.0), 0.0);
-        assert_eq!(format_mbps(9.44, true), "9,4 Mbps");
-        assert_eq!(format_mbps(312.4, true), "312 Mbps");
-        assert_eq!(format_value(SpeedPhase::Latency, 23.4, true), "23 ms");
-    }
-
-    #[test]
-    fn opening_reads_at_once_then_every_two_seconds_and_never_starts_the_test() {
-        let mut rig = Rig::new();
-        let effects = open_tool(&mut rig, ToolKind::Network);
-        assert!(!effects.contains(&Effect::StartTest(TestKind::Speed)));
-        let now = rig.now;
-        assert_eq!(rig.app.network_reading_deadline(now), Some(now));
-        rig.app.tool_event(reading(wifi()), now);
-        assert_eq!(
-            rig.app.network_reading_deadline(now),
-            Some(now + READING_MS)
-        );
-        rig.advance(5000);
-        assert!(!rig.app.network_state().running(), "never automatic");
-    }
-
-    #[test]
-    fn wifi_shows_the_signal_and_cable_hides_it() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.app.tool_event(reading(wifi()), rig.now);
-        let text = frame_text(&mut rig);
-        for expected in [
-            "Wi-Fi",
-            "192.168.1.20",
-            "192.168.1.1",
-            "-60 dBm · Bom",
-            "300 Mbps · 5 GHz",
-        ] {
-            assert!(text.contains(expected), "{expected} in {text}");
-        }
-        assert!(!text.contains("SSID"));
-        let cable = Some((Link::Ethernet, Ipv4Addr::new(10, 0, 0, 2)));
-        rig.app.tool_event(reading(cable), rig.now);
-        let text = frame_text(&mut rig);
-        assert!(text.contains("Cabo Ethernet"), "{text}");
-        assert!(!text.contains("dBm"), "no Wi-Fi section on cable");
-    }
-
-    #[test]
-    fn without_connection_the_test_does_not_start() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.app.tool_event(reading(None), rig.now);
-        let effects = rig.press(Key::Ok);
-        assert!(effects.is_empty(), "{effects:?}");
-        assert_eq!(rig.app.network_state().speed(), SpeedState::NoConnection);
-        assert!(frame_text(&mut rig).contains("Sem conexão"));
-    }
-
-    #[test]
-    fn a_full_test_shows_partial_values_then_the_three_results() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.app.tool_event(reading(wifi()), rig.now);
-        let effects = rig.press(Key::Ok);
-        assert_eq!(effects, vec![Effect::StartTest(TestKind::Speed)]);
-        let now = rig.now;
-        rig.app.tool_event(
-            speed(SpeedUpdate::Progress {
-                phase: SpeedPhase::Latency,
-                value: Some(21.0),
-                fraction: 0.4,
-            }),
-            now,
-        );
-        let text = frame_text(&mut rig);
-        assert!(
-            text.contains("21 ms") && text.contains("Medindo a latência"),
-            "{text}"
-        );
-        rig.app.tool_event(
-            speed(SpeedUpdate::Result {
-                phase: SpeedPhase::Latency,
-                value: 20.0,
-            }),
-            now,
-        );
-        rig.app.tool_event(
-            speed(SpeedUpdate::Progress {
-                phase: SpeedPhase::Download,
-                value: Some(55.5),
-                fraction: 0.5,
-            }),
-            now,
-        );
-        assert_eq!(
-            rig.app.network_state().speed(),
-            SpeedState::Running {
-                phase: SpeedPhase::Download,
-                fraction: 0.5
-            }
-        );
-        let text = frame_text(&mut rig);
-        assert!(text.contains("20 ms") && text.contains("56 Mbps"), "{text}");
-        for (phase, value) in [(SpeedPhase::Download, 94.0), (SpeedPhase::Upload, 8.25)] {
-            rig.app
-                .tool_event(speed(SpeedUpdate::Result { phase, value }), now);
-        }
-        assert_eq!(rig.app.network_state().speed(), SpeedState::Done);
-        let text = frame_text(&mut rig);
-        for expected in ["20 ms", "94 Mbps", "8,2 Mbps", "Teste concluído"] {
-            assert!(text.contains(expected), "{expected} in {text}");
-        }
-    }
-
-    #[test]
-    fn back_cancels_without_keeping_the_partial_value_then_closes() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.press(Key::Ok);
-        let now = rig.now;
-        rig.app.tool_event(
-            speed(SpeedUpdate::Progress {
-                phase: SpeedPhase::Download,
-                value: Some(40.0),
-                fraction: 0.2,
-            }),
-            now,
-        );
-        let effects = rig.press(Key::Back);
-        assert_eq!(effects, vec![Effect::CancelTest]);
-        assert_eq!(rig.app.network_state().speed(), SpeedState::Cancelled);
-        // A late update from the thread changes nothing.
-        rig.app.tool_event(
-            speed(SpeedUpdate::Result {
-                phase: SpeedPhase::Download,
-                value: 41.0,
-            }),
-            rig.now,
-        );
-        assert_eq!(rig.app.network_state().shown(SpeedPhase::Download), None);
-        let text = frame_text(&mut rig);
-        assert!(
-            !text.contains("40 Mbps") && text.contains("Teste cancelado"),
-            "{text}"
-        );
-        rig.press(Key::Back);
-        assert_eq!(rig.app.tool_kind(), None, "the second Back closes the tool");
-    }
-
-    #[test]
-    fn ok_on_the_running_test_cancels_it() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.press(Key::Ok);
-        assert!(frame_text(&mut rig).contains("Cancelar teste"));
-        assert_eq!(rig.press(Key::Ok), vec![Effect::CancelTest]);
-        assert_eq!(rig.app.network_state().speed(), SpeedState::Cancelled);
-    }
-
-    #[test]
-    fn a_failure_shows_a_message_and_the_test_can_be_repeated() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.press(Key::Ok);
-        rig.app.tool_event(
-            speed(SpeedUpdate::Result {
-                phase: SpeedPhase::Latency,
-                value: 30.0,
-            }),
-            rig.now,
-        );
-        rig.app.tool_event(
-            speed(SpeedUpdate::Failed(SpeedFailure::NoInternet)),
-            rig.now,
-        );
-        assert_eq!(
-            rig.app.network_state().speed(),
-            SpeedState::Failed(SpeedFailure::NoInternet)
-        );
-        assert!(frame_text(&mut rig).contains("Sem acesso à internet"));
-        // Repeating clears the previous values.
-        assert_eq!(rig.press(Key::Ok), vec![Effect::StartTest(TestKind::Speed)]);
-        assert!(rig.app.network_state().running());
-        assert_eq!(rig.app.network_state().shown(SpeedPhase::Latency), None);
-    }
-
-    #[test]
-    fn the_desktop_answers_unavailable() {
-        let mut rig = Rig::new();
-        open_tool(&mut rig, ToolKind::Network);
-        rig.press(Key::Ok);
-        rig.app.tool_event(speed(SpeedUpdate::Unavailable), rig.now);
-        assert_eq!(rig.app.network_state().speed(), SpeedState::Unavailable);
-        assert!(frame_text(&mut rig).contains("indisponível"));
     }
 }

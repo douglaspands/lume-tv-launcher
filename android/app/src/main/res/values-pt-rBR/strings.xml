@@ -32,7 +32,7 @@
     <string name="tool_audio">Áudio</string>
     <string name="tool_audio_desc">Canais esquerdo e direito, varredura e sincronia</string>
     <string name="tool_network">Rede</string>
-    <string name="tool_network_desc">Conexão, sinal do Wi-Fi e velocidade da internet</string>
+    <string name="tool_network_desc">Conexão, gateway e sinal do Wi-Fi</string>
     <string name="tool_storage">Armazenamento</string>
     <string name="tool_storage_desc">Velocidade de escrita e leitura do armazenamento interno</string>
     <string name="tools_flash_title">Cores piscando</string>
@@ -263,23 +263,6 @@
     <string name="tool_network_good">Bom</string>
     <string name="tool_network_fair">Regular</string>
     <string name="tool_network_weak">Fraco</string>
-    <string name="tool_network_section_speed">VELOCIDADE DA INTERNET</string>
-    <string name="tool_network_latency">Latência</string>
-    <string name="tool_network_download">Download</string>
-    <string name="tool_network_upload">Upload</string>
-    <string name="tool_network_test">Testar velocidade</string>
-    <string name="tool_network_cancel">Cancelar teste</string>
-    <string name="tool_network_notice">O teste usa um serviço externo (speed.cloudflare.com, da Cloudflare) e consome até 35 MB de dados.</string>
-    <string name="tool_network_measuring_latency">Medindo a latência</string>
-    <string name="tool_network_measuring_download">Medindo o download</string>
-    <string name="tool_network_measuring_upload">Medindo o upload</string>
-    <string name="tool_network_done">Teste concluído</string>
-    <string name="tool_network_cancelled">Teste cancelado</string>
-    <string name="tool_network_failed_offline">Sem acesso à internet. Tente de novo.</string>
-    <string name="tool_network_failed_server">O serviço do teste não respondeu. Tente de novo.</string>
-    <string name="tool_network_failed_timeout">Tempo esgotado. Tente de novo.</string>
-    <string name="tool_network_unavailable">Teste indisponível neste aparelho</string>
-    <string name="tool_network_needs_connection">Sem conexão: o teste precisa de internet</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Cima</string>
     <string name="tool_remote_key_down">Baixo</string>

@@ -3931,7 +3931,10 @@ mod tools_base {
         assert_eq!(rig.app.scroll_y, 0.0, "the list does not move");
         let bottom = super::super::tools::common::item_rect(5).bottom();
         let safe = crate::display::Display::new(1280, 720).safe_area().bottom();
-        assert!(bottom <= safe, "the last item ends at {bottom}, inside {safe}");
+        assert!(
+            bottom <= safe,
+            "the last item ends at {bottom}, inside {safe}"
+        );
     }
 
     #[test]
@@ -3993,12 +3996,10 @@ mod tools_base {
 
     #[test]
     fn leaving_a_tool_with_a_test_cancels_it() {
-        for kind in [ToolKind::Network, ToolKind::Storage] {
-            let mut rig = Rig::new();
-            open_tool(&mut rig, kind);
-            let effects = rig.press(Key::Home);
-            assert!(effects.contains(&Effect::CancelTest), "{kind:?}");
-        }
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Storage);
+        let effects = rig.press(Key::Home);
+        assert!(effects.contains(&Effect::CancelTest));
     }
 
     #[test]

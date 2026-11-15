@@ -22,6 +22,3 @@ jni = "0.22"
 khronos-egl = { version = "6", features = ["dynamic"] }
 libc = "0.2"
 ndk = { version = "0.9", features = ["audio"] }
-# The internet speed test (Tools › Network): a blocking HTTPS client with rustls (ring) and the
-# embedded webpki roots, so it never depends on the system's certificate store. No gzip, no url.
-ureq = { version = "=3.1.2", default-features = false, features = ["rustls"] }

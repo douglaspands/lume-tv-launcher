@@ -32,7 +32,7 @@
     <string name="tool_audio">Audio</string>
     <string name="tool_audio_desc">Canales izquierdo y derecho, barrido y sincronía</string>
     <string name="tool_network">Red</string>
-    <string name="tool_network_desc">Conexión, señal Wi-Fi y velocidad de internet</string>
+    <string name="tool_network_desc">Conexión, puerta de enlace y señal Wi-Fi</string>
     <string name="tool_storage">Almacenamiento</string>
     <string name="tool_storage_desc">Velocidad de escritura y lectura del almacenamiento interno</string>
     <string name="tools_flash_title">Colores parpadeantes</string>
@@ -263,23 +263,6 @@
     <string name="tool_network_good">Buena</string>
     <string name="tool_network_fair">Regular</string>
     <string name="tool_network_weak">Débil</string>
-    <string name="tool_network_section_speed">VELOCIDAD DE INTERNET</string>
-    <string name="tool_network_latency">Latencia</string>
-    <string name="tool_network_download">Descarga</string>
-    <string name="tool_network_upload">Subida</string>
-    <string name="tool_network_test">Probar velocidad</string>
-    <string name="tool_network_cancel">Cancelar prueba</string>
-    <string name="tool_network_notice">La prueba usa un servicio externo (speed.cloudflare.com, de Cloudflare) y consume hasta 35 MB de datos.</string>
-    <string name="tool_network_measuring_latency">Midiendo la latencia</string>
-    <string name="tool_network_measuring_download">Midiendo la descarga</string>
-    <string name="tool_network_measuring_upload">Midiendo la subida</string>
-    <string name="tool_network_done">Prueba completada</string>
-    <string name="tool_network_cancelled">Prueba cancelada</string>
-    <string name="tool_network_failed_offline">Sin acceso a internet. Inténtalo de nuevo.</string>
-    <string name="tool_network_failed_server">El servicio de la prueba no respondió. Inténtalo de nuevo.</string>
-    <string name="tool_network_failed_timeout">Se agotó el tiempo. Inténtalo de nuevo.</string>
-    <string name="tool_network_unavailable">Prueba no disponible en este dispositivo</string>
-    <string name="tool_network_needs_connection">Sin conexión: la prueba necesita internet</string>
     <!-- Tools: remote and storage -->
     <string name="tool_remote_key_up">Arriba</string>
     <string name="tool_remote_key_down">Abajo</string>
