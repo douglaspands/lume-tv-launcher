@@ -446,7 +446,7 @@ fn focus_on(rig: &mut Rig, id: FocusId) {
 }
 
 #[test]
-fn the_lume_settings_start_on_the_first_item_and_list_four() {
+fn the_lume_settings_start_on_the_first_item_and_list_five() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE));
@@ -456,9 +456,11 @@ fn the_lume_settings_start_on_the_first_item_and_list_four() {
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 2));
     rig.press(Key::Down);
     assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 3));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 4));
     assert!(
         !rig.app.focus.move_focus(Direction::Down),
-        "four items only"
+        "five items only"
     );
 }
 
@@ -576,7 +578,7 @@ fn without_an_inputs_panel_the_button_is_not_there() {
 fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
-    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.about_scroll, 0.0);
     rig.press(Key::Down);
@@ -585,7 +587,7 @@ fn the_about_screen_scrolls_and_goes_back_to_the_settings() {
     assert_eq!(rig.app.about_scroll, 0.0);
     rig.press(Key::Back);
     assert_eq!(rig.app.screen(), &Screen::Settings);
-    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 3));
+    assert_eq!(rig.focused(), Some(ids::SETTINGS_BASE + 4));
 }
 
 #[test]
@@ -1323,7 +1325,7 @@ fn every_screen_starts_with_the_wallpaper_and_has_no_flat_background() {
     let mut rig = Rig::new();
     open_settings(&mut rig);
     lists.push(("settings", rig.frame()));
-    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     lists.push(("about", rig.frame()));
     let mut rig = Rig::new();
@@ -2190,7 +2192,7 @@ fn the_statistics_are_read_only_while_the_settings_are_on_screen() {
     );
 
     // Leaving for the About screen, the editor or the background stops the readings.
-    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Ok]);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down, Key::Ok]);
     assert_eq!(rig.app.screen(), &Screen::About);
     assert_eq!(rig.app.stats_deadline(rig.now), None);
     rig.press(Key::Back);
@@ -3884,4 +3886,146 @@ fn handle_keycode_triggers_shortcuts_for_commands_settings_and_apps() {
     rig.app.go_home();
     let effects = rig.app.handle_keycode(20, rig.now); // KEYCODE_DPAD_DOWN
     assert!(effects.is_empty());
+}
+
+/// Opens the Tools menu from the settings ("Ferramentas" is the fourth item).
+pub(super) fn open_tools(rig: &mut Rig) {
+    open_settings(rig);
+    rig.press_all(&[Key::Down, Key::Down, Key::Down]);
+    assert_eq!(rig.focused(), Some(super::settings::ITEM_TOOLS));
+    rig.press(Key::Ok);
+    assert_eq!(rig.app.screen(), &Screen::Tools);
+}
+
+/// Opens a tool from the Tools menu and returns the effects of opening it.
+pub(super) fn open_tool(rig: &mut Rig, kind: super::tools::ToolKind) -> Vec<Effect> {
+    open_tools(rig);
+    focus_on(rig, kind.menu_id());
+    let effects = rig.press(Key::Ok);
+    assert_eq!(rig.app.screen(), &Screen::Tool(kind));
+    effects
+}
+
+mod tools_base {
+    use super::*;
+    use crate::app::tools::{AudioCommand, ToolKind};
+
+    #[test]
+    fn the_menu_lists_the_six_tools_in_order_with_the_focus_on_the_first() {
+        let mut rig = Rig::new();
+        open_tools(&mut rig);
+        assert_eq!(rig.focused(), Some(ToolKind::Display.menu_id()));
+        for kind in &ToolKind::ALL[1..] {
+            rig.press(Key::Down);
+            assert_eq!(rig.focused(), Some(kind.menu_id()));
+        }
+        assert!(!rig.app.focus.move_focus(Direction::Down), "six tools only");
+    }
+
+    #[test]
+    fn the_six_tools_fit_the_safe_area_without_scrolling() {
+        let mut rig = Rig::new();
+        open_tools(&mut rig);
+        rig.press_all(&[Key::Down; 5]);
+        rig.advance(1000);
+        assert_eq!(rig.app.scroll_y, 0.0, "the list does not move");
+        let bottom = super::super::tools::common::item_rect(5).bottom();
+        let safe = crate::display::Display::new(1280, 720).safe_area().bottom();
+        assert!(bottom <= safe, "the last item ends at {bottom}, inside {safe}");
+    }
+
+    #[test]
+    fn back_goes_step_by_step_to_the_lume_tile() {
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Audio);
+        assert_eq!(rig.app.tool_kind(), Some(ToolKind::Audio));
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::Tools);
+        assert_eq!(rig.focused(), Some(ToolKind::Audio.menu_id()));
+        assert_eq!(rig.app.tool_kind(), None, "the tool's state is dropped");
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::Settings);
+        assert_eq!(rig.focused(), Some(super::super::settings::ITEM_TOOLS));
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+        assert_eq!(rig.focused(), Some(ids::GRID_SETTINGS));
+    }
+
+    #[test]
+    fn no_tool_state_is_left_after_going_back_to_the_settings() {
+        for kind in ToolKind::ALL {
+            let mut rig = Rig::new();
+            open_tool(&mut rig, kind);
+            assert_eq!(rig.app.tool_kind(), Some(kind));
+            // The remote control test closes only with Back twice (remote-mapping).
+            let backs = if kind == ToolKind::Remote { 3 } else { 2 };
+            rig.press_all(&vec![Key::Back; backs]);
+            assert_eq!(rig.app.screen(), &Screen::Settings);
+            assert!(rig.app.tool.is_none());
+        }
+    }
+
+    #[test]
+    fn the_screen_is_kept_on_only_inside_the_tools() {
+        let mut rig = Rig::new();
+        open_settings(&mut rig);
+        rig.press_all(&[Key::Down, Key::Down, Key::Down]);
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, vec![Effect::KeepScreenOn(true)]);
+        focus_on(&mut rig, ToolKind::Picture.menu_id());
+        let effects = rig.press(Key::Ok);
+        assert!(!effects.contains(&Effect::KeepScreenOn(true)), "asked once");
+        rig.press(Key::Back);
+        let effects = rig.press(Key::Back);
+        assert_eq!(effects, vec![Effect::KeepScreenOn(false)]);
+    }
+
+    #[test]
+    fn home_inside_a_tool_releases_it_and_lets_the_screen_sleep() {
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Audio);
+        let effects = rig.press(Key::Home);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert!(effects.contains(&Effect::Audio(AudioCommand::Stop)));
+        assert!(effects.contains(&Effect::KeepScreenOn(false)));
+        assert!(rig.app.tool.is_none());
+    }
+
+    #[test]
+    fn leaving_a_tool_with_a_test_cancels_it() {
+        for kind in [ToolKind::Network, ToolKind::Storage] {
+            let mut rig = Rig::new();
+            open_tool(&mut rig, kind);
+            let effects = rig.press(Key::Home);
+            assert!(effects.contains(&Effect::CancelTest), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn going_to_the_background_stops_sound_and_tests() {
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Audio);
+        assert_eq!(
+            rig.app.went_to_background(),
+            vec![Effect::Audio(AudioCommand::Stop)]
+        );
+        let mut rig = Rig::new();
+        open_tool(&mut rig, ToolKind::Storage);
+        assert_eq!(rig.app.went_to_background(), vec![Effect::CancelTest]);
+        let mut rig = Rig::new();
+        open_settings(&mut rig);
+        assert!(rig.app.went_to_background().is_empty());
+    }
+
+    #[test]
+    fn outside_the_tools_nothing_asks_for_frames() {
+        let mut rig = Rig::new();
+        open_tools(&mut rig);
+        rig.advance(2000);
+        let deadline = rig.app.next_deadline(rig.now);
+        assert!(
+            deadline.is_none_or(|d| d >= rig.now + 1000),
+            "the menu at rest only waits for the clock: {deadline:?}"
+        );
+    }
 }
