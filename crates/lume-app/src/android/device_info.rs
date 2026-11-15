@@ -61,7 +61,7 @@ fn storage() -> Option<(u64, u64)> {
 ///
 /// `getifaddrs` is blocked for apps on Android 11, but listing the IPv4 interfaces with
 /// `SIOCGIFCONF` is not.
-fn network() -> Option<(Link, Ipv4Addr)> {
+pub(super) fn network() -> Option<(Link, Ipv4Addr)> {
     // SAFETY: a plain datagram socket, closed below.
     let socket = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if socket < 0 {

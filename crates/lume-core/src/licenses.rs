@@ -42,7 +42,17 @@ mod tests {
         assert!(lines[0].contains("Plus Jakarta Sans") && lines[0].contains("Open Font License"));
         assert!(lines[1].contains("Lucide") && lines[1].contains("ISC"));
         // The renderer's crates are shipped, with their licenses.
-        for name in ["fontdue", "glow", "bytemuck", "ttf-parser"] {
+        // The HTTPS client of the speed test (Tools) is shipped too.
+        for name in [
+            "fontdue",
+            "glow",
+            "bytemuck",
+            "ttf-parser",
+            "ureq",
+            "rustls",
+            "ring",
+            "webpki-roots",
+        ] {
             assert!(
                 lines.iter().any(|l| l.starts_with(&format!("{name} "))),
                 "{name} is missing: {lines:#?}"

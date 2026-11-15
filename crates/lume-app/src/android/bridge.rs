@@ -191,6 +191,12 @@ impl Bridge {
         lume_core::device_info::parse_display(&self.call("display", "")?)
     }
 
+    /// The Wi-Fi signal, link speed and band for the Network tool (D4 in the `ferramentas` design);
+    /// `None` without a Wi-Fi connection. The network name is never asked for.
+    pub fn wifi_signal(&self) -> Option<lume_core::app::tools::network::WifiSignal> {
+        protocol::parse_wifi_signal(&self.call("wifi-signal", "")?)
+    }
+
     /// Whether the system has a TV inputs panel to open.
     pub fn inputs_available(&self) -> bool {
         self.call("inputs", "").as_deref() == Some("1")

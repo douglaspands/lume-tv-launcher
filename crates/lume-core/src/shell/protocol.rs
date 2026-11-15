@@ -3,6 +3,7 @@
 //! Everything is plain text so the JNI boundary is a single call with strings:
 //! lists have one record per line, fields are separated by tabs.
 
+use crate::app::tools::network::WifiSignal;
 use crate::catalog::color::ICON_SIZE;
 use crate::catalog::Discovered;
 
@@ -102,6 +103,31 @@ pub fn parse_locales(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Parses the `wifi-signal` answer: `<rssi dBm><TAB><link Mbps><TAB><frequency MHz>`, or empty
+/// without a Wi-Fi connection (D4 in the `ferramentas` design). Android tells an unknown link speed
+/// or frequency with -1 (or 0), and a lost signal with -127.
+pub fn parse_wifi_signal(text: &str) -> Option<WifiSignal> {
+    let mut fields = text.trim().split('\t');
+    let rssi: i32 = fields.next()?.trim().parse().ok()?;
+    if !(-126..0).contains(&rssi) {
+        return None;
+    }
+    let mut positive = || {
+        fields
+            .next()
+            .and_then(|f| f.trim().parse::<i64>().ok())
+            .filter(|v| *v > 0)
+            .and_then(|v| u32::try_from(v).ok())
+    };
+    let link_mbps = positive();
+    let freq_mhz = positive();
+    Some(WifiSignal {
+        rssi,
+        link_mbps,
+        freq_mhz,
+    })
+}
+
 /// The argument of the `start` command.
 pub fn start_argument(package: &str, activity: &str) -> String {
     format!("{package}\n{activity}")
@@ -189,6 +215,30 @@ mod tests {
         assert_eq!(parse_locales("pt-BR,en-US"), ["pt-BR", "en-US"]);
         assert_eq!(parse_locales(" ja , ,pt-BR\n"), ["ja", "pt-BR"]);
         assert!(parse_locales("").is_empty());
+    }
+
+    #[test]
+    fn the_wifi_signal_answer() {
+        let signal = |rssi, link_mbps, freq_mhz| {
+            Some(WifiSignal {
+                rssi,
+                link_mbps,
+                freq_mhz,
+            })
+        };
+        assert_eq!(
+            parse_wifi_signal("-60\t300\t5180"),
+            signal(-60, Some(300), Some(5180))
+        );
+        assert_eq!(
+            parse_wifi_signal("-48\t-1\t2437\n"),
+            signal(-48, None, Some(2437))
+        );
+        assert_eq!(parse_wifi_signal("-70"), signal(-70, None, None));
+        assert_eq!(parse_wifi_signal(""), None, "no Wi-Fi connection");
+        assert_eq!(parse_wifi_signal("-127\t0\t0"), None, "the invalid RSSI");
+        assert_eq!(parse_wifi_signal("x\t1\t2"), None);
+        assert_eq!(parse_wifi_signal("5\t1\t2"), None);
     }
 
     #[test]

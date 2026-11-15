@@ -94,6 +94,17 @@ impl Viewer {
                 Effect::OpenTvSetting { setting } => {
                     println!("open TV setting {setting:?}")
                 }
+                // The desktop has no window flags, sound or test thread: the tools say so.
+                Effect::KeepScreenOn(on) => println!("keep the screen on: {on}"),
+                Effect::Audio(command) => println!("audio: {command:?} (not on the desktop)"),
+                Effect::StartTest(lume_core::app::tools::TestKind::Speed) => {
+                    // No network client on the desktop (D3): the speed test says "unavailable".
+                    use lume_core::app::tools::{network::SpeedUpdate, TestUpdate, ToolEvent};
+                    let update = TestUpdate::Speed(SpeedUpdate::Unavailable);
+                    self.lume.tool_event(ToolEvent::Test(update), now);
+                }
+                Effect::StartTest(kind) => println!("test {kind:?} (not on the desktop)"),
+                Effect::CancelTest => println!("cancel the test"),
             }
         }
         self.needs_frame = true;
