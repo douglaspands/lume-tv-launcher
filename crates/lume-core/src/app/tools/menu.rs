@@ -1,5 +1,5 @@
-//! The Tools menu: the five tools at the left, the description of the focused one in a `.panel` at
-//! the right. The five items fit the canvas; the list would scroll if more came (it keeps the focused
+//! The Tools menu: the six tools at the left, the description of the focused one in a `.panel` at
+//! the right. The six items fit the canvas; the list would scroll if more came (it keeps the focused
 //! item whole).
 
 use super::common::{self, draw_panel, item_rect, panel_heading, wrapped_text, LIST_VIEW_TOP};
@@ -96,6 +96,6 @@ mod tests {
         // As the editor: a secondary screen without subtitle starts its content at y=152.
         assert_eq!(item_rect(0).y, 152.0);
         let last = item_rect(ToolKind::ALL.len() - 1);
-        assert_eq!(last.bottom(), 576.0);
+        assert_eq!(last.bottom(), 664.0);
     }
 }

@@ -51,8 +51,8 @@ O menu Ferramentas SHALL usar o layout da tela de Configurações: caminho no to
 - **THEN** o primeiro item e o painel começam em y=152, 36 abaixo da linha-base do título
 
 #### Scenario: Último item visível
-- **WHEN** o foco desce até "Armazenamento", o sexto item
-- **THEN** a lista não rola: os cinco itens já estão inteiros na área segura, e o painel à direita fica parado
+- **WHEN** o foco desce até "Log", o sexto item
+- **THEN** a lista não rola: os seis itens já estão inteiros na área segura (o último termina em y=664), e o painel à direita fica parado
 
 ### Requirement: Telas de ferramenta na régua
 As telas de cada ferramenta SHALL usar o caminho completo no topo, o conteúdo começando em y=152 (tela secundária sem subtítulo), itens de ação `.settings-item` à esquerda e os resultados (valores, barras, histórico) num `.panel` à direita, com rótulos em `--text-muted` e valores em `--text`, como as linhas de Informações da TV. As barras (progresso de teste, espaço usado) SHALL usar as cores e a forma da barra de memória do painel de estatísticas.
@@ -60,6 +60,10 @@ As telas de cada ferramenta SHALL usar o caminho completo no topo, o conteúdo c
 #### Scenario: Resultados no painel
 - **WHEN** a ferramenta Armazenamento é desenhada em 1280x720 depois de um teste
 - **THEN** o item de ação fica à esquerda, e os rótulos, valores e as barras ficam no `.panel` à direita, na régua de 4 px
+
+#### Scenario: Log em tela inteira
+- **WHEN** a ferramenta Log é desenhada
+- **THEN** não há itens de ação, e o `.panel` do log ocupa toda a largura do conteúdo, de y=152 até 36 px acima da base da área segura
 
 ### Requirement: Aviso de flashes e textos sobre os padrões
 O aviso de flashes SHALL usar o cartão claro de sobreposição (`.menu`), com o texto do aviso e os botões "Iniciar" e "Cancelar". Textos sobre os padrões de tela cheia (nome do padrão, dica, tempo restante) SHALL usar um `.toast` no rodapé da tela, que some depois de 3 segundos.

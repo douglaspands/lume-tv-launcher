@@ -5,11 +5,11 @@ Reúne as ferramentas de teste e recuperação da TV num menu "Ferramentas" das 
 ## ADDED Requirements
 
 ### Requirement: Menu Ferramentas
-O Lume SHALL oferecer, a partir do item "Ferramentas" das Configurações, uma tela "Ferramentas" com o caminho "Configurações › Ferramentas" que lista, nesta ordem, "Tela", "Imagem", "Controle remoto", "Áudio" e "Armazenamento". Cada item SHALL ter um nome e uma descrição curta de uma linha. OK num item SHALL abrir a ferramenta com o caminho "Configurações › Ferramentas › <ferramenta>". O menu SHALL NOT oferecer ferramentas que prometem liberar memória, acelerar ou otimizar a TV.
+O Lume SHALL oferecer, a partir do item "Ferramentas" das Configurações, uma tela "Ferramentas" com o caminho "Configurações › Ferramentas" que lista, nesta ordem, "Tela", "Imagem", "Controle remoto", "Áudio", "Armazenamento" e "Log". Cada item SHALL ter um nome e uma descrição curta de uma linha. OK num item SHALL abrir a ferramenta com o caminho "Configurações › Ferramentas › <ferramenta>". O menu SHALL NOT oferecer ferramentas que prometem liberar memória, acelerar ou otimizar a TV.
 
 #### Scenario: Abrir o menu
 - **WHEN** o usuário seleciona "Ferramentas" nas Configurações do Lume
-- **THEN** a tela "Ferramentas" aparece com o caminho "Configurações › Ferramentas", as cinco ferramentas na ordem definida e o foco na primeira
+- **THEN** a tela "Ferramentas" aparece com o caminho "Configurações › Ferramentas", as seis ferramentas na ordem definida e o foco na primeira
 
 #### Scenario: Abrir uma ferramenta
 - **WHEN** o foco está em "Áudio" no menu Ferramentas e o usuário pressiona OK

@@ -33,6 +33,8 @@
     <string name="tool_audio_desc">Canales izquierdo y derecho, barrido y sincronía</string>
     <string name="tool_storage">Almacenamiento</string>
     <string name="tool_storage_desc">Velocidad de escritura y lectura del almacenamiento interno</string>
+    <string name="tool_log">Registro</string>
+    <string name="tool_log_desc">Mensajes recientes de Lume, del más nuevo al más antiguo, para buscar fallos</string>
     <string name="tools_flash_title">Colores parpadeantes</string>
     <string name="tools_flash_text">Este modo hace parpadear colores rápidamente en una ventana pequeña. Puede provocar crisis en personas con epilepsia fotosensible.</string>
     <string name="tools_start">Iniciar</string>
@@ -294,4 +296,12 @@
     <string name="tool_storage_done">Prueba terminada</string>
     <string name="tool_storage_cancelled">Prueba cancelada</string>
     <string name="tool_storage_failed">No se pudo terminar la prueba</string>
+    <string name="tool_log_heading">Registro de Lume</string>
+    <string name="tool_log_all">Todo</string>
+    <string name="tool_log_failures">Solo fallos</string>
+    <string name="tool_log_show_all">OK: mostrar todo</string>
+    <string name="tool_log_show_failures">OK: mostrar solo fallos</string>
+    <string name="tool_log_loading">Leyendo el registro…</string>
+    <string name="tool_log_empty">Ningún mensaje</string>
+    <string name="tool_log_failed">No se pudo leer el registro</string>
 </resources>

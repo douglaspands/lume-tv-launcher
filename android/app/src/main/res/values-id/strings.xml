@@ -33,6 +33,8 @@
     <string name="tool_audio_desc">Kanal kiri dan kanan, sapuan, dan sinkronisasi</string>
     <string name="tool_storage">Penyimpanan</string>
     <string name="tool_storage_desc">Kecepatan tulis dan baca penyimpanan internal</string>
+    <string name="tool_log">Log</string>
+    <string name="tool_log_desc">Pesan terbaru Lume, dari yang terbaru, untuk mencari kegagalan</string>
     <string name="tools_flash_title">Warna berkedip</string>
     <string name="tools_flash_text">Mode ini mengedipkan warna dengan cepat di jendela kecil. Dapat memicu kejang pada penderita epilepsi fotosensitif.</string>
     <string name="tools_start">Mulai</string>
@@ -293,4 +295,12 @@
     <string name="tool_storage_done">Uji selesai</string>
     <string name="tool_storage_cancelled">Uji dibatalkan</string>
     <string name="tool_storage_failed">Uji tidak dapat diselesaikan</string>
+    <string name="tool_log_heading">Log Lume</string>
+    <string name="tool_log_all">Semua</string>
+    <string name="tool_log_failures">Hanya kegagalan</string>
+    <string name="tool_log_show_all">OK: tampilkan semua</string>
+    <string name="tool_log_show_failures">OK: hanya kegagalan</string>
+    <string name="tool_log_loading">Membaca log…</string>
+    <string name="tool_log_empty">Tidak ada pesan</string>
+    <string name="tool_log_failed">Log tidak dapat dibaca</string>
 </resources>

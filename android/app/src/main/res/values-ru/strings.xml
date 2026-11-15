@@ -33,6 +33,8 @@
     <string name="tool_audio_desc">Левый и правый каналы, свип и синхронизация</string>
     <string name="tool_storage">Хранилище</string>
     <string name="tool_storage_desc">Скорость записи и чтения внутренней памяти</string>
+    <string name="tool_log">Журнал</string>
+    <string name="tool_log_desc">Последние сообщения Lume, от новых к старым, для поиска сбоев</string>
     <string name="tools_flash_title">Мигающие цвета</string>
     <string name="tools_flash_text">В этом режиме цвета быстро мигают в небольшом окне. Это может вызвать приступ у людей с фоточувствительной эпилепсией.</string>
     <string name="tools_start">Начать</string>
@@ -296,4 +298,12 @@
     <string name="tool_storage_done">Проверка завершена</string>
     <string name="tool_storage_cancelled">Проверка отменена</string>
     <string name="tool_storage_failed">Не удалось завершить проверку</string>
+    <string name="tool_log_heading">Журнал Lume</string>
+    <string name="tool_log_all">Все</string>
+    <string name="tool_log_failures">Только сбои</string>
+    <string name="tool_log_show_all">OK: показать все</string>
+    <string name="tool_log_show_failures">OK: только сбои</string>
+    <string name="tool_log_loading">Чтение журнала…</string>
+    <string name="tool_log_empty">Нет сообщений</string>
+    <string name="tool_log_failed">Не удалось прочитать журнал</string>
 </resources>

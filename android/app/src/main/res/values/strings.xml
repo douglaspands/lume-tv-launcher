@@ -38,6 +38,8 @@
     <string name="tool_audio_desc">Left and right channels, sweep and audio sync</string>
     <string name="tool_storage">Storage</string>
     <string name="tool_storage_desc">Write and read speed of the internal storage</string>
+    <string name="tool_log">Log</string>
+    <string name="tool_log_desc">Lume\'s recent messages, newest first, to look for failures</string>
     <string name="tools_flash_title">Flashing colors</string>
     <string name="tools_flash_text">This mode flashes colors quickly in a small window. It may trigger seizures in people with photosensitive epilepsy.</string>
     <string name="tools_start">Start</string>
@@ -298,4 +300,12 @@
     <string name="tool_storage_done">Test finished</string>
     <string name="tool_storage_cancelled">Test cancelled</string>
     <string name="tool_storage_failed">The test could not be finished</string>
+    <string name="tool_log_heading">Lume\'s log</string>
+    <string name="tool_log_all">Everything</string>
+    <string name="tool_log_failures">Failures only</string>
+    <string name="tool_log_show_all">OK: show everything</string>
+    <string name="tool_log_show_failures">OK: show only failures</string>
+    <string name="tool_log_loading">Reading the log…</string>
+    <string name="tool_log_empty">No messages</string>
+    <string name="tool_log_failed">The log could not be read</string>
 </resources>

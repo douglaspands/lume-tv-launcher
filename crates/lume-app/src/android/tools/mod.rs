@@ -3,6 +3,7 @@
 //! exists until a tool asks for it, and everything goes when the tool closes.
 
 mod audio;
+mod log_reader;
 mod storage;
 
 use android_activity::{AndroidApp, WindowManagerFlags};
@@ -92,6 +93,7 @@ impl Tools {
                 .name("lume-test".into())
                 .spawn(move || match kind {
                     TestKind::Storage => storage::run(&context),
+                    TestKind::Log => log_reader::run(&context),
                 });
         match thread {
             Ok(thread) => {

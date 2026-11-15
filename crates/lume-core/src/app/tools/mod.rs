@@ -1,4 +1,4 @@
-//! The Tools: a menu in the lume settings with five diagnostic tools (`diagnostic-tools` spec).
+//! The Tools: a menu in the lume settings with six diagnostic tools (`diagnostic-tools` spec).
 //!
 //! Everything here exists only while it is used (D1 in the `ferramentas` design): the state of the
 //! open tool lives in [`LumeApp::tool`] and is dropped when the tool closes; the heavy resources
@@ -13,6 +13,7 @@
 pub mod audio;
 pub(super) mod common;
 pub mod display;
+pub mod log;
 mod menu;
 pub mod picture;
 pub mod remote;
@@ -36,15 +37,18 @@ pub enum ToolKind {
     Audio,
     /// "Armazenamento": sequential write and read speed.
     Storage,
+    /// "Log": lume's own log, newest first, to look for failures.
+    Log,
 }
 
 impl ToolKind {
-    pub const ALL: [ToolKind; 5] = [
+    pub const ALL: [ToolKind; 6] = [
         ToolKind::Display,
         ToolKind::Picture,
         ToolKind::Remote,
         ToolKind::Audio,
         ToolKind::Storage,
+        ToolKind::Log,
     ];
 
     pub fn name(self) -> StringId {
@@ -54,6 +58,7 @@ impl ToolKind {
             ToolKind::Remote => StringId::ToolRemote,
             ToolKind::Audio => StringId::ToolAudio,
             ToolKind::Storage => StringId::ToolStorage,
+            ToolKind::Log => StringId::ToolLog,
         }
     }
 
@@ -64,6 +69,7 @@ impl ToolKind {
             ToolKind::Remote => StringId::ToolRemoteDesc,
             ToolKind::Audio => StringId::ToolAudioDesc,
             ToolKind::Storage => StringId::ToolStorageDesc,
+            ToolKind::Log => StringId::ToolLogDesc,
         }
     }
 
@@ -115,6 +121,8 @@ pub enum AudioCommand {
 pub enum TestKind {
     /// The storage write and read test (`storage-diagnostics`).
     Storage,
+    /// Reading lume's own log (`log-viewer`).
+    Log,
 }
 
 /// What the platform tells the open tool.
@@ -134,6 +142,7 @@ pub enum ToolEvent {
 #[derive(Clone, Debug, PartialEq)]
 pub enum TestUpdate {
     Storage(storage::StorageUpdate),
+    Log(log::LogUpdate),
 }
 
 /// A periodic reading the platform makes for a tool (only with the tool on screen and the
@@ -158,6 +167,7 @@ pub(super) enum ToolState {
     Remote(remote::RemoteTool),
     Audio(audio::AudioTool),
     Storage(storage::StorageTool),
+    Log(log::LogTool),
 }
 
 /// The state of one tool, reached from [`ToolState`] by its type.
@@ -192,6 +202,7 @@ tool_of!(
     Remote => remote::RemoteTool,
     Audio => audio::AudioTool,
     Storage => storage::StorageTool,
+    Log => log::LogTool,
 );
 
 impl ToolState {
@@ -202,6 +213,7 @@ impl ToolState {
             ToolKind::Remote => ToolState::Remote(remote::RemoteTool::new(now_ms)),
             ToolKind::Audio => ToolState::Audio(audio::AudioTool::new(now_ms)),
             ToolKind::Storage => ToolState::Storage(storage::StorageTool::new(now_ms)),
+            ToolKind::Log => ToolState::Log(log::LogTool::new(now_ms)),
         }
     }
 
@@ -212,6 +224,7 @@ impl ToolState {
             ToolState::Remote(_) => ToolKind::Remote,
             ToolState::Audio(_) => ToolKind::Audio,
             ToolState::Storage(_) => ToolKind::Storage,
+            ToolState::Log(_) => ToolKind::Log,
         }
     }
 
@@ -220,7 +233,7 @@ impl ToolState {
     fn release_effects(&self) -> Vec<Effect> {
         match self.kind() {
             ToolKind::Audio => vec![Effect::Audio(AudioCommand::Stop)],
-            ToolKind::Storage => vec![Effect::CancelTest],
+            ToolKind::Storage | ToolKind::Log => vec![Effect::CancelTest],
             _ => vec![],
         }
     }
@@ -276,6 +289,7 @@ impl LumeApp {
         self.focus.set_rows(vec![]);
         match kind {
             ToolKind::Storage => self.storage_open(),
+            ToolKind::Log => self.log_open(),
             ToolKind::Display | ToolKind::Picture | ToolKind::Remote | ToolKind::Audio => vec![],
         }
     }
@@ -327,6 +341,7 @@ impl LumeApp {
             ToolKind::Remote => self.remote_key(key),
             ToolKind::Audio => self.audio_key(key),
             ToolKind::Storage => self.storage_key(key),
+            ToolKind::Log => self.log_key(key),
         };
         result.apply(self, kind)
     }
@@ -338,6 +353,7 @@ impl LumeApp {
             ToolKind::Remote => self.draw_remote(p),
             ToolKind::Audio => self.draw_audio(p),
             ToolKind::Storage => self.draw_storage(p),
+            ToolKind::Log => self.draw_log(p),
         }
     }
 
@@ -355,7 +371,7 @@ impl LumeApp {
             ToolKind::Picture => self.picture_deadline(now_ms),
             ToolKind::Remote => self.remote_deadline(now_ms),
             ToolKind::Audio => self.audio_deadline(now_ms),
-            ToolKind::Storage => None,
+            ToolKind::Storage | ToolKind::Log => None,
         }
     }
 
@@ -378,6 +394,7 @@ impl LumeApp {
         match kind {
             ToolKind::Audio => self.audio_event(event),
             ToolKind::Storage => self.storage_event(event),
+            ToolKind::Log => self.log_event(event),
             ToolKind::Display | ToolKind::Picture | ToolKind::Remote => {}
         }
     }

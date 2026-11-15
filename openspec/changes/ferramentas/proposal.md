@@ -4,12 +4,13 @@ Quem tem uma TV com retenção de imagem, um pixel preso, o som fora de sincroni
 
 ## What Changes
 
-- Novo item **"Ferramentas"** nas Configurações do Lume, que abre um menu com cinco ferramentas:
+- Novo item **"Ferramentas"** nas Configurações do Lume, que abre um menu com seis ferramentas:
   - **Tela**: padrões de diagnóstico (cores sólidas, cinzas, rampas, grade), limpeza de retenção de imagem com tempo definido e destravamento de pixel preso com uma janela pequena que o usuário posiciona pelo controle.
   - **Imagem**: padrão de overscan e geometria, e teste de movimento com a contagem de quadros perdidos.
   - **Controle remoto**: mostra cada botão apertado, com nome, código e intervalo de repetição.
   - **Áudio**: tom no canal esquerdo, no direito e nos dois, varredura de frequência, e teste de sincronia entre áudio e imagem com ajuste de atraso.
   - **Armazenamento**: velocidade de escrita e leitura sequencial, com um arquivo temporário apagado ao fim.
+  - **Log**: as mensagens recentes do próprio Lume numa tela só delas, da mais nova para a mais antiga, com o filtro "Só falhas", para achar falhas pela TV sem `adb` (pedido do autor em 2026-11-15).
 - **Ativação sob demanda**: cada ferramenta cria o próprio estado e os recursos pesados (stream de áudio, thread de teste, arquivo temporário) ao entrar ou ao começar o teste, e libera tudo ao sair. Fora das Ferramentas, o custo de memória é zero.
 - **Segurança contra flashes**: aviso e confirmação antes de qualquer ciclo rápido de cores. O ciclo rápido fica restrito à janela pequena, e os modos de tela cheia mudam a menos de 3 vezes por segundo.
 - Tela ligada durante as sessões longas, Voltar e Home sempre interrompem, e o tempo restante aparece na tela.
@@ -23,6 +24,7 @@ Quem tem uma TV com retenção de imagem, um pixel preso, o som fora de sincroni
 - `display-diagnostics`: as ferramentas Tela e Imagem, com padrões de diagnóstico, limpeza de retenção, destravamento de pixel, overscan e movimento.
 - `audio-diagnostics`: a ferramenta Áudio, com canais, varredura e sincronia entre áudio e imagem.
 - `storage-diagnostics`: a ferramenta Armazenamento, com a velocidade de escrita e leitura.
+- `log-viewer`: a ferramenta Log, com o log do próprio Lume, da mensagem mais nova para a mais antiga.
 
 ### Modified Capabilities
 - `launcher-shell`: a tela Configurações ganha o item "Ferramentas", e Voltar passo a passo passa a incluir o caminho pelas ferramentas.
@@ -34,7 +36,7 @@ Quem tem uma TV com retenção de imagem, um pixel preso, o som fora de sincroni
 ## Impact
 
 - **Rust (`lume-core`)**: `Screen::Tools` e uma tela por ferramenta, um módulo `app/tools/` com o estado de cada ferramenta (`Option<ToolState>`), novos `Effect` (manter a tela ligada, tocar e parar tons, iniciar e cancelar testes), strings nos 5 idiomas (`values`, `-pt-rBR`, `-es`, `-id`, `-ru`).
-- **Rust (`lume-app`)**: o stream AAudio (feature `audio` do crate `ndk`), `KEEP_SCREEN_ON` via `AndroidApp::set_window_flags`, a thread de teste (armazenamento).
+- **Rust (`lume-app`)**: o stream AAudio (feature `audio` do crate `ndk`), `KEEP_SCREEN_ON` via `AndroidApp::set_window_flags`, a thread de teste (armazenamento e leitura do log), e um logger que grava cada linha também em `files/lume.log` (rotação em 256 KB, no máximo 512 KB em disco), porque os buffers do `logcat` nas TVs de teste guardam de segundos a minutos.
 - **Dependências novas**: só a feature `audio` do crate `ndk`.
 - **Java**: nenhum.
 - **`lume-desktop`**: renderiza as telas para captura. O áudio fica sem efeito no desktop.

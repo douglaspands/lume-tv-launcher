@@ -8,6 +8,7 @@
 mod bridge;
 mod device_info;
 mod egl;
+mod file_log;
 mod tools;
 
 use android_activity::input::{InputEvent, KeyAction};
@@ -148,11 +149,7 @@ struct Runtime {
 
 #[no_mangle]
 fn android_main(app: AndroidApp) {
-    android_logger::init_once(
-        android_logger::Config::default()
-            .with_max_level(log::LevelFilter::Info)
-            .with_tag("lume"),
-    );
+    file_log::init();
     std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
     log::info!("lume {} starting", lume_version::VERSION);
     *WAKER.lock().expect("waker lock") = Some(app.create_waker());
@@ -164,6 +161,8 @@ fn android_main(app: AndroidApp) {
         log::error!("no internal data directory");
         return;
     };
+    // From here on the log also goes to files/lume.log, for the Log tool.
+    file_log::open(&files);
     // The app's cache directory (next to `files/`): the decoded wallpaper is kept there between wake-ups.
     if let Some(cache) = files.parent().map(|parent| parent.join("cache")) {
         lume_core::wallpaper::set_cache_dir(cache);
