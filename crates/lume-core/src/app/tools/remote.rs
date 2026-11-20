@@ -15,7 +15,7 @@ use crate::i18n::{Arg, StringId, Translator};
 use crate::keys::{self, KeyAction};
 use crate::render::Rect;
 use crate::text::Align;
-use crate::theme::{StateFlags, THEME};
+use crate::theme::StateFlags;
 use std::collections::VecDeque;
 
 /// How many keys the history keeps.
@@ -369,7 +369,7 @@ impl LumeApp {
         } else {
             StringId::ToolRemoteHint
         };
-        let style = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let style = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let line = Rect::new(
             LEFT,
             panel.bottom() + HINT_GAP,

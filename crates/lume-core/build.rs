@@ -341,7 +341,7 @@ fn compile_companion(manifest: &std::path::Path, sheet: &lume_css::Stylesheet) {
         page = page.replace(&format!("{{{{{name}}}}}"), &format!("{px}px"));
     }
     let logo = std::fs::read_to_string(&logo_path).expect("cannot read src/logo.rs");
-    let svg = logo_svg(&logo, &css_color("primary"), &css_color("bg"));
+    let svg = logo_svg(&logo, &css_color("primary"));
     page = page.replace("{{logo}}", &svg);
     if let Some(at) = page.find("{{") {
         panic!(
@@ -353,9 +353,10 @@ fn compile_companion(manifest: &std::path::Path, sheet: &lume_css::Stylesheet) {
     std::fs::write(out, page).expect("cannot write companion_page.html");
 }
 
-/// The logo mark of `src/logo.rs` as SVG in a 100x100 box: the rounded square, the two bars of the
-/// L and the dot, read from the `const NAME: f32 = value;` lines.
-fn logo_svg(source: &str, square: &str, glyph: &str) -> String {
+/// The logo mark of `src/logo.rs` as SVG in a 100x100 box: a rounded square in `square` color
+/// with the two bars of the L and the dot cut out via `<mask>` so they are truly transparent,
+/// read from the `const NAME: f32 = value;` lines.
+fn logo_svg(source: &str, square: &str) -> String {
     let constant = |name: &str| -> f32 {
         source
             .lines()
@@ -380,8 +381,7 @@ fn logo_svg(source: &str, square: &str, glyph: &str) -> String {
     let (dot_x, dot_y, dot_r) = (constant("DOT_X"), constant("DOT_Y"), constant("DOT_RADIUS"));
     let foot_h = bottom - foot_top;
     format!(
-        r#"<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="{}" fill="{square}"/><g fill="{glyph}"><rect x="{}" y="{}" width="{}" height="{}" rx="{}"/><rect x="{}" y="{}" width="{}" height="{}" rx="{}"/><circle cx="{}" cy="{}" r="{}"/></g></svg>"#,
-        k(corner),
+        r##"<svg viewBox="0 0 100 100" aria-hidden="true"><defs><mask id="lume-mark"><rect width="100" height="100" fill="#fff"/><rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="#000"/><rect x="{}" y="{}" width="{}" height="{}" rx="{}" fill="#000"/><circle cx="{}" cy="{}" r="{}" fill="#000"/></mask></defs><rect width="100" height="100" rx="{}" fill="{square}" mask="url(#lume-mark)"/></svg>"##,
         k(stem_x),
         k(stem_top),
         k(stem_w),
@@ -395,6 +395,7 @@ fn logo_svg(source: &str, square: &str, glyph: &str) -> String {
         k(dot_x),
         k(dot_y),
         k(dot_r),
+        k(corner),
     )
 }
 

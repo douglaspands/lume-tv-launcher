@@ -15,7 +15,7 @@ use crate::app::painter::Painter;
 use crate::app::{Key, LumeApp, PendingFocus};
 use crate::i18n::{Arg, StringId, Translator};
 use crate::render::{PatternOp, PixelRect, Rect};
-use crate::theme::{Color, StateFlags, THEME};
+use crate::theme::{Color, StateFlags};
 use crate::ui::animation::FRAME_MS;
 use crate::ui::focus::FocusId;
 use crate::ui::style::mix_color;
@@ -622,7 +622,7 @@ pub(super) fn time_left(t: &Translator, ms: u64) -> String {
 pub(super) fn draw_description(p: &mut Painter, name: &str, description: &str) {
     let inner = draw_panel(p, common::panel_rect(DESC_PANEL_HEIGHT));
     panel_heading(p, inner, name);
-    let body = p.style(&THEME.breadcrumb, StateFlags::NONE);
+    let body = p.style(|t| &t.breadcrumb, StateFlags::NONE);
     let text = Rect::new(inner.x, inner.y + DESC_TOP, inner.w, body.line_height);
     wrapped_text(p, description, text, body.line_height, &body);
 }

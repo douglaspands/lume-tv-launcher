@@ -16,6 +16,9 @@ pub enum RectKind {
     Ring { width: f32, color: Color },
     /// A soft shadow; `blur` is the CSS blur radius.
     Shadow { color: Color, blur: f32 },
+    /// The Lume logo mark: a rounded rectangle in `color` with the L and dot cut out via SDF,
+    /// scaled to `mark_size` centered inside `rect`.
+    LogoMark { color: Color, mark_size: f32 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -143,6 +146,11 @@ impl DisplayList {
 
     pub fn shadow(&mut self, rect: Rect, radius: f32, color: Color, blur: f32) {
         self.rect(rect, radius, RectKind::Shadow { color, blur }, 1.0);
+    }
+
+    /// Draws the Lume logo mark (rounded rectangle in `color` with transparent L and dot cutout).
+    pub fn logo_mark(&mut self, rect: Rect, radius: f32, mark_size: f32, color: Color) {
+        self.rect(rect, radius, RectKind::LogoMark { color, mark_size }, 1.0);
     }
 
     pub fn glyph(&mut self, dest: Rect, uv: Rect, color: Color) {
@@ -344,6 +352,7 @@ mod tests {
                     RectKind::Shadow { .. } => "shadow",
                     RectKind::Fill(_) => "fill",
                     RectKind::Ring { .. } => "ring",
+                    RectKind::LogoMark { .. } => "logo_mark",
                 },
                 _ => "other",
             })

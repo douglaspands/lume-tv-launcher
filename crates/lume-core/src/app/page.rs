@@ -3,7 +3,7 @@
 use super::painter::Painter;
 use crate::logo;
 use crate::render::Rect;
-use crate::theme::{vars, StateFlags, THEME};
+use crate::theme::StateFlags;
 
 pub const LEFT: f32 = 64.0;
 pub const WIDTH: f32 = 1152.0;
@@ -31,11 +31,10 @@ pub fn draw_header(
     logo::draw_mark(
         p.list,
         Rect::new(LEFT, 33.0 - scroll_y, 24.0, 24.0),
-        vars::PRIMARY,
-        vars::BG,
+        p.primary(),
     );
-    let muted = p.style(&THEME.breadcrumb, StateFlags::NONE);
-    let current = p.style(&THEME.breadcrumb, StateFlags::ACTIVE);
+    let muted = p.style(|t| &t.breadcrumb, StateFlags::NONE);
+    let current = p.style(|t| &t.breadcrumb, StateFlags::ACTIVE);
     let mut x = LEFT + 36.0;
     for (index, crumb) in crumbs.iter().enumerate() {
         let last = index + 1 == crumbs.len();
@@ -64,7 +63,7 @@ pub fn draw_header(
             x += p.text.measure(separator, &text_style) + SEPARATOR_GAP;
         }
     }
-    let title_style = p.style(&THEME.page_title, StateFlags::NONE);
+    let title_style = p.style(|t| &t.page_title, StateFlags::NONE);
     let shown = p
         .text
         .ellipsize(title, &Painter::text_style(&title_style), 900.0)
@@ -78,7 +77,7 @@ pub fn draw_header(
         title_style.color,
     );
     if let Some(subtitle) = subtitle {
-        let style = p.style(&THEME.page_subtitle, StateFlags::NONE);
+        let style = p.style(|t| &t.page_subtitle, StateFlags::NONE);
         let shown = p
             .text
             .ellipsize(subtitle, &Painter::text_style(&style), WIDTH)

@@ -73,11 +73,16 @@ impl Session {
 
     /// Renders the last built frame and reads it back as RGBA rows, top row first.
     pub fn render(&mut self) -> Vec<u8> {
-        self.backend.sync_text_atlas(&mut self.text);
         let clear = match THEME.app.base.background {
             Some(lume_core::theme::Paint::Solid(color)) => color,
             _ => Color::rgb(0, 0, 0),
         };
+        self.render_with_clear(clear)
+    }
+
+    /// Renders the last built frame over `clear` and reads it back as RGBA rows, top row first.
+    pub fn render_with_clear(&mut self, clear: Color) -> Vec<u8> {
+        self.backend.sync_text_atlas(&mut self.text);
         self.backend
             .render(&self.display.viewport(), clear, &Frame::build(&self.list));
         self.backend
@@ -161,10 +166,14 @@ pub fn render_app_then(
     let mut now = 0u64;
     let frame = |session: &mut Session, app: &mut LumeApp, now: u64| {
         session.build(|scene| {
+            let theme = *app.active_theme();
+            let accent = app.active_accent();
             let mut painter = Painter {
                 list: scene.list,
                 text: scene.text,
                 display: *scene.display,
+                theme: &theme,
+                accent,
             };
             crate::demo::feed_stats(app, now);
             app.draw(&mut painter, now);
@@ -250,10 +259,14 @@ pub fn serve_receive(
     let now = |started: std::time::Instant| started.elapsed().as_millis() as u64;
     let frame = |session: &mut Session, app: &mut LumeApp, now: u64| {
         session.build(|scene| {
+            let theme = *app.active_theme();
+            let accent = app.active_accent();
             let mut painter = Painter {
                 list: scene.list,
                 text: scene.text,
                 display: *scene.display,
+                theme: &theme,
+                accent,
             };
             app.draw(&mut painter, now);
         });
@@ -299,7 +312,6 @@ pub fn draw_logo(scene: &mut Scene) {
         scene.list,
         Rect::new(center_x - mark_size / 2.0, 135.5, mark_size, mark_size),
         vars::ACCENT,
-        vars::BG,
     );
     let wordmark = TextStyle {
         size: 68.0,
@@ -345,7 +357,6 @@ pub fn draw_banner(scene: &mut Scene) {
         scene.list,
         Rect::new(left, center_y - mark / 2.0, mark, mark),
         vars::ACCENT,
-        vars::BG,
     );
     scene.text.draw_line(
         scene.list,

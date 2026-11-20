@@ -10,5 +10,5 @@
         <item name="android:windowBackground">@color/lume_background</item>
     </style>
 
-    <color name="lume_background">#0C171F</color>
+    <color name="lume_background">#0A0D10</color>
 </resources>

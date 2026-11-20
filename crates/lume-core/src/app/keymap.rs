@@ -18,7 +18,7 @@ use crate::icons;
 use crate::keys::{keycode_parts, CommandTarget, Key, KeyTarget, SettingShortcut};
 use crate::render::Rect;
 use crate::text::{Align, TextStyle};
-use crate::theme::{vars, Paint, StateFlags, THEME};
+use crate::theme::{vars, ComponentTheme, Paint, StateFlags, Theme};
 use crate::ui::focus::{FocusId, Focusable, Row};
 
 /// The command rows: this plus the place in `CommandTarget::ALL`.
@@ -528,7 +528,7 @@ impl LumeApp {
             .translator
             .get(StringId::KeymapRestoreDefaults)
             .into_owned();
-        let button_style = p.style(&THEME.button_secondary, StateFlags::NONE);
+        let button_style = p.style(|t| &t.button_secondary, StateFlags::NONE);
         let width = (p.measure(&restore_label, &button_style)
             + button_style.padding[1]
             + button_style.padding[3])
@@ -597,8 +597,8 @@ impl LumeApp {
 
         let visible = |rect: Rect| rect.bottom() >= -32.0 && rect.y <= view_height + 32.0;
 
-        let panel_style = p.style(&THEME.panel, StateFlags::NONE);
-        let heading_style = p.style(&THEME.card_heading, StateFlags::NONE);
+        let panel_style = p.style(|t| &t.panel, StateFlags::NONE);
+        let heading_style = p.style(|t| &t.card_heading, StateFlags::NONE);
         for panel_box in &layout.panels {
             let rect = panel_box.rect.translate(0.0, -scroll_y);
             if !visible(rect) {
@@ -617,7 +617,7 @@ impl LumeApp {
                 heading,
                 Align::Start,
                 &Painter::text_style(&heading_style),
-                vars::PRIMARY,
+                p.primary_on_dark(),
             );
         }
 
@@ -676,11 +676,11 @@ impl LumeApp {
     /// A row: the name at the left, the keys as keycaps at the right, the last ending 24 inside.
     fn draw_mapping_row(&self, p: &mut Painter, id: FocusId, rect: Rect, target: &KeyTarget) {
         let t = self.translator;
-        let style = p.focus_style(&THEME.editor_row, self.focus_progress(id));
+        let style = p.focus_style(|t| &t.editor_row, self.focus_progress(id));
         p.draw_box(rect, &style);
 
-        let keycap = p.style(&THEME.keycap, StateFlags::NONE);
-        let caption = p.style(&THEME.about_license, StateFlags::NONE);
+        let keycap = p.style(|t| &t.keycap, StateFlags::NONE);
+        let caption = p.style(|t| &t.about_license, StateFlags::NONE);
         let side = keycap.padding[1] + keycap.padding[3];
         // Measured, never estimated: (name, code, name width, code width, keycap width).
         let caps: Vec<_> = self
@@ -738,7 +738,7 @@ impl LumeApp {
     /// The row that adds a shortcut: an outline and a plus until it has the focus, then a row.
     fn draw_add_row(&self, p: &mut Painter, id: FocusId, rect: Rect, label: &str) {
         let progress = self.focus_progress(id);
-        let mut style = p.focus_style(&THEME.editor_row, progress);
+        let mut style = p.focus_style(|t| &t.editor_row, progress);
         style.background = Some(Paint::Solid(super::painter::fade(
             vars::SURFACE_FOCUS,
             progress,
@@ -750,7 +750,7 @@ impl LumeApp {
             super::painter::fade(vars::BORDER, 1.0 - progress),
         );
         p.draw_box(rect, &style);
-        let text_style = p.style(&THEME.chip, StateFlags::NONE);
+        let text_style = p.style(|t| &t.chip, StateFlags::NONE);
         let glyph = Rect::new(rect.x + ROW_PADDING, rect.y, ADD_GLYPH, rect.h);
         p.icon(icons::PLUS, glyph, ADD_GLYPH, text_style.color);
         let text = Rect::new(
@@ -764,7 +764,7 @@ impl LumeApp {
 
     /// The light card the overlays are drawn on: the context menu's, without the dark layer.
     fn draw_light_card(&self, p: &mut Painter, card: Rect) {
-        let style = p.style(&THEME.menu, StateFlags::NONE);
+        let style = p.style(|t| &t.menu, StateFlags::NONE);
         p.draw_box(card, &style);
     }
 
@@ -824,7 +824,7 @@ impl LumeApp {
     /// The two buttons of the confirmation, right-aligned: "Restore" then "Cancel".
     fn confirm_buttons(&self, p: &mut Painter) -> (Rect, Rect) {
         let t = self.translator;
-        let style = p.style(&THEME.menu_button, StateFlags::NONE);
+        let style = p.style(|t| &t.menu_button, StateFlags::NONE);
         let width = |p: &mut Painter, label: &str| {
             (p.measure(label, &style) + CARD_BUTTON_PADDING)
                 .max(CARD_BUTTON_MIN_WIDTH)
@@ -884,13 +884,13 @@ impl LumeApp {
                 restore,
                 t.get(StringId::EditorRestoreConfirm),
                 CONFIRM_RESTORE,
-                &THEME.menu_button_danger,
+                (|t: &Theme| &t.menu_button_danger) as fn(&Theme) -> &ComponentTheme,
             ),
             (
                 cancel,
                 t.get(StringId::EditorCancel),
                 CONFIRM_CANCEL,
-                &THEME.menu_button,
+                (|t: &Theme| &t.menu_button) as fn(&Theme) -> &ComponentTheme,
             ),
         ] {
             let style = p.focus_style(component, self.focus_progress(id));
@@ -980,7 +980,7 @@ impl LumeApp {
             if rect.bottom() < -32.0 || rect.y > view_height + 32.0 {
                 continue;
             }
-            let style = p.focus_style(&THEME.editor_row, self.focus_progress(*id));
+            let style = p.focus_style(|t| &t.editor_row, self.focus_progress(*id));
             p.draw_box(rect, &style);
             let label = Rect::new(
                 rect.x + ROW_PADDING,
@@ -1079,7 +1079,7 @@ impl LumeApp {
             .iter()
             .map(|cell| {
                 let rect = cell.rect.translate(0.0, -scroll_y);
-                let mut style = p.focus_style(&THEME.tile, self.focus_progress(cell.id));
+                let mut style = p.focus_style(|t| &t.tile, self.focus_progress(cell.id));
                 style.background = Some(Paint::Solid(cell.color));
                 (cell, rect, style)
             })
@@ -1100,7 +1100,7 @@ impl LumeApp {
         }
         for (cell, rect, style) in &tiles {
             self.draw_tile_name(p, Some(&cell.package), &cell.label, *rect, style, false);
-            let label_style = p.focus_style(&THEME.tile_label, self.focus_progress(cell.id));
+            let label_style = p.focus_style(|t| &t.tile_label, self.focus_progress(cell.id));
             p.text(
                 &cell.label,
                 Rect::new(rect.x, rect.bottom() + 8.0, rect.w, 24.0),

@@ -9,7 +9,7 @@ use crate::app::{ids, LumeApp};
 use crate::i18n::StringId;
 use crate::render::Rect;
 use crate::text::Align;
-use crate::theme::{vars, ComputedStyle, Paint, StateFlags, THEME};
+use crate::theme::{vars, ComputedStyle, Paint, StateFlags};
 use crate::ui::focus::{FocusId, Focusable, Row};
 
 /// The two columns of the settings, with a 48 px gutter.
@@ -61,7 +61,7 @@ pub fn format_remaining(ms: u64) -> String {
 
 /// A row of the panel: the label in `--text-muted` at the left, the value in `--text` at the right.
 pub fn panel_row(p: &mut Painter, line: Rect, label: &str, value: &str) {
-    let label_style = p.style(&THEME.breadcrumb, StateFlags::NONE);
+    let label_style = p.style(|t| &t.breadcrumb, StateFlags::NONE);
     let mut value_style = label_style;
     value_style.color = vars::TEXT;
     value_style.font_weight = 700;
@@ -81,13 +81,13 @@ pub fn panel_bar(p: &mut Painter, bar: Rect, fraction: Option<f32>) {
             bar.h,
         );
         p.list
-            .fill(filled, vars::SHAPE_FULL, Paint::Solid(vars::PRIMARY));
+            .fill(filled, vars::SHAPE_FULL, Paint::Solid(p.primary_on_dark()));
     }
 }
 
 /// Draws the panel box and returns its inner area (inside the margins).
 pub fn draw_panel(p: &mut Painter, panel: Rect) -> Rect {
-    let style = p.style(&THEME.panel, StateFlags::NONE);
+    let style = p.style(|t| &t.panel, StateFlags::NONE);
     p.draw_box(panel, &style);
     Rect::new(
         panel.x + PANEL_PAD_X,
@@ -99,7 +99,7 @@ pub fn draw_panel(p: &mut Painter, panel: Rect) -> Rect {
 
 /// Draws the panel heading (`.card-heading`, in capitals) at the top of the inner area.
 pub fn panel_heading(p: &mut Painter, inner: Rect, text: &str) {
-    let heading = p.style(&THEME.card_heading, StateFlags::NONE);
+    let heading = p.style(|t| &t.card_heading, StateFlags::NONE);
     let line = Rect::new(inner.x, inner.y, inner.w, 20.0);
     // Card headings are capitals, as the statistics panel's ("RECURSOS DA TV").
     p.text(&text.to_uppercase(), line, Align::Start, &heading);
@@ -172,7 +172,7 @@ impl LumeApp {
                 continue;
             }
             let progress = self.focus_progress(*id);
-            let style = p.focus_style(&THEME.settings_item, progress);
+            let style = p.focus_style(|t| &t.settings_item, progress);
             p.draw_box(rect, &style);
             let inner = Rect::new(
                 rect.x + style.padding[3],
@@ -242,9 +242,9 @@ impl FlashWarning {
 
     /// Draws the card in the middle of the canvas.
     pub fn draw(&self, p: &mut Painter, translator: &crate::i18n::Translator) {
-        let card = p.style(&THEME.menu, StateFlags::NONE);
-        let note = p.style(&THEME.menu_note, StateFlags::NONE);
-        let mut title = p.style(&THEME.menu_item, StateFlags::NONE);
+        let card = p.style(|t| &t.menu, StateFlags::NONE);
+        let note = p.style(|t| &t.menu_note, StateFlags::NONE);
+        let mut title = p.style(|t| &t.menu_item, StateFlags::NONE);
         title.font_weight = 700;
         let inner_w = WARNING_WIDTH - 2.0 * WARNING_PADDING;
         let text = translator.get(StringId::ToolsFlashText);
@@ -284,7 +284,7 @@ impl FlashWarning {
         let mut bx =
             rect.right() - WARNING_PADDING - 2.0 * WARNING_BUTTON_WIDTH - WARNING_BUTTON_GAP;
         for (label, focused, _) in buttons {
-            let style = p.focus_style(&THEME.menu_item, if focused { 1.0 } else { 0.0 });
+            let style = p.focus_style(|t| &t.menu_item, if focused { 1.0 } else { 0.0 });
             let button = Rect::new(bx, y, WARNING_BUTTON_WIDTH, WARNING_BUTTON_HEIGHT);
             p.draw_box(button, &style);
             p.text(&translator.get(label), button, Align::Center, &style);
@@ -324,7 +324,7 @@ impl Hint {
         if !self.is_visible(now_ms) || self.text.is_empty() {
             return;
         }
-        let style = p.style(&THEME.toast, StateFlags::NONE);
+        let style = p.style(|t| &t.toast, StateFlags::NONE);
         let width = p.measure(&self.text, &style) + style.padding[1] + style.padding[3];
         let height = style.font_size * 1.6 + style.padding[0] + style.padding[2];
         let visible = p.display.visible_rect();

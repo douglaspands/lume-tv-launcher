@@ -13,7 +13,7 @@ use crate::app::{Effect, Key, LumeApp};
 use crate::i18n::StringId;
 use crate::render::Rect;
 use crate::text::Align;
-use crate::theme::{vars, StateFlags, THEME};
+use crate::theme::{vars, StateFlags};
 
 /// How many of the newest lines the platform reads.
 pub const MAX_LINES: usize = 500;
@@ -157,7 +157,7 @@ impl LumeApp {
             inner,
             &format!("{} · {}", t.get(StringId::ToolLogHeading), filter),
         );
-        let muted = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let muted = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let hint = t.get(if state.failures_only {
             StringId::ToolLogShowAll
         } else {

@@ -75,10 +75,10 @@ pub struct RectVertex {
     pub gradient: [f32; 2],
     /// Attribute 2, w: 1.0 when the fill is a gradient.
     pub is_gradient: f32,
-    /// Attribute 3, xyz: gradient stop positions.
+    /// Attribute 3, xyz: gradient stop positions (or x: logo mark size when `is_logo_mark == 1.0`).
     pub stops: [f32; 3],
-    /// Attribute 3, w: unused.
-    pub _padding: f32,
+    /// Attribute 3, w: 1.0 when the rect subtracts the Lume logo L and dot via SDF.
+    pub is_logo_mark: f32,
     /// Attributes 4 to 6: premultiplied RGBA of up to three stops (solid fills use the first).
     pub colors: [[f32; 4]; 3],
 }
@@ -313,6 +313,11 @@ impl Builder {
             }
             RectKind::Shadow { color, .. } => {
                 vertex.colors[0] = premultiplied(color, cmd.opacity);
+            }
+            RectKind::LogoMark { color, mark_size } => {
+                vertex.colors[0] = premultiplied(color, cmd.opacity);
+                vertex.stops[0] = mark_size.max(1e-4);
+                vertex.is_logo_mark = 1.0;
             }
         }
 
@@ -712,5 +717,22 @@ mod tests {
             opacity: 0.5,
         }));
         assert!((Frame::build(&list).rect_vertices[0].colors[0][3] - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn logo_mark_builds_single_sdf_quad_in_rect_program() {
+        let mut list = DisplayList::new();
+        let square = Rect::new(10.0, 20.0, 40.0, 40.0);
+        list.logo_mark(square, 12.0, 40.0, Color::rgb(77, 179, 255));
+        let frame = Frame::build(&list);
+        assert_eq!(frame.batches.len(), 1);
+        assert_eq!(frame.batches[0].program, Program::Rect);
+        assert_eq!(frame.batches[0].quad_count, 1);
+        let v = frame.rect_vertices[0];
+        assert_eq!(v.is_logo_mark, 1.0);
+        assert_eq!(v.stops[0], 40.0);
+        assert_eq!(v.radius, 12.0);
+        assert_eq!(v.half_size, [20.0, 20.0]);
+        assert!((v.colors[0][3] - 1.0).abs() < 1e-5);
     }
 }

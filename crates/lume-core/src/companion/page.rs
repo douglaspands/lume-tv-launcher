@@ -4,6 +4,7 @@
 //! language, then English) from the same translation files.
 
 use crate::i18n::{StringId, Translator};
+use crate::theme::AccentColor;
 
 const TEMPLATE: &str = include_str!(concat!(env!("OUT_DIR"), "/companion_page.html"));
 
@@ -109,12 +110,43 @@ fn texts(translator: &Translator) -> String {
     format!("{{{}}}", fields.join(","))
 }
 
-/// The page in the language of an `Accept-Language` header.
-pub fn render(accept_language: &str) -> String {
+/// The page in the language of an `Accept-Language` header, adapted to `accent`.
+pub fn render(accept_language: &str, accent: AccentColor) -> String {
     let translator = Translator::new(&preferred_languages(accept_language));
-    TEMPLATE
+    let mut html = TEMPLATE
         .replacen("__LUME_LANG__", translator.language(), 1)
-        .replacen("__LUME_STRINGS__", &texts(&translator), 1)
+        .replacen("__LUME_STRINGS__", &texts(&translator), 1);
+    if accent != AccentColor::default() {
+        let default_palette = AccentColor::default().palette();
+        let palette = accent.palette();
+        let default_on_primary_hex = format!(
+            "#{:02X}{:02X}{:02X}",
+            default_palette.on_primary.r,
+            default_palette.on_primary.g,
+            default_palette.on_primary.b
+        );
+        let on_primary_hex = format!(
+            "#{:02X}{:02X}{:02X}",
+            palette.on_primary.r, palette.on_primary.g, palette.on_primary.b
+        );
+        html = html
+            .replacen(
+                &format!("--primary: {};", default_palette.primary_hex),
+                &format!("--primary: {};", palette.primary_hex),
+                1,
+            )
+            .replacen(
+                &format!("--on-primary: {default_on_primary_hex};"),
+                &format!("--on-primary: {on_primary_hex};"),
+                1,
+            )
+            .replacen(
+                &format!("fill=\"{}\"", default_palette.primary_hex),
+                &format!("fill=\"{}\"", palette.primary_hex),
+                1,
+            );
+    }
+    html
 }
 
 #[cfg(test)]
@@ -123,17 +155,17 @@ mod tests {
 
     #[test]
     fn the_language_follows_the_phone() {
-        let page = render("es-ES,es;q=0.9,pt-BR;q=0.8");
+        let page = render("es-ES,es;q=0.9,pt-BR;q=0.8", AccentColor::default());
         assert!(page.contains(r#"<html lang="es""#), "{}", &page[..200]);
         assert!(page.contains("Fondo de pantalla"));
-        let page = render("pt-BR,pt;q=0.9");
+        let page = render("pt-BR,pt;q=0.9", AccentColor::default());
         assert!(page.contains("Enviar para a TV"));
         // Japanese has no translation: English.
-        let page = render("ja-JP,ja;q=0.9");
+        let page = render("ja-JP,ja;q=0.9", AccentColor::default());
         assert!(page.contains(r#"<html lang="en""#));
         assert!(page.contains("Send to the TV"));
         // No header at all: English too.
-        assert!(render("").contains("Send to the TV"));
+        assert!(render("", AccentColor::default()).contains("Send to the TV"));
     }
 
     #[test]
@@ -146,7 +178,7 @@ mod tests {
 
     #[test]
     fn the_page_is_complete_and_self_contained() {
-        let page = render("en");
+        let page = render("en", AccentColor::default());
         assert!(!page.contains("__LUME_"));
         assert!(!page.contains("{{"));
         for (key, _) in TEXTS {
@@ -164,6 +196,27 @@ mod tests {
     }
 
     #[test]
+    fn primary_color_follows_active_accent_at_runtime() {
+        for accent in AccentColor::ALL {
+            let page = render("en", accent);
+            let palette = accent.palette();
+            assert!(
+                page.contains(&format!("--primary: {};", palette.primary_hex)),
+                "{accent:?}: missing --primary: {}",
+                palette.primary_hex
+            );
+            let on_primary_hex = format!(
+                "#{:02X}{:02X}{:02X}",
+                palette.on_primary.r, palette.on_primary.g, palette.on_primary.b
+            );
+            assert!(
+                page.contains(&format!("--on-primary: {on_primary_hex};")),
+                "{accent:?}: missing --on-primary: {on_primary_hex}"
+            );
+        }
+    }
+
+    #[test]
     fn texts_cannot_close_the_script() {
         assert_eq!(
             json_string("a</script>\"b"),
@@ -171,15 +224,34 @@ mod tests {
         );
     }
 
-    /// The logo in the page has the proportions of `logo.rs` (the build reads its constants).
+    /// The logo in the page has the proportions of `logo.rs` (the build reads its constants) and
+    /// cuts the L and dot out via an SVG `<mask>` so they are truly transparent.
     #[test]
     fn the_logo_has_the_proportions_of_the_tv_logo() {
-        let page = render("en");
+        let page = render("en", AccentColor::default());
         let svg = &page[page.find("<svg").unwrap()..page.find("</svg>").unwrap()];
         let expected = crate::logo::svg_numbers();
         for number in expected {
             assert!(svg.contains(&format!("\"{number}\"")), "{number} in {svg}");
         }
+        assert!(svg.contains(r#"<mask id="lume-mark">"#), "{svg}");
+        assert!(svg.contains(r#"mask="url(#lume-mark)""#), "{svg}");
+        assert_eq!(svg.matches(r##"fill="#000""##).count(), 3, "{svg}");
+        // Switching the accent updates the rounded square fill while keeping the cutout mask.
+        let coral_page = render("en", AccentColor::Coral);
+        let coral_svg =
+            &coral_page[coral_page.find("<svg").unwrap()..coral_page.find("</svg>").unwrap()];
+        assert!(
+            coral_svg.contains(&format!(
+                r#"fill="{}""#,
+                AccentColor::Coral.palette().primary_hex
+            )),
+            "{coral_svg}"
+        );
+        assert!(
+            coral_svg.contains(r#"mask="url(#lume-mark)""#),
+            "{coral_svg}"
+        );
     }
 
     /// The page's QOI encoder (JavaScript), run by `node`, makes what the TV decodes back to the same

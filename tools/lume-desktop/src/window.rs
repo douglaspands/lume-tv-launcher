@@ -52,15 +52,19 @@ impl Viewer {
         let now = self.now_ms();
         let lume = &mut self.lume;
         self.session.build(|scene| {
+            let theme = *lume.active_theme();
+            let accent = lume.active_accent();
             let mut painter = Painter {
                 list: scene.list,
                 text: scene.text,
                 display: *scene.display,
+                theme: &theme,
+                accent,
             };
             crate::demo::feed_stats(lume, now);
             lume.draw(&mut painter, now);
         });
-        let pixels = self.session.render();
+        let pixels = self.session.render_with_clear(self.lume.clear_color());
         let Some(surface) = self.surface.as_mut() else {
             return;
         };
