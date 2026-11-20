@@ -47,7 +47,7 @@ use crate::clock::WallClock;
 use crate::home::config::HomeConfig;
 use crate::i18n::Translator;
 use crate::render::Rect;
-use crate::theme::{ComputedStyle, THEME};
+use crate::theme::{AccentColor, AccentPalette, ComputedStyle, Theme, THEME};
 use crate::ui::animation::Animations;
 use crate::ui::focus::{Direction, Focus, FocusId, Row};
 use crate::ui::scroll;
@@ -77,6 +77,7 @@ pub mod ids {
     pub const TAB_APPS: FocusId = 2;
     pub const GEAR: FocusId = 3;
     pub const INPUTS: FocusId = 4;
+    pub const DOCK_ALL_APPS: FocusId = 998;
     pub const FAVORITES_ADD: FocusId = 999;
     pub const FAVORITE_BASE: FocusId = 1000;
     pub const GRID_BASE: FocusId = 2000;
@@ -177,6 +178,8 @@ pub(super) enum Anim {
     DockAmplitude,
     /// How visible the content of the tab is while it fades in after a tab change, 0.0 to 1.0.
     TabFade,
+    /// Vertical slide/fade transition for `Slide` tabless mode (250 ms), 0.0 to 1.0.
+    SlideTransition,
     /// How visible the context menu is while it opens or closes, 0.0 to 1.0.
     MenuFade,
     /// What is left of a dock icon's slide to its new place, in units (by its place in the dock).
@@ -201,6 +204,22 @@ pub(super) enum Anim {
 
 /// The fade of the content when the tab changes (`--tab-fade`).
 const TAB_FADE: crate::theme::Transition = crate::theme::vars::TAB_FADE;
+/// Vertical transition for `Slide` tabless mode (`--duration-medium1`, 250 ms,
+/// `--easing-standard-decelerate`).
+const SLIDE_TRANSITION: crate::theme::Transition = crate::theme::Transition {
+    duration_ms: crate::theme::vars::DURATION_MEDIUM1.duration_ms,
+    curve: crate::theme::vars::FOCUS_TIME.curve,
+};
+/// Smooth dock ↔ grid transition for `Peek` tabless mode (`--duration-medium2`, 300 ms,
+/// `--easing-standard`): eases out of rest instead of snapping on the first frame.
+const PEEK_TRANSITION: crate::theme::Transition = crate::theme::Transition {
+    duration_ms: crate::theme::vars::DURATION_MEDIUM2.duration_ms,
+    curve: crate::theme::Curve::CubicBezier(0.2, 0.0, 0.0, 1.0),
+};
+/// Vertical travel of the content during `Anim::SlideTransition`, in logical units.
+const SLIDE_OFFSET: f32 = 48.0;
+/// Scroll distance over which the wallpaper dims progressively in `Peek` mode.
+const PEEK_DIM_DISTANCE: f32 = 400.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PendingFocus {
@@ -223,6 +242,10 @@ pub struct LumeApp {
     pub icons: AppIcons,
     pub usage: UsageHistory,
     pub config: HomeConfig,
+    /// Resolved theme for the active accent color (`effective_accent()`).
+    active_theme: Theme,
+    /// Transient accent color being previewed in the Home screen editor.
+    preview_accent: Option<AccentColor>,
     pub keys: crate::keys::KeyMap,
     pub translator: Translator,
     pub clock: WallClock,
@@ -257,6 +280,8 @@ pub struct LumeApp {
     scroll_y: f32,
     /// Where the content of the frame starts in the display list (after the wallpaper).
     content_start: usize,
+    /// Direction of the active `SlideTransition` (`1.0` sliding into Apps, `-1.0` back to Home).
+    slide_dir: f32,
     /// The dock icon the focus is on, when it is in the dock.
     dock_focus: Option<usize>,
     /// The last dock icon that had the focus: its name stays in the bubble while it fades out.
@@ -321,11 +346,14 @@ impl LumeApp {
                 .and(files.as_deref())
                 .and_then(crate::wallpaper::custom::load_thumbnail),
         );
+        let active_theme = Theme::for_accent(config.accent_color);
         LumeApp {
             catalog,
             icons: AppIcons::default(),
             usage,
             config,
+            active_theme,
+            preview_accent: None,
             keys: crate::keys::KeyMap::default(),
             translator,
             clock,
@@ -349,6 +377,7 @@ impl LumeApp {
             anim: Animations::new(),
             scroll_y: 0.0,
             content_start: 0,
+            slide_dir: 0.0,
             dock_focus: None,
             dock_last: 0,
             revealed: None,
@@ -390,18 +419,128 @@ impl LumeApp {
         }
     }
 
-    /// The transition the theme gives to focus changes.
-    fn focus_transition(&self) -> Option<crate::theme::Transition> {
-        THEME.tile.base.transition
+    pub(super) fn is_slide_mode(&self) -> bool {
+        !self.config.tabs_visible
+            && self.config.tabless_mode == crate::home::config::TablessMode::Slide
     }
 
-    fn style(&self, component: &crate::theme::ComponentTheme) -> ComputedStyle {
-        THEME.resolve(component, crate::theme::StateFlags::NONE)
+    pub(super) fn is_peek_mode(&self) -> bool {
+        !self.config.tabs_visible
+            && self.config.tabless_mode == crate::home::config::TablessMode::Peek
+    }
+
+    pub(super) fn is_dock_mode(&self) -> bool {
+        !self.config.tabs_visible
+            && self.config.tabless_mode == crate::home::config::TablessMode::Dock
+    }
+
+    fn is_in_dock(&self) -> bool {
+        self.focus.current_id().is_some_and(|id| {
+            id == ids::FAVORITES_ADD
+                || id == ids::DOCK_ALL_APPS
+                || (ids::FAVORITE_BASE..ids::GRID_BASE).contains(&id)
+        })
+    }
+
+    fn is_on_first_grid_row(&self) -> bool {
+        let Some(focused) = self.focus.current_id() else {
+            return false;
+        };
+        if focused < ids::GRID_BASE {
+            return false;
+        }
+        self.focus
+            .rows()
+            .get(1)
+            .is_some_and(|row| row.items.iter().any(|item| item.id == focused))
+    }
+
+    fn dock_return_focus(&self) -> PendingFocus {
+        let items = self.dock_items();
+        items
+            .get(self.dock_last)
+            .or_else(|| items.first())
+            .map_or(PendingFocus::FirstContent, |item| PendingFocus::Id(item.id))
+    }
+
+    fn slide_to_apps(&mut self) {
+        self.screen = Screen::Main(Tab::Apps);
+        self.scroll_to_top();
+        self.pending_focus = Some(PendingFocus::FirstContent);
+        self.slide_dir = 1.0;
+        self.anim.animate_to(
+            Anim::SlideTransition,
+            0.0,
+            1.0,
+            self.now_ms,
+            Some(SLIDE_TRANSITION),
+        );
+    }
+
+    fn slide_to_home(&mut self) {
+        self.screen = Screen::Main(Tab::Home);
+        self.scroll_to_top();
+        self.pending_focus = Some(self.dock_return_focus());
+        self.slide_dir = -1.0;
+        self.anim.animate_to(
+            Anim::SlideTransition,
+            0.0,
+            1.0,
+            self.now_ms,
+            Some(SLIDE_TRANSITION),
+        );
+    }
+
+    /// The accent color currently displayed (live preview in the editor, or the saved one).
+    pub fn effective_accent(&self) -> AccentColor {
+        self.preview_accent.unwrap_or(self.config.accent_color)
+    }
+
+    /// Rebuilds `active_theme` from the current effective accent color.
+    pub fn refresh_theme(&mut self) {
+        self.active_theme = Theme::for_accent(self.effective_accent());
+    }
+
+    /// Sets or clears the live-preview accent color and refreshes `active_theme`.
+    pub fn set_preview_accent(&mut self, accent: Option<AccentColor>) {
+        if self.preview_accent != accent {
+            self.preview_accent = accent;
+            self.refresh_theme();
+        }
+    }
+
+    /// The resolved theme for the active accent color.
+    pub fn active_theme(&self) -> &Theme {
+        &self.active_theme
+    }
+
+    /// The resolved palette for the active accent color.
+    pub fn active_accent(&self) -> AccentPalette {
+        self.effective_accent().palette()
+    }
+
+    /// The transition the theme gives to focus changes.
+    fn focus_transition(&self) -> Option<crate::theme::Transition> {
+        self.active_theme.tile.base.transition
+    }
+
+    fn style(
+        &self,
+        component: impl FnOnce(&Theme) -> &crate::theme::ComponentTheme,
+    ) -> ComputedStyle {
+        self.active_theme.resolve(
+            component(&self.active_theme),
+            crate::theme::StateFlags::NONE,
+        )
     }
 
     /// Moves the focus in `direction` and returns whether it moved.
     fn move_focus(&mut self, direction: Direction) -> bool {
-        self.focus.move_focus(direction)
+        let moved = self.focus.move_focus(direction);
+        if moved {
+            self.sync_editor_preview_accent();
+        }
+        moved
     }
 
     /// Handles a key press.
@@ -550,11 +689,25 @@ impl LumeApp {
                 vec![]
             }
             Key::Up => {
-                self.move_focus(Direction::Up);
+                if self.screen == Screen::Main(Tab::Apps)
+                    && self.is_slide_mode()
+                    && self.is_on_first_grid_row()
+                {
+                    self.slide_to_home();
+                } else {
+                    self.move_focus(Direction::Up);
+                }
                 vec![]
             }
             Key::Down => {
-                self.move_focus(Direction::Down);
+                if self.screen == Screen::Main(Tab::Home)
+                    && self.is_slide_mode()
+                    && self.is_in_dock()
+                {
+                    self.slide_to_apps();
+                } else {
+                    self.move_focus(Direction::Down);
+                }
                 vec![]
             }
             Key::Left => self.horizontal(Direction::Left),
@@ -580,7 +733,7 @@ impl LumeApp {
     fn horizontal(&mut self, direction: Direction) -> Vec<Effect> {
         self.move_focus(direction);
         // Moving the focus onto a tab shows that tab at once, without OK. The focus stays on it.
-        if matches!(self.screen, Screen::Main(_)) {
+        if self.config.tabs_visible && matches!(self.screen, Screen::Main(_)) {
             match self.focus.current_id() {
                 Some(ids::TAB_HOME) => self.select_tab(Tab::Home),
                 Some(ids::TAB_APPS) => self.select_tab(Tab::Apps),
@@ -610,11 +763,11 @@ impl LumeApp {
         match id {
             ids::GEAR => vec![Effect::OpenAndroidSettings],
             ids::INPUTS => vec![Effect::OpenInputs],
-            ids::TAB_HOME => {
+            ids::TAB_HOME if self.config.tabs_visible => {
                 self.select_tab(Tab::Home);
                 vec![]
             }
-            ids::TAB_APPS => {
+            ids::TAB_APPS if self.config.tabs_visible => {
                 self.select_tab(Tab::Apps);
                 vec![]
             }
@@ -629,14 +782,30 @@ impl LumeApp {
     fn back(&mut self) -> Vec<Effect> {
         match self.screen {
             Screen::Main(Tab::Home) => {
-                // Back on the home root scrolls to the top and never closes lume.
-                self.scroll_to_top();
-                self.pending_focus = Some(PendingFocus::FirstContent);
+                if self.is_peek_mode()
+                    && (self.focused().is_some_and(|id| id >= ids::GRID_BASE)
+                        || self.scroll_y > 0.0)
+                {
+                    self.revealed = None;
+                    self.scroll_to_peek(0.0);
+                    self.pending_focus = Some(self.dock_return_focus());
+                } else {
+                    // Back on the home root scrolls to the top and never closes lume.
+                    self.scroll_to_top();
+                    self.pending_focus = Some(PendingFocus::FirstContent);
+                }
                 vec![]
             }
             Screen::Main(Tab::Apps) => {
-                self.select_tab(Tab::Home);
-                self.pending_focus = Some(PendingFocus::FirstContent);
+                if self.is_slide_mode() {
+                    self.slide_to_home();
+                } else if self.is_dock_mode() {
+                    self.select_tab(Tab::Home);
+                    self.pending_focus = Some(PendingFocus::Id(ids::DOCK_ALL_APPS));
+                } else {
+                    self.select_tab(Tab::Home);
+                    self.pending_focus = Some(PendingFocus::FirstContent);
+                }
                 vec![]
             }
             Screen::Settings => {
@@ -673,6 +842,7 @@ impl LumeApp {
     pub fn go_home(&mut self) {
         self.end_receive();
         self.editor = editor::EditorState::default();
+        self.set_preview_accent(None);
         self.context_menu = None;
         self.end_dock_move_quietly();
         self.screen = Screen::Main(Tab::Home);
@@ -687,7 +857,9 @@ impl LumeApp {
         self.check_dock_move();
         // A favorite that was uninstalled leaves the dock with the same slide as a removal.
         self.begin_dock_transition(None);
-        if self.screen == Screen::Main(Tab::Apps) {
+        if self.screen == Screen::Main(Tab::Apps)
+            || (self.screen == Screen::Main(Tab::Home) && self.is_peek_mode())
+        {
             if let Some(position) = self.grid_position {
                 if let Some(id) = self.grid_id_at(position) {
                     self.pending_focus = Some(PendingFocus::Id(id));
@@ -726,6 +898,7 @@ impl LumeApp {
     /// Puts the screen, the focused element and the scrolling back as they were when an app was opened.
     fn restore(&mut self, point: ReturnPoint) {
         self.editor = editor::EditorState::default();
+        self.set_preview_accent(None);
         self.context_menu = None;
         self.end_dock_move_quietly();
         self.screen = point.screen;
@@ -951,13 +1124,20 @@ impl LumeApp {
         })
     }
 
-    /// Fades the content drawn so far in this frame (not the top bar, which is drawn after it)
-    /// while the tab that was just selected appears, and notes where the top bar starts.
+    /// Fades or slides the content drawn so far in this frame (not the top bar, which is drawn
+    /// after it) while a tab or `Slide` transition runs, and notes where the top bar starts.
     pub(super) fn fade_tab_content(&mut self, p: &mut painter::Painter) {
-        self.bar_start = Some(p.list.len());
+        let bar_start = p.list.len();
+        self.bar_start = Some(bar_start);
         let visible = self.anim.get(Anim::TabFade, 1.0, self.now_ms);
         if visible < 1.0 {
             p.list.fade_from(self.content_start, visible);
+        }
+        let slide = self.anim.get(Anim::SlideTransition, 1.0, self.now_ms);
+        if slide < 1.0 {
+            let dy = self.slide_dir * SLIDE_OFFSET * (1.0 - slide);
+            p.list.translate_range(self.content_start, bar_start, dy);
+            p.list.fade_from(self.content_start, slide);
         }
     }
 
@@ -974,16 +1154,21 @@ impl LumeApp {
             }
         }
         self.splash_frame_start(now_ms);
+        self.draw_splash_background(p);
         // A full-screen pattern of the Tools is drawn on the cleared frame, without wallpaper.
         if !self.tool_fullscreen() {
             // The Confirm screen shows the picture received, which is "Minha imagem" meanwhile, as
             // the wallpaper would be: without darkening.
-            let (wallpaper, dimmed) = match self.screen {
-                Screen::ConfirmImage => (crate::wallpaper::WallpaperId::Custom, false),
-                Screen::Main(Tab::Home) => (self.config.wallpaper, false),
-                _ => (self.config.wallpaper, true),
+            let (wallpaper, dim_amount) = match self.screen {
+                Screen::ConfirmImage => (crate::wallpaper::WallpaperId::Custom, 0.0),
+                Screen::Main(Tab::Home) if self.is_peek_mode() => (
+                    self.config.wallpaper,
+                    (self.current_scroll_y() / PEEK_DIM_DISTANCE).clamp(0.0, 1.0),
+                ),
+                Screen::Main(Tab::Home) => (self.config.wallpaper, 0.0),
+                _ => (self.config.wallpaper, 1.0),
             };
-            p.wallpaper_at(wallpaper, dimmed, self.wallpaper_reveal());
+            p.wallpaper_at(wallpaper, dim_amount, self.wallpaper_reveal());
         }
         self.content_start = p.list.len();
         self.bar_start = None;
@@ -1008,6 +1193,7 @@ impl LumeApp {
         self.splash_frame_end(p, content_end);
         self.anim.prune(now_ms, |key| match key {
             Anim::TabFade
+            | Anim::SlideTransition
             | Anim::MenuFade
             | Anim::Reveal
             | Anim::SplashLogo
@@ -1020,7 +1206,7 @@ impl LumeApp {
         let Some((text, _)) = self.toast.clone() else {
             return;
         };
-        let style = self.style(&THEME.toast);
+        let style = self.style(|t| &t.toast);
         let width = p.measure(&text, &style) + style.padding[1] + style.padding[3];
         let height = style.font_size * 1.6 + style.padding[0] + style.padding[2];
         let visible = p.display.visible_rect();
@@ -1080,6 +1266,7 @@ impl LumeApp {
             }
             None => {}
         }
+        self.sync_editor_preview_accent();
         self.track_focus();
     }
 
@@ -1110,10 +1297,18 @@ impl LumeApp {
     }
 
     fn scroll_to(&mut self, target: f32) {
+        let transition = self.focus_transition();
+        self.scroll_to_with(target, transition);
+    }
+
+    fn scroll_to_peek(&mut self, target: f32) {
+        self.scroll_to_with(target, Some(PEEK_TRANSITION));
+    }
+
+    fn scroll_to_with(&mut self, target: f32, transition: Option<crate::theme::Transition>) {
         if (target - self.scroll_y).abs() < 0.01 {
             return;
         }
-        let transition = self.focus_transition();
         self.anim.animate_to(
             Anim::ScrollY,
             self.scroll_y,
@@ -1122,6 +1317,43 @@ impl LumeApp {
             transition,
         );
         self.scroll_y = target;
+    }
+
+    /// Vertical reveal for `Peek` mode: when focus is in the grid, ensures the scroll offset is at
+    /// least `min_scroll` (hiding the dock behind the top bar), using the 250 ms slide curve when
+    /// crossing from the dock into the grid.
+    fn reveal_vertical_peek(
+        &mut self,
+        rect: Option<Rect>,
+        content_height: f32,
+        view_top: f32,
+        view_height: f32,
+        min_scroll: f32,
+    ) {
+        let focused = self.focus.current_id();
+        if self.revealed == focused {
+            return;
+        }
+        self.revealed = focused;
+        let Some(rect) = rect else { return };
+        let entering_grid = self.scroll_y < min_scroll;
+        let max = scroll::max_offset(content_height - view_top, view_height).max(min_scroll);
+        let current = self.scroll_y.max(min_scroll);
+        let target = scroll::reveal(
+            current,
+            view_height,
+            rect.y - view_top,
+            rect.bottom() - view_top,
+            28.0,
+            max,
+        )
+        .max(min_scroll);
+        let transition = if entering_grid {
+            Some(PEEK_TRANSITION)
+        } else {
+            self.focus_transition()
+        };
+        self.scroll_to_with(target, transition);
     }
 
     /// The vertical scroll offset to draw with now.

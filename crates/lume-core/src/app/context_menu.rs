@@ -10,7 +10,7 @@ use crate::i18n::{Arg, PluralId, StringId};
 use crate::keys::{keycode_parts, KeyTarget};
 use crate::render::Rect;
 use crate::text::Align;
-use crate::theme::{StateFlags, Transition, THEME};
+use crate::theme::{StateFlags, Transition};
 use crate::ui::focus::FocusId;
 
 /// Space between the card's edge and its items. With the card's radius (20) it keeps the corners of
@@ -197,7 +197,13 @@ impl LumeApp {
         };
         let menu = match self.screen {
             Screen::Main(Tab::Apps) => self.grid_menu(id),
-            Screen::Main(Tab::Home) => self.dock_menu(id),
+            Screen::Main(Tab::Home) => {
+                if id >= ids::GRID_BASE {
+                    self.grid_menu(id)
+                } else {
+                    self.dock_menu(id)
+                }
+            }
             Screen::Editor => self.image_menu(id),
             _ => None,
         };
@@ -262,23 +268,34 @@ impl LumeApp {
     }
 
     fn dock_menu(&self, id: FocusId) -> Option<ContextMenu> {
-        if !(ids::FAVORITE_BASE..ids::GRID_BASE).contains(&id) {
-            return None;
-        }
-        let index = (id - ids::FAVORITE_BASE) as usize;
-        let count = self.config.favorites.len();
-        let package = self.config.favorites.get(index)?.clone();
+        let dock_items = self.dock_items();
+        let slot = dock_items.iter().position(|item| item.id == id)?;
         let item = |action| MenuItem {
             action,
             enabled: true,
         };
+        if id == ids::DOCK_ALL_APPS {
+            if !self.config.has_dock_all_apps() || self.config.favorites.is_empty() {
+                return None;
+            }
+            return Some(ContextMenu::new(
+                Origin::Dock(slot),
+                String::new(),
+                vec![item(MenuAction::Move)],
+            ));
+        }
+        if !(ids::FAVORITE_BASE..ids::GRID_BASE).contains(&id) {
+            return None;
+        }
+        let index = (id - ids::FAVORITE_BASE) as usize;
+        let package = self.config.favorites.get(index)?.clone();
         let mut items = Vec::new();
-        if count > 1 {
+        if self.config.dock_slot_count() > 1 {
             items.push(item(MenuAction::Move));
         }
         items.push(item(MenuAction::RemoveFromHome));
         items.push(item(MenuAction::AppInfo));
-        Some(ContextMenu::new(Origin::Dock(index), package, items))
+        Some(ContextMenu::new(Origin::Dock(slot), package, items))
     }
 
     /// The menu of "Minha imagem" in the editor (none on the empty phone card or the catalog's).
@@ -368,20 +385,28 @@ impl LumeApp {
                 let Some(index) = favorite else { return vec![] };
                 let count = self.config.favorites.len() - 1;
                 if let Origin::Dock(_) = origin {
-                    // The favorite now in its place, or the one before when it was the last.
                     let place = index.min(count.saturating_sub(1));
-                    self.begin_dock_transition(Some(place));
+                    self.config.remove_favorite(index);
                     let id = match count {
                         0 => ids::FAVORITES_ADD,
                         _ => ids::FAVORITE_BASE + place as FocusId,
                     };
+                    let slot = self
+                        .dock_items()
+                        .iter()
+                        .position(|item| item.id == id)
+                        .unwrap_or(0);
+                    self.begin_dock_transition(Some(slot));
                     self.pending_focus = Some(PendingFocus::Id(id));
+                } else {
+                    self.config.remove_favorite(index);
                 }
-                self.config.remove_favorite(index);
                 return vec![Effect::SaveConfig];
             }
             MenuAction::Move => {
-                if favorite.is_some() {
+                if package.is_empty() {
+                    self.start_dock_move_all_apps();
+                } else if favorite.is_some() {
                     self.start_dock_move(package);
                 }
             }
@@ -415,6 +440,7 @@ impl LumeApp {
     pub(super) fn check_context_menu(&mut self) {
         let gone = self.context_menu().is_some_and(|m| {
             matches!(m.origin, Origin::Grid(_) | Origin::Dock(_))
+                && !m.package.is_empty()
                 && !self.catalog.contains(&m.package)
         });
         if gone {
@@ -482,8 +508,8 @@ impl LumeApp {
             return;
         }
         let Some(anchor) = menu.anchor else { return };
-        let item_style = p.style(&THEME.menu_item, StateFlags::NONE);
-        let note_style = p.style(&THEME.menu_note, StateFlags::NONE);
+        let item_style = p.style(|t| &t.menu_item, StateFlags::NONE);
+        let note_style = p.style(|t| &t.menu_note, StateFlags::NONE);
         let side = item_style.padding[1] + item_style.padding[3];
         let rows: Vec<(MenuItem, String, Option<String>)> = menu
             .items
@@ -527,16 +553,16 @@ impl LumeApp {
         let panel = panel.translate(0.0, (1.0 - visible) * RISE);
 
         let start = p.list.len();
-        let panel_style = p.style(&THEME.menu, StateFlags::NONE);
+        let panel_style = p.style(|t| &t.menu, StateFlags::NONE);
         p.draw_box(panel, &panel_style);
         let mut y = panel.y + PADDING;
         for (index, ((item, label, note), h)) in rows.iter().zip(&heights).enumerate() {
             let rect = Rect::new(panel.x + PADDING, y, inner, *h);
             y += h + ITEM_GAP;
             let style = if item.enabled {
-                p.focus_style(&THEME.menu_item, self.focus_progress(item_id(index)))
+                p.focus_style(|t| &t.menu_item, self.focus_progress(item_id(index)))
             } else {
-                p.style(&THEME.menu_item, StateFlags::DISABLED)
+                p.style(|t| &t.menu_item, StateFlags::DISABLED)
             };
             p.draw_box(rect, &style);
             let text = Rect::new(rect.x + style.padding[3], rect.y, rect.w - side, rect.h);

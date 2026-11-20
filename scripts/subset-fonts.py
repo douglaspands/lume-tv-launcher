@@ -78,6 +78,7 @@ ICONS = {
     "eye-off": "EYE_OFF",
     "smartphone": "PHONE",
     "minus": "MINUS",
+    "layout-grid": "LAYOUT_GRID",
 }
 
 # Kerning pairs smaller than this many font units (of 1000 per em) are invisible

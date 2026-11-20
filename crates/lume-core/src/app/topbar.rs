@@ -3,10 +3,12 @@
 use super::painter::{fade, Painter};
 use super::{ids, Tab};
 use crate::clock::WallClock;
+use crate::display::CANVAS_WIDTH;
+use crate::home::config::TabsAlign;
 use crate::icons;
 use crate::logo;
 use crate::render::Rect;
-use crate::theme::{vars, StateFlags, THEME};
+use crate::theme::{vars, StateFlags};
 use crate::ui::focus::{Focusable, Row};
 
 /// Left and right margin of the whole interface.
@@ -48,11 +50,12 @@ impl BarLayout {
         home_label: &str,
         apps_label: &str,
         clock: &WallClock,
+        align: TabsAlign,
     ) -> BarLayout {
-        let style = p.style(&THEME.tab, StateFlags::ACTIVE);
+        let style = p.style(|t| &t.tab, StateFlags::ACTIVE);
         let home_width = p.measure(home_label, &style);
         let apps_width = p.measure(apps_label, &style);
-        let clock_style = Painter::text_style(&p.style(&THEME.clock, StateFlags::NONE));
+        let clock_style = Painter::text_style(&p.style(|t| &t.clock, StateFlags::NONE));
         let clock_width = p.text.measure(&clock.text(), &clock_style);
         let gear = Rect::new(
             CLOCK_RIGHT - clock_width - CLOCK_GAP - BUTTON,
@@ -60,12 +63,23 @@ impl BarLayout {
             BUTTON,
             BUTTON,
         );
+        let inputs = Rect::new(gear.x - BUTTON_GAP - BUTTON, gear.y, BUTTON, BUTTON);
+        let home_x = match align {
+            TabsAlign::Left => TABS_X,
+            TabsAlign::Center => {
+                let total = home_width + TAB_GAP + apps_width;
+                let ideal = (CANVAS_WIDTH - total) / 2.0;
+                let min_x = TABS_X;
+                let max_x = (inputs.x - TAB_GAP - total).max(min_x);
+                ideal.clamp(min_x, max_x)
+            }
+        };
         BarLayout {
             text: [
-                (TABS_X, home_width),
-                (TABS_X + home_width + TAB_GAP, apps_width),
+                (home_x, home_width),
+                (home_x + home_width + TAB_GAP, apps_width),
             ],
-            inputs: Rect::new(gear.x - BUTTON_GAP - BUTTON, gear.y, BUTTON, BUTTON),
+            inputs,
             gear,
         }
     }
@@ -77,25 +91,35 @@ impl BarLayout {
     }
 }
 
-/// The focus row of the top bar. The active tab is where the focus lands from below.
-pub fn row(tabs: &BarLayout, active: Tab, inputs: bool) -> Row {
-    let mut items = vec![
-        Focusable::new(ids::TAB_HOME, tabs.rect(Tab::Home)),
-        Focusable::new(ids::TAB_APPS, tabs.rect(Tab::Apps)),
-    ];
+/// The focus row of the top bar. With visible tabs, the active tab is where the focus lands from
+/// below; without tabs, the focus lands on the first available button (`INPUTS` or `GEAR`).
+pub fn row(tabs: &BarLayout, active: Tab, inputs: bool, tabs_visible: bool) -> Row {
+    let mut items = Vec::with_capacity(4);
+    if tabs_visible {
+        items.push(Focusable::new(ids::TAB_HOME, tabs.rect(Tab::Home)));
+        items.push(Focusable::new(ids::TAB_APPS, tabs.rect(Tab::Apps)));
+    }
     if inputs {
         items.push(Focusable::new(ids::INPUTS, tabs.inputs));
     }
     items.push(Focusable::new(ids::GEAR, tabs.gear));
-    Row::new(items).with_entry_up(match active {
-        Tab::Home => ids::TAB_HOME,
-        Tab::Apps => ids::TAB_APPS,
-    })
+    let entry_up = if tabs_visible {
+        match active {
+            Tab::Home => ids::TAB_HOME,
+            Tab::Apps => ids::TAB_APPS,
+        }
+    } else if inputs {
+        ids::INPUTS
+    } else {
+        ids::GEAR
+    };
+    Row::new(items).with_entry_up(entry_up)
 }
 
 pub struct TopBar<'a> {
     pub tabs: &'a BarLayout,
     pub active: Tab,
+    pub tabs_visible: bool,
     pub home_label: &'a str,
     pub apps_label: &'a str,
     pub clock: &'a WallClock,
@@ -136,8 +160,8 @@ impl TopBar<'_> {
     }
 
     pub fn draw(&self, p: &mut Painter) {
-        logo::draw_mark(p.list, LOGO, vars::PRIMARY, vars::BG);
-        let wordmark = p.style(&THEME.brand, StateFlags::NONE);
+        logo::draw_mark(p.list, LOGO, p.primary());
+        let wordmark = p.style(|t| &t.brand, StateFlags::NONE);
         p.text.draw(
             p.list,
             "Lume",
@@ -147,56 +171,61 @@ impl TopBar<'_> {
             wordmark.color,
         );
 
-        for (tab, label, id) in [
-            (Tab::Home, self.home_label, ids::TAB_HOME),
-            (Tab::Apps, self.apps_label, ids::TAB_APPS),
-        ] {
-            let selected = tab == self.active;
-            let state = if selected {
-                StateFlags::ACTIVE
-            } else {
-                StateFlags::NONE
-            };
-            let rest = p.style(&THEME.tab, state);
-            let progress = (self.focus)(id);
-            let style = if progress > 0.0 {
-                let mut focused = state;
-                focused.focus = true;
-                crate::ui::style::mix(&rest, &p.style(&THEME.tab, focused), progress)
-            } else {
-                rest
-            };
-            let (x, width) = self.tabs.text[tab as usize];
-            let text_style = Painter::text_style(&style);
-            p.text
-                .draw(p.list, label, x, TAB_BASELINE, &text_style, style.color);
-            let weight = self.underline_weight(tab);
-            if weight > 0.0 {
-                // Blue while the focus is in the top bar (the tabs are being controlled), white once
-                // it goes down to the content.
-                let color =
-                    crate::ui::style::mix_color(vars::SECONDARY, vars::PRIMARY, self.bar_focus());
-                p.list.fill(
-                    Rect::new(x - 2.0, 64.0, width + 4.0, vars::TAB_UNDERLINE),
-                    vars::TAB_UNDERLINE / 2.0,
-                    crate::theme::Paint::Solid(fade(color, weight)),
-                );
+        if self.tabs_visible {
+            for (tab, label, id) in [
+                (Tab::Home, self.home_label, ids::TAB_HOME),
+                (Tab::Apps, self.apps_label, ids::TAB_APPS),
+            ] {
+                let selected = tab == self.active;
+                let state = if selected {
+                    StateFlags::ACTIVE
+                } else {
+                    StateFlags::NONE
+                };
+                let rest = p.style(|t| &t.tab, state);
+                let progress = (self.focus)(id);
+                let style = if progress > 0.0 {
+                    let mut focused = state;
+                    focused.focus = true;
+                    crate::ui::style::mix(&rest, &p.style(|t| &t.tab, focused), progress)
+                } else {
+                    rest
+                };
+                let (x, width) = self.tabs.text[tab as usize];
+                let text_style = Painter::text_style(&style);
+                p.text
+                    .draw(p.list, label, x, TAB_BASELINE, &text_style, style.color);
+                let weight = self.underline_weight(tab);
+                if weight > 0.0 {
+                    // Primary accent while the focus is in the top bar (the tabs are being
+                    // controlled), white once it goes down to the content.
+                    let color = crate::ui::style::mix_color(
+                        vars::SECONDARY,
+                        p.primary_on_dark(),
+                        self.bar_focus(),
+                    );
+                    p.list.fill(
+                        Rect::new(x - 2.0, 64.0, width + 4.0, vars::TAB_UNDERLINE),
+                        vars::TAB_UNDERLINE / 2.0,
+                        crate::theme::Paint::Solid(fade(color, weight)),
+                    );
+                }
             }
         }
 
         if self.inputs {
             let progress = (self.focus)(ids::INPUTS);
-            let button = p.focus_style(&THEME.icon_button, progress);
+            let button = p.focus_style(|t| &t.icon_button, progress);
             p.draw_box(self.tabs.inputs, &button);
             p.icon(icons::INPUTS, self.tabs.inputs, GLYPH, button.color);
         }
 
         let progress = (self.focus)(ids::GEAR);
-        let gear = p.focus_style(&THEME.icon_button, progress);
+        let gear = p.focus_style(|t| &t.icon_button, progress);
         p.draw_box(self.tabs.gear, &gear);
         p.icon(icons::SETTINGS, self.tabs.gear, GLYPH, gear.color);
 
-        let clock_style = p.style(&THEME.clock, StateFlags::NONE);
+        let clock_style = p.style(|t| &t.clock, StateFlags::NONE);
         let text_style = Painter::text_style(&clock_style);
         let text = self.clock.text();
         let width = p.text.measure(&text, &text_style);
@@ -239,29 +268,86 @@ mod tests {
     fn the_clock_keeps_the_same_gap_to_the_gear_and_clears_the_tabs_at_any_time() {
         let mut text = TextEngine::new(1.0);
         let mut list = crate::render::DisplayList::new();
+        let accent = crate::theme::AccentColor::default();
+        let theme = crate::theme::Theme::for_accent(accent);
         let mut p = Painter {
             list: &mut list,
             text: &mut text,
             display: crate::display::Display::new(1280, 720),
+            theme: &theme,
+            accent: accent.palette(),
         };
-        for is_24h in [true, false] {
-            for minute_of_day in 0..24 * 60 {
-                let clock = WallClock {
-                    unix_secs: minute_of_day * 60,
-                    utc_offset_secs: 0,
-                    is_24h,
-                };
-                let bar = BarLayout::new(&mut p, "Início", "Apps", &clock);
-                let style = Painter::text_style(&p.style(&THEME.clock, StateFlags::NONE));
-                let width = p.text.measure(&clock.text(), &style);
-                assert!((CLOCK_RIGHT - width - bar.gear.right() - CLOCK_GAP).abs() < 1e-3);
-                let (apps_x, apps_width) = bar.text[1];
-                assert!(
-                    bar.inputs.x > apps_x + apps_width + 64.0,
-                    "{}",
-                    clock.text()
-                );
+        for align in [TabsAlign::Left, TabsAlign::Center] {
+            for (home_label, apps_label) in [("Início", "Apps"), ("Home", "Apps")] {
+                for is_24h in [true, false] {
+                    for minute_of_day in 0..24 * 60 {
+                        let clock = WallClock {
+                            unix_secs: minute_of_day * 60,
+                            utc_offset_secs: 0,
+                            is_24h,
+                        };
+                        let bar = BarLayout::new(&mut p, home_label, apps_label, &clock, align);
+                        let style = Painter::text_style(&p.style(|t| &t.clock, StateFlags::NONE));
+                        let width = p.text.measure(&clock.text(), &style);
+                        assert!((CLOCK_RIGHT - width - bar.gear.right() - CLOCK_GAP).abs() < 1e-3);
+                        let (home_x, home_width) = bar.text[0];
+                        let (apps_x, apps_width) = bar.text[1];
+                        assert!(
+                            home_x >= TABS_X - 1e-3,
+                            "{align:?} {home_label}: home_x={home_x}"
+                        );
+                        assert!(
+                            bar.inputs.x >= apps_x + apps_width + TAB_GAP - 1e-3,
+                            "{align:?} {}: inputs.x={} apps_right={}",
+                            clock.text(),
+                            bar.inputs.x,
+                            apps_x + apps_width
+                        );
+                        if align == TabsAlign::Center {
+                            let center = (home_x + apps_x + apps_width) / 2.0;
+                            assert!(
+                                (center - CANVAS_WIDTH / 2.0).abs() < 1e-2,
+                                "expected tabs centered at 640, got {center} ({home_label}/{apps_label} {})",
+                                clock.text()
+                            );
+                            assert!((apps_x - (home_x + home_width + TAB_GAP)).abs() < 1e-3);
+                        } else {
+                            assert_eq!(home_x, TABS_X);
+                        }
+                    }
+                }
             }
         }
+    }
+
+    #[test]
+    fn tabless_row_omits_tabs_and_enters_inputs_or_gear() {
+        let mut text = TextEngine::new(1.0);
+        let mut list = crate::render::DisplayList::new();
+        let accent = crate::theme::AccentColor::default();
+        let theme = crate::theme::Theme::for_accent(accent);
+        let mut p = Painter {
+            list: &mut list,
+            text: &mut text,
+            display: crate::display::Display::new(1280, 720),
+            theme: &theme,
+            accent: accent.palette(),
+        };
+        let clock = WallClock {
+            unix_secs: 0,
+            utc_offset_secs: 0,
+            is_24h: true,
+        };
+        let bar = BarLayout::new(&mut p, "Início", "Apps", &clock, TabsAlign::Left);
+
+        let with_inputs = row(&bar, Tab::Home, true, false);
+        let ids_with: Vec<u32> = with_inputs.items.iter().map(|i| i.id).collect();
+        assert_eq!(ids_with, vec![ids::INPUTS, ids::GEAR]);
+        assert_eq!(with_inputs.entry_up, Some(ids::INPUTS));
+
+        let without_inputs = row(&bar, Tab::Home, false, false);
+        let ids_without: Vec<u32> = without_inputs.items.iter().map(|i| i.id).collect();
+        assert_eq!(ids_without, vec![ids::GEAR]);
+        assert_eq!(without_inputs.entry_up, Some(ids::GEAR));
     }
 }

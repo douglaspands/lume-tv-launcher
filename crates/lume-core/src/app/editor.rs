@@ -3,23 +3,53 @@
 use super::page::{self, LEFT, WIDTH};
 use super::painter::{fade, Painter};
 use super::{Anim, Effect, LumeApp, PendingFocus, Screen, Tab};
-use crate::home::config::{HomeConfig, MAX_FAVORITES};
+use crate::home::config::{DockIconShape, HomeConfig, TablessMode, TabsAlign, MAX_FAVORITES};
 use crate::i18n::{Arg, PluralId, StringId};
 use crate::icons;
 use crate::render::Rect;
 use crate::text::{Align, TextStyle};
-use crate::theme::{vars, Color, Paint, StateFlags, THEME};
+use crate::theme::{vars, AccentColor, Color, Paint, StateFlags, Theme};
 use crate::ui::focus::{FocusId, Focusable, Row};
+use crate::ui::style::mix;
 use crate::wallpaper::WallpaperId;
 use std::collections::HashMap;
 
 pub const RESTORE: FocusId = 4001;
-pub const ROUND_FAVORITES: FocusId = 4002;
 pub const WALLPAPER_BASE: FocusId = 4100;
 /// The last mini-card: "+ From phone", or "Minha imagem" once there is one.
 pub const PHONE_CARD: FocusId = WALLPAPER_BASE + WallpaperId::ALL.len() as FocusId;
 /// The mini-cards: the phone's first, then the catalog.
 const CARD_COUNT: usize = WallpaperId::ALL.len() + 1;
+/// Focus IDs for the 10 curated accent color swatches (`AccentColor::ALL`).
+pub const ACCENT_BASE: FocusId = 4200;
+/// Focus IDs for the 2-level conditional navigation selector in the Appearance panel.
+pub const NAV_TABS_ON: FocusId = 4300;
+pub const NAV_TABS_OFF: FocusId = 4301;
+pub const NAV_ALIGN_LEFT: FocusId = 4310;
+pub const NAV_ALIGN_CENTER: FocusId = 4311;
+pub const NAV_MODE_SLIDE: FocusId = 4320;
+pub const NAV_MODE_PEEK: FocusId = 4321;
+pub const NAV_MODE_DOCK: FocusId = 4322;
+/// Focus IDs for the favorites dock shape selector (`Round` | `Square` | `Banner`).
+pub const SHAPE_ROUND: FocusId = 4330;
+pub const SHAPE_SQUARE: FocusId = 4331;
+pub const SHAPE_BANNER: FocusId = 4332;
+
+fn accent_index(color: AccentColor) -> usize {
+    AccentColor::ALL
+        .iter()
+        .position(|&c| c == color)
+        .unwrap_or(0)
+}
+
+fn accent_for_id(id: FocusId) -> Option<AccentColor> {
+    let end = ACCENT_BASE + AccentColor::ALL.len() as FocusId;
+    if (ACCENT_BASE..end).contains(&id) {
+        Some(AccentColor::ALL[(id - ACCENT_BASE) as usize])
+    } else {
+        None
+    }
+}
 
 /// The place of a mini-card in the row: the phone card is the first, the catalog follows.
 fn card_slot(id: FocusId) -> usize {
@@ -54,7 +84,13 @@ const CARD_CONTROLS_HEIGHT: f32 = 60.0;
 const CARD_GAP: f32 = 16.0;
 /// Where the content starts: 36 below the title's baseline at 116 (no subtitle).
 const TOP: f32 = super::page::PLAIN_CONTENT_TOP;
+const ACCENT_ROW_HEIGHT: f32 = 72.0;
+const SWATCH_SIZE: f32 = 40.0;
+const SWATCH_GAP: f32 = 12.0;
 const ROW_HEIGHT: f32 = 64.0;
+const EDITOR_ROW_GAP: f32 = 8.0;
+const ROW_PADDING_X: f32 = 24.0;
+const OPTION_CHIP_GAP: f32 = 8.0;
 const ROW_GAP: f32 = 16.0;
 const WALLPAPER_CARD_WIDTH: f32 = 178.0;
 const WALLPAPER_CARD_HEIGHT: f32 = 100.0;
@@ -84,11 +120,11 @@ pub(super) enum ButtonKind {
 }
 
 impl ButtonKind {
-    fn component(self) -> &'static crate::theme::ComponentTheme {
+    fn component(self, theme: &Theme) -> &crate::theme::ComponentTheme {
         match self {
-            ButtonKind::Primary => &THEME.button,
-            ButtonKind::Secondary => &THEME.button_secondary,
-            ButtonKind::Danger => &THEME.button_danger,
+            ButtonKind::Primary => &theme.button,
+            ButtonKind::Secondary => &theme.button_secondary,
+            ButtonKind::Danger => &theme.button_danger,
         }
     }
 }
@@ -116,9 +152,24 @@ impl LumeApp {
             from_home,
             ..EditorState::default()
         };
+        self.set_preview_accent(None);
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::Id(WALLPAPER_BASE + wp_idx));
         self.focus.set_rows(vec![]);
+    }
+
+    /// Keeps `preview_accent` synchronized with the currently focused swatch in the editor, and
+    /// reverts to the saved accent color whenever focus leaves the swatch row or the editor.
+    pub(super) fn sync_editor_preview_accent(&mut self) {
+        let preview = if self.screen == Screen::Editor && !self.editor.confirm {
+            self.focus
+                .current_id()
+                .and_then(accent_for_id)
+                .filter(|&accent| accent != self.config.accent_color)
+        } else {
+            None
+        };
+        self.set_preview_accent(preview);
     }
 
     /// Apps that are not favorites yet, in the catalog's order.
@@ -173,7 +224,7 @@ impl LumeApp {
         // removed: all changes persist immediately and Back is the standard Android TV exit.
         let y = y + BUTTONS_GAP;
         let restore_label = t.get(StringId::EditorRestoreDefaults).into_owned();
-        let button_style = p.style(&THEME.button, StateFlags::NONE);
+        let button_style = p.style(|t| &t.button, StateFlags::NONE);
         let width_of = |p: &mut Painter, label: &str| {
             (p.measure(label, &button_style) + 2.0 * 28.0).max(BUTTON_MIN_WIDTH)
         };
@@ -227,7 +278,8 @@ impl LumeApp {
             (((inner_width + CARD_GAP) / (CARD_WIDTH + CARD_GAP)).floor() as usize).max(1);
         let card_height = CARD_NAME_HEIGHT + CARD_CONTROLS_HEIGHT;
         let favorites = self.config.favorites.clone();
-        let card_lines = favorites.len().div_ceil(per_line);
+        let total_slots = self.config.dock_slot_count();
+        let card_lines = total_slots.div_ceil(per_line);
 
         let heading_y = top + PANEL_PADDING_Y;
 
@@ -274,17 +326,17 @@ impl LumeApp {
         let is_visible = |r: Rect| r.bottom() >= -32.0 && r.y <= view_height + 32.0;
 
         if draw && is_visible(panel.translate(0.0, -scroll_y)) {
-            let style = p.style(&THEME.panel, StateFlags::NONE);
+            let style = p.style(|t| &t.panel, StateFlags::NONE);
             p.draw_box(panel.translate(0.0, -scroll_y), &style);
             let heading = t.get(StringId::EditorFavoritesOrder).to_uppercase();
-            let heading_style = p.style(&THEME.card_heading, StateFlags::NONE);
+            let heading_style = p.style(|t| &t.card_heading, StateFlags::NONE);
             p.text.draw(
                 p.list,
                 &heading,
                 inner_left,
                 heading_y + 17.0 - scroll_y,
                 &Painter::text_style(&heading_style),
-                vars::PRIMARY,
+                p.primary_on_dark(),
             );
             let description = t.get(StringId::EditorFavoritesDescription).into_owned();
             let description_style = TextStyle::new(16.0, 500);
@@ -317,10 +369,10 @@ impl LumeApp {
         for line in 0..card_lines {
             let mut items: Vec<Focusable> = Vec::new();
             for column in 0..per_line {
-                let index = line * per_line + column;
-                let Some(package) = favorites.get(index) else {
+                let slot = line * per_line + column;
+                if slot >= total_slots {
                     break;
-                };
+                }
                 let x = inner_left + column as f32 * (CARD_WIDTH + CARD_GAP);
                 let card_y = cards_top + line as f32 * (card_height + CARD_GAP);
                 let rects: [Rect; 3] = [0.0, 1.0, 2.0].map(|b| {
@@ -332,11 +384,15 @@ impl LumeApp {
                     )
                 });
                 let button_ids: [FocusId; 3] =
-                    [0, 1, 2].map(|b| FAVORITE_BUTTON_BASE + index as u32 * 3 + b);
-                let last_index = favorites.len() - 1;
+                    [0, 1, 2].map(|b| FAVORITE_BUTTON_BASE + slot as u32 * 3 + b);
+                let last_slot = total_slots - 1;
+                let fav_index = self.config.dock_slot_favorite_index(slot);
+                let is_all_apps = fav_index.is_none();
                 for b in 0..3 {
                     layout.rects.insert(button_ids[b], rects[b]);
-                    let disabled = (b == 0 && index == 0) || (b == 1 && index == last_index);
+                    let disabled = (b == 0 && slot == 0)
+                        || (b == 1 && slot == last_slot)
+                        || (b == 2 && is_all_apps);
                     items.push(if disabled {
                         Focusable::disabled(button_ids[b], rects[b])
                     } else {
@@ -345,21 +401,34 @@ impl LumeApp {
                 }
                 let card_scrolled = Rect::new(x, card_y - scroll_y, CARD_WIDTH, card_height);
                 if draw && is_visible(card_scrolled) {
-                    let (label, color) = match self.catalog.get(package) {
-                        Some(app) => (app.label.clone(), app.color),
-                        None => (package.clone(), vars::TILE_DEFAULT),
-                    };
-                    self.draw_card(
-                        p,
-                        card_scrolled,
-                        index + 1,
-                        &label,
-                        color,
-                        rects,
-                        button_ids,
-                        (index == 0, index == last_index),
-                        scroll_y,
-                    );
+                    if let Some(fav_idx) = fav_index {
+                        let package = &favorites[fav_idx];
+                        let (label, color) = match self.catalog.get(package) {
+                            Some(app) => (app.label.clone(), app.color),
+                            None => (package.clone(), vars::TILE_DEFAULT),
+                        };
+                        self.draw_card(
+                            p,
+                            card_scrolled,
+                            slot + 1,
+                            &label,
+                            color,
+                            rects,
+                            button_ids,
+                            (slot == 0, slot == last_slot),
+                            scroll_y,
+                        );
+                    } else {
+                        self.draw_all_apps_card(
+                            p,
+                            card_scrolled,
+                            slot + 1,
+                            rects,
+                            button_ids,
+                            (slot == 0, slot == last_slot),
+                            scroll_y,
+                        );
+                    }
                 }
             }
             layout.row(items);
@@ -431,11 +500,18 @@ impl LumeApp {
 
         let heading_y = top + PANEL_PADDING_Y;
         let cards_y = heading_y + HEADING_GAP;
-        // Under the wallpapers, a divider and the shape of the favorites.
+        // Under the wallpapers: divider, accent color swatches, 2-level navigation selector, and
+        // favorites dock shape selector.
         let div_y = cards_y + WALLPAPER_CARD_HEIGHT + ROW_GAP + 8.0;
-        let round_y = div_y + ROW_GAP;
-        let round_rect = Rect::new(inner_left, round_y, inner_width, ROW_HEIGHT);
-        let panel_bottom = round_y + ROW_HEIGHT + PANEL_PADDING_Y;
+        let accent_y = div_y + ROW_GAP;
+        let accent_rect = Rect::new(inner_left, accent_y, inner_width, ACCENT_ROW_HEIGHT);
+        let tabs_y = accent_y + ACCENT_ROW_HEIGHT + EDITOR_ROW_GAP;
+        let tabs_rect = Rect::new(inner_left, tabs_y, inner_width, ROW_HEIGHT);
+        let subnav_y = tabs_y + ROW_HEIGHT + EDITOR_ROW_GAP;
+        let subnav_rect = Rect::new(inner_left, subnav_y, inner_width, ROW_HEIGHT);
+        let shape_y = subnav_y + ROW_HEIGHT + EDITOR_ROW_GAP;
+        let shape_rect = Rect::new(inner_left, shape_y, inner_width, ROW_HEIGHT);
+        let panel_bottom = shape_y + ROW_HEIGHT + PANEL_PADDING_Y;
         let panel = Rect::new(LEFT, top, WIDTH, panel_bottom - top);
 
         let focused_id = self.focus.current_id();
@@ -488,18 +564,18 @@ impl LumeApp {
         let is_visible = |r: Rect| r.bottom() >= -32.0 && r.y <= view_height + 32.0;
 
         if draw && !self.editor.confirm && is_visible(panel.translate(0.0, -scroll_y)) {
-            let style = p.style(&THEME.panel, StateFlags::NONE);
+            let style = p.style(|t| &t.panel, StateFlags::NONE);
             p.draw_box(panel.translate(0.0, -scroll_y), &style);
 
             let heading = t.get(StringId::EditorAppearance).to_uppercase();
-            let heading_style = p.style(&THEME.card_heading, StateFlags::NONE);
+            let heading_style = p.style(|t| &t.card_heading, StateFlags::NONE);
             p.text.draw(
                 p.list,
                 &heading,
                 inner_left,
                 heading_y + 17.0 - scroll_y,
                 &Painter::text_style(&heading_style),
-                vars::PRIMARY,
+                p.primary_on_dark(),
             );
 
             let active_idx = focused_wp_index.unwrap_or_else(|| {
@@ -534,18 +610,198 @@ impl LumeApp {
             items.push(Focusable::new(card_id, card_rect));
         }
 
+        let active_wp_id = WALLPAPER_BASE + self.config.wallpaper.index() as FocusId;
         layout
             .rows
-            .push(Row::new(items).with_entry_down(ROUND_FAVORITES));
-        layout.rects.insert(ROUND_FAVORITES, round_rect);
+            .push(Row::new(items).with_entry_up(active_wp_id));
+
+        // Accent color swatch row (10 circular swatches right-aligned to x = 1160).
+        let swatch_total_w = AccentColor::ALL.len() as f32 * SWATCH_SIZE
+            + (AccentColor::ALL.len() as f32 - 1.0) * SWATCH_GAP;
+        let swatch_start_x = accent_rect.right() - ROW_PADDING_X - swatch_total_w;
+        let swatch_y = accent_rect.y + (ACCENT_ROW_HEIGHT - SWATCH_SIZE) / 2.0;
+        let mut swatch_items = Vec::with_capacity(AccentColor::ALL.len());
+        let mut swatch_rects = [Rect::new(0.0, 0.0, 0.0, 0.0); AccentColor::ALL.len()];
+        for (i, slot) in swatch_rects.iter_mut().enumerate() {
+            let swatch_id = ACCENT_BASE + i as FocusId;
+            let rect = Rect::new(
+                swatch_start_x + i as f32 * (SWATCH_SIZE + SWATCH_GAP),
+                swatch_y,
+                SWATCH_SIZE,
+                SWATCH_SIZE,
+            );
+            *slot = rect;
+            layout.rects.insert(swatch_id, rect);
+            swatch_items.push(Focusable::new(swatch_id, rect));
+        }
+        let active_accent_id = ACCENT_BASE + accent_index(self.config.accent_color) as FocusId;
         layout.rows.push(
-            Row::new(vec![Focusable::new(ROUND_FAVORITES, round_rect)])
-                .with_entry_up(WALLPAPER_BASE + self.config.wallpaper.index() as FocusId)
-                .with_entry_down(FAVORITE_BUTTON_BASE),
+            Row::new(swatch_items)
+                .with_entry_down(active_accent_id)
+                .with_entry_up(active_accent_id),
+        );
+
+        // Level 1 navigation row: Top bar tabs (Tabs on | Tabs off).
+        let tabs_options = [
+            (
+                NAV_TABS_ON,
+                t.get(StringId::EditorTabsOn).into_owned(),
+                self.config.tabs_visible,
+            ),
+            (
+                NAV_TABS_OFF,
+                t.get(StringId::EditorTabsOff).into_owned(),
+                !self.config.tabs_visible,
+            ),
+        ];
+        let tabs_chips = self.layout_option_chips(p, tabs_rect, &tabs_options);
+        let active_tabs_id = if self.config.tabs_visible {
+            NAV_TABS_ON
+        } else {
+            NAV_TABS_OFF
+        };
+        let mut tabs_row_items = Vec::with_capacity(tabs_chips.len());
+        for &(id, rect, _) in &tabs_chips {
+            layout.rects.insert(id, rect);
+            tabs_row_items.push(Focusable::new(id, rect));
+        }
+        layout.rows.push(
+            Row::new(tabs_row_items)
+                .with_entry_down(active_tabs_id)
+                .with_entry_up(active_tabs_id),
+        );
+
+        // Level 2 navigation row: conditional on `tabs_visible`.
+        let (subnav_label, subnav_options, active_subnav_id): (
+            String,
+            Vec<(FocusId, String, bool)>,
+            FocusId,
+        ) = if self.config.tabs_visible {
+            (
+                t.get(StringId::EditorTabsPosition).into_owned(),
+                vec![
+                    (
+                        NAV_ALIGN_LEFT,
+                        t.get(StringId::EditorTabsLeft).into_owned(),
+                        self.config.tabs_align == TabsAlign::Left,
+                    ),
+                    (
+                        NAV_ALIGN_CENTER,
+                        t.get(StringId::EditorTabsCenter).into_owned(),
+                        self.config.tabs_align == TabsAlign::Center,
+                    ),
+                ],
+                match self.config.tabs_align {
+                    TabsAlign::Left => NAV_ALIGN_LEFT,
+                    TabsAlign::Center => NAV_ALIGN_CENTER,
+                },
+            )
+        } else {
+            (
+                t.get(StringId::EditorAppsAccess).into_owned(),
+                vec![
+                    (
+                        NAV_MODE_SLIDE,
+                        t.get(StringId::EditorAccessSlide).into_owned(),
+                        self.config.tabless_mode == TablessMode::Slide,
+                    ),
+                    (
+                        NAV_MODE_PEEK,
+                        t.get(StringId::EditorAccessPeek).into_owned(),
+                        self.config.tabless_mode == TablessMode::Peek,
+                    ),
+                    (
+                        NAV_MODE_DOCK,
+                        t.get(StringId::EditorAccessDock).into_owned(),
+                        self.config.tabless_mode == TablessMode::Dock,
+                    ),
+                ],
+                match self.config.tabless_mode {
+                    TablessMode::Slide => NAV_MODE_SLIDE,
+                    TablessMode::Peek => NAV_MODE_PEEK,
+                    TablessMode::Dock => NAV_MODE_DOCK,
+                },
+            )
+        };
+        let subnav_chips = self.layout_option_chips(p, subnav_rect, &subnav_options);
+        let mut subnav_row_items = Vec::with_capacity(subnav_chips.len());
+        for &(id, rect, _) in &subnav_chips {
+            layout.rects.insert(id, rect);
+            subnav_row_items.push(Focusable::new(id, rect));
+        }
+        layout.rows.push(
+            Row::new(subnav_row_items)
+                .with_entry_down(active_subnav_id)
+                .with_entry_up(active_subnav_id),
+        );
+
+        let shape_options = [
+            (
+                SHAPE_ROUND,
+                t.get(StringId::EditorShapeRound).into_owned(),
+                self.config.dock_shape == DockIconShape::Round,
+            ),
+            (
+                SHAPE_SQUARE,
+                t.get(StringId::EditorShapeSquare).into_owned(),
+                self.config.dock_shape == DockIconShape::Square,
+            ),
+            (
+                SHAPE_BANNER,
+                t.get(StringId::EditorShapeBanner).into_owned(),
+                self.config.dock_shape == DockIconShape::Banner,
+            ),
+        ];
+        let shape_chips = self.layout_option_chips(p, shape_rect, &shape_options);
+        let active_shape_id = match self.config.dock_shape {
+            DockIconShape::Round => SHAPE_ROUND,
+            DockIconShape::Square => SHAPE_SQUARE,
+            DockIconShape::Banner => SHAPE_BANNER,
+        };
+        let mut shape_row_items = Vec::with_capacity(shape_chips.len());
+        for &(id, rect, _) in &shape_chips {
+            layout.rects.insert(id, rect);
+            shape_row_items.push(Focusable::new(id, rect));
+        }
+        layout.rows.push(
+            Row::new(shape_row_items)
+                .with_entry_down(active_shape_id)
+                .with_entry_up(active_shape_id),
         );
 
         if draw && !self.editor.confirm {
-            self.draw_round_favorites_row(p, round_rect.translate(0.0, -scroll_y));
+            self.draw_accent_row(
+                p,
+                accent_rect.translate(0.0, -scroll_y),
+                &swatch_rects,
+                scroll_y,
+            );
+            let tabs_label = t.get(StringId::EditorTopbarTabs).into_owned();
+            self.draw_option_row(
+                p,
+                tabs_rect.translate(0.0, -scroll_y),
+                &tabs_label,
+                &tabs_options,
+                &tabs_chips,
+                scroll_y,
+            );
+            self.draw_option_row(
+                p,
+                subnav_rect.translate(0.0, -scroll_y),
+                &subnav_label,
+                &subnav_options,
+                &subnav_chips,
+                scroll_y,
+            );
+            let shape_label = t.get(StringId::EditorFavoritesShape).into_owned();
+            self.draw_option_row(
+                p,
+                shape_rect.translate(0.0, -scroll_y),
+                &shape_label,
+                &shape_options,
+                &shape_chips,
+                scroll_y,
+            );
             p.list.fill(
                 Rect::new(inner_left, div_y - scroll_y, inner_width, 1.0),
                 0.5,
@@ -719,9 +975,10 @@ impl LumeApp {
 
         // Outline / focus ring
         if is_focused {
-            p.list.ring(target_rect, vars::SHAPE_MD, 3.0, vars::PRIMARY);
+            p.list.ring(target_rect, vars::SHAPE_MD, 3.0, p.primary());
+            p.draw_contrast_ring(target_rect, vars::SHAPE_MD, 1.0);
         } else if is_active {
-            p.list.ring(target_rect, vars::SHAPE_MD, 2.0, vars::PRIMARY);
+            p.list.ring(target_rect, vars::SHAPE_MD, 2.0, p.primary());
         } else {
             p.list.ring(target_rect, vars::SHAPE_MD, 1.0, vars::CONTROL);
         }
@@ -736,10 +993,10 @@ impl LumeApp {
                 badge_size,
             );
             p.list
-                .fill(badge_rect, vars::SHAPE_FULL, Paint::Solid(vars::PRIMARY));
+                .fill(badge_rect, vars::SHAPE_FULL, Paint::Solid(p.primary()));
             let dot_rect = Rect::new(badge_rect.x + 5.0, badge_rect.y + 5.0, 8.0, 8.0);
             p.list
-                .fill(dot_rect, vars::SHAPE_FULL, Paint::Solid(Color::WHITE));
+                .fill(dot_rect, vars::SHAPE_FULL, Paint::Solid(p.on_primary()));
         }
 
         // Name label
@@ -772,7 +1029,8 @@ impl LumeApp {
         p.list
             .fill(rect, vars::SHAPE_MD, Paint::Solid(vars::SURFACE));
         if is_focused {
-            p.list.ring(rect, vars::SHAPE_MD, 3.0, vars::PRIMARY);
+            p.list.ring(rect, vars::SHAPE_MD, 3.0, p.primary());
+            p.draw_contrast_ring(rect, vars::SHAPE_MD, 1.0);
         } else {
             dashed_outline(p, rect, vars::SHAPE_MD, 2.0, vars::BORDER);
         }
@@ -800,39 +1058,169 @@ impl LumeApp {
         );
     }
 
-    fn draw_round_favorites_row(&mut self, p: &mut Painter, rect: Rect) {
-        let t = self.translator;
-        let progress = self.focus_progress(ROUND_FAVORITES);
-        let style = p.focus_style(&THEME.editor_row, progress);
+    fn draw_accent_row(
+        &mut self,
+        p: &mut Painter,
+        rect: Rect,
+        swatch_rects: &[Rect; AccentColor::ALL.len()],
+        scroll_y: f32,
+    ) {
+        let style = p.style(|t| &t.editor_row, StateFlags::NONE);
         p.draw_box(rect, &style);
-        let label = t.get(StringId::EditorRoundFavorites);
-        let text_rect = Rect::new(rect.x + 16.0, rect.y, rect.w - 16.0 - 48.0 - 16.0, rect.h);
-        p.text(&label, text_rect, Align::Start, &style);
 
-        let switch_x = rect.x + rect.w - 16.0 - 48.0;
-        let switch_y = rect.y + (rect.h - 28.0) / 2.0;
-        let switch_rect = Rect::new(switch_x, switch_y, 48.0, 28.0);
-        let track_paint = if self.config.round_favorites {
-            Paint::Solid(vars::PRIMARY)
-        } else {
-            Paint::Solid(vars::CONTROL)
-        };
-        p.list.fill(switch_rect, vars::SHAPE_FULL, track_paint);
+        let t = self.translator;
+        let focused_accent = self.focus.current_id().and_then(accent_for_id);
+        let shown_accent = focused_accent.unwrap_or(self.config.accent_color);
+        let swatch_left = swatch_rects[0].x;
+        let label_w = (swatch_left - (rect.x + ROW_PADDING_X) - ROW_PADDING_X).max(120.0);
 
-        let knob_x = if self.config.round_favorites {
-            switch_x + 24.0
+        let label = t.get(StringId::EditorAccentColor);
+        let label_style = Painter::text_style(&style);
+        p.text_with(
+            &label,
+            Rect::new(rect.x + ROW_PADDING_X, rect.y + 12.0, label_w, 24.0),
+            Align::Start,
+            &label_style,
+            vars::TEXT,
+        );
+
+        let color_name = t.get(shown_accent.title_string_id());
+        let name_style = TextStyle::new(16.0, 700);
+        let name_color = if shown_accent == AccentColor::Black {
+            vars::TEXT_SOFT
         } else {
-            switch_x + 4.0
+            shown_accent.palette().primary
         };
-        let knob_y = switch_y + 4.0;
-        let knob_rect = Rect::new(knob_x, knob_y, 20.0, 20.0);
-        let knob_color = if self.config.round_favorites {
-            vars::ON_PRIMARY
+        p.text_with(
+            &color_name,
+            Rect::new(rect.x + ROW_PADDING_X, rect.y + 38.0, label_w, 22.0),
+            Align::Start,
+            &name_style,
+            name_color,
+        );
+
+        for (i, &accent) in AccentColor::ALL.iter().enumerate() {
+            let swatch_id = ACCENT_BASE + i as FocusId;
+            let base_rect = swatch_rects[i].translate(0.0, -scroll_y);
+            let progress = self.focus_progress(swatch_id);
+            let drawn = base_rect.scaled_about_center(1.0 + 0.08 * progress);
+            let palette = accent.palette();
+
+            p.list
+                .fill(drawn, vars::SHAPE_FULL, Paint::Solid(palette.primary));
+            if let Some(contrast) = palette.contrast_ring {
+                p.list.ring(drawn, vars::SHAPE_FULL, 1.5, contrast);
+            }
+            if accent == self.config.accent_color {
+                p.icon(icons::CHECK, drawn, 20.0, palette.on_primary);
+            }
+            if progress > 0.0 {
+                let ring_rect = drawn.grow(4.0 + 3.0);
+                p.list.ring(
+                    ring_rect,
+                    vars::SHAPE_FULL,
+                    3.0,
+                    fade(palette.primary, progress),
+                );
+                if let Some(contrast) = palette.contrast_ring {
+                    let outer = ring_rect.grow(super::painter::CONTRAST_RING_WIDTH);
+                    p.list.ring(
+                        outer,
+                        vars::SHAPE_FULL,
+                        super::painter::CONTRAST_RING_WIDTH,
+                        fade(contrast, progress),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Computes right-aligned 40 px option chips on the 4-unit ruler inside an `.editor-row`.
+    fn layout_option_chips(
+        &self,
+        p: &mut Painter,
+        row_rect: Rect,
+        options: &[(FocusId, String, bool)],
+    ) -> Vec<(FocusId, Rect, bool)> {
+        let chip_style = p.style(|t| &t.chip, StateFlags::NONE);
+        let widths: Vec<f32> = options
+            .iter()
+            .map(|(_, label, _)| {
+                let raw = p.measure(label, &chip_style) + 2.0 * 16.0;
+                ((raw / 4.0).ceil() * 4.0).max(64.0)
+            })
+            .collect();
+        let total_w: f32 =
+            widths.iter().sum::<f32>() + OPTION_CHIP_GAP * options.len().saturating_sub(1) as f32;
+        let mut x = row_rect.right() - ROW_PADDING_X - total_w;
+        let chip_y = row_rect.y + (row_rect.h - CHIP_HEIGHT) / 2.0;
+        let mut placed = Vec::with_capacity(options.len());
+        for ((id, _, active), width) in options.iter().zip(widths) {
+            placed.push((*id, Rect::new(x, chip_y, width, CHIP_HEIGHT), *active));
+            x += width + OPTION_CHIP_GAP;
+        }
+        placed
+    }
+
+    fn draw_option_row(
+        &mut self,
+        p: &mut Painter,
+        rect: Rect,
+        label: &str,
+        options: &[(FocusId, String, bool)],
+        chips: &[(FocusId, Rect, bool)],
+        scroll_y: f32,
+    ) {
+        let style = p.style(|t| &t.editor_row, StateFlags::NONE);
+        p.draw_box(rect, &style);
+
+        let chips_left = chips
+            .first()
+            .map_or(rect.right() - ROW_PADDING_X, |c| c.1.x);
+        let label_w = (chips_left - (rect.x + ROW_PADDING_X) - ROW_PADDING_X).max(120.0);
+        let text_rect = Rect::new(rect.x + ROW_PADDING_X, rect.y, label_w, rect.h);
+        p.text(label, text_rect, Align::Start, &style);
+
+        for ((_, option_label, _), &(id, chip_rect, active)) in options.iter().zip(chips) {
+            let progress = self.focus_progress(id);
+            self.draw_option_chip(
+                p,
+                chip_rect.translate(0.0, -scroll_y),
+                option_label,
+                active,
+                progress,
+            );
+        }
+    }
+
+    fn draw_option_chip(
+        &mut self,
+        p: &mut Painter,
+        rect: Rect,
+        label: &str,
+        active: bool,
+        progress: f32,
+    ) {
+        let base_flags = StateFlags {
+            active,
+            ..StateFlags::NONE
+        };
+        let rest = p.style(|t| &t.chip, base_flags);
+        let style = if progress > 0.0 {
+            let focused = p.style(
+                |t| &t.chip,
+                StateFlags {
+                    focus: true,
+                    active,
+                    ..StateFlags::NONE
+                },
+            );
+            mix(&rest, &focused, progress)
         } else {
-            vars::TEXT_MUTED
+            rest
         };
-        p.list
-            .fill(knob_rect, vars::SHAPE_FULL, Paint::Solid(knob_color));
+        p.draw_box(rect, &style);
+        p.text(label, rect, Align::Center, &style);
     }
 
     /// A button of the design system: `kind` picks the component of the theme.
@@ -845,7 +1233,7 @@ impl LumeApp {
         kind: ButtonKind,
     ) {
         let progress = self.focus_progress(id);
-        let style = p.focus_style(kind.component(), progress);
+        let style = p.focus_style(|t| kind.component(t), progress);
         p.draw_box(rect, &style);
         p.text(
             label,
@@ -870,9 +1258,9 @@ impl LumeApp {
             StateFlags::NONE
         };
         let mut style = if disabled {
-            p.style(&THEME.icon_button, state)
+            p.style(|t| &t.icon_button, state)
         } else {
-            p.focus_style(&THEME.icon_button, progress)
+            p.focus_style(|t| &t.icon_button, progress)
         };
         style.border_radius = vars::SHAPE_FULL;
         style.background = Some(Paint::Solid(match (disabled, danger) {
@@ -938,9 +1326,10 @@ impl LumeApp {
             3.0,
             Color {
                 a: (255.0 * progress) as u8,
-                ..vars::PRIMARY
+                ..p.primary()
             },
         );
+        p.draw_contrast_ring(ring, radius + 3.0, progress);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -992,6 +1381,84 @@ impl LumeApp {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn draw_all_apps_card(
+        &mut self,
+        p: &mut Painter,
+        card: Rect,
+        number: usize,
+        buttons: [Rect; 3],
+        button_ids: [FocusId; 3],
+        (first, last): (bool, bool),
+        scroll_y: f32,
+    ) {
+        let name = Rect::new(card.x, card.y, card.w, CARD_NAME_HEIGHT);
+        p.list
+            .fill(name, vars::SHAPE_MD, Paint::Solid(vars::SURFACE_FOCUS));
+        p.list.fill(
+            Rect::new(card.x, name.bottom() - 12.0, card.w, 12.0),
+            0.0,
+            Paint::Solid(vars::SURFACE_FOCUS),
+        );
+        let controls = Rect::new(card.x, name.bottom(), card.w, CARD_CONTROLS_HEIGHT);
+        p.list
+            .fill(controls, vars::SHAPE_MD, Paint::Solid(vars::SURFACE_ROW));
+        p.list.fill(
+            Rect::new(card.x, controls.y, card.w, 12.0),
+            0.0,
+            Paint::Solid(vars::SURFACE_ROW),
+        );
+
+        let number_style = TextStyle::new(16.0, 500);
+        p.text_with(
+            &number.to_string(),
+            Rect::new(name.x + 12.0, name.y + 6.0, 20.0, 22.0),
+            Align::Start,
+            &number_style,
+            fade(vars::TEXT, 0.7),
+        );
+        let icon_color = if self.effective_accent() == AccentColor::Black {
+            vars::TEXT
+        } else {
+            p.primary()
+        };
+        p.icon(
+            icons::LAYOUT_GRID,
+            Rect::new(name.x + 32.0, name.y + 8.0, 18.0, 18.0),
+            18.0,
+            icon_color,
+        );
+        let title = self.translator.get(StringId::AppsTitle).into_owned();
+        let title_style = TextStyle::new(16.0, 700);
+        p.text_with(
+            &title,
+            Rect::new(name.x + 54.0, name.y + 6.0, name.w - 62.0, 22.0),
+            Align::Start,
+            &title_style,
+            vars::TEXT,
+        );
+        let hint = self
+            .translator
+            .get(StringId::EditorFixedInDock)
+            .into_owned();
+        let hint_style = TextStyle::new(16.0, 500);
+        p.text_with(
+            &hint,
+            Rect::new(name.x + 12.0, name.y + 28.0, name.w - 24.0, 22.0),
+            Align::Start,
+            &hint_style,
+            vars::TEXT_MUTED,
+        );
+
+        let button_icons = [icons::CHEVRON_LEFT, icons::CHEVRON_RIGHT, icons::CLOSE];
+        for b in 0..3 {
+            let disabled = (b == 0 && first) || (b == 1 && last) || b == 2;
+            let progress = self.focus_progress(button_ids[b]);
+            let rect = buttons[b].translate(0.0, -scroll_y);
+            self.draw_round_button(p, rect, button_icons[b], progress, disabled, b == 2);
+        }
+    }
+
     /// The "Restore defaults?" dialog; returns its focus rows and rectangles.
     fn confirm_dialog(
         &mut self,
@@ -1018,7 +1485,7 @@ impl LumeApp {
         };
         let confirm_label = t.get(confirm_id).into_owned();
         let cancel_label = t.get(StringId::EditorCancel).into_owned();
-        let button_style = p.style(&THEME.button, StateFlags::NONE);
+        let button_style = p.style(|t| &t.button, StateFlags::NONE);
         let confirm_w = (p.measure(&confirm_label, &button_style) + 56.0).max(140.0);
         let cancel_w = (p.measure(&cancel_label, &button_style) + 56.0).max(140.0);
         let y = dialog.bottom() - 32.0 - BUTTON_HEIGHT;
@@ -1102,10 +1569,83 @@ impl LumeApp {
 
     pub(super) fn activate_editor(&mut self, id: FocusId) -> Vec<Effect> {
         let save = vec![Effect::SaveConfig];
+        if let Some(accent) = accent_for_id(id) {
+            let changed = self.config.accent_color != accent;
+            self.config.accent_color = accent;
+            self.preview_accent = None;
+            self.refresh_theme();
+            return if changed { save } else { vec![] };
+        }
         match id {
-            ROUND_FAVORITES => {
-                self.config.round_favorites = !self.config.round_favorites;
-                return save;
+            NAV_TABS_ON => {
+                if !self.config.tabs_visible {
+                    self.config.tabs_visible = true;
+                    return save;
+                }
+                return vec![];
+            }
+            NAV_TABS_OFF => {
+                if self.config.tabs_visible {
+                    self.config.tabs_visible = false;
+                    return save;
+                }
+                return vec![];
+            }
+            NAV_ALIGN_LEFT => {
+                if self.config.tabs_align != TabsAlign::Left {
+                    self.config.tabs_align = TabsAlign::Left;
+                    return save;
+                }
+                return vec![];
+            }
+            NAV_ALIGN_CENTER => {
+                if self.config.tabs_align != TabsAlign::Center {
+                    self.config.tabs_align = TabsAlign::Center;
+                    return save;
+                }
+                return vec![];
+            }
+            NAV_MODE_SLIDE => {
+                if self.config.tabless_mode != TablessMode::Slide {
+                    self.config.tabless_mode = TablessMode::Slide;
+                    return save;
+                }
+                return vec![];
+            }
+            NAV_MODE_PEEK => {
+                if self.config.tabless_mode != TablessMode::Peek {
+                    self.config.tabless_mode = TablessMode::Peek;
+                    return save;
+                }
+                return vec![];
+            }
+            NAV_MODE_DOCK => {
+                if self.config.tabless_mode != TablessMode::Dock {
+                    self.config.tabless_mode = TablessMode::Dock;
+                    return save;
+                }
+                return vec![];
+            }
+            SHAPE_ROUND => {
+                if self.config.dock_shape != DockIconShape::Round {
+                    self.config.dock_shape = DockIconShape::Round;
+                    return save;
+                }
+                return vec![];
+            }
+            SHAPE_SQUARE => {
+                if self.config.dock_shape != DockIconShape::Square {
+                    self.config.dock_shape = DockIconShape::Square;
+                    return save;
+                }
+                return vec![];
+            }
+            SHAPE_BANNER => {
+                if self.config.dock_shape != DockIconShape::Banner {
+                    self.config.dock_shape = DockIconShape::Banner;
+                    return save;
+                }
+                return vec![];
             }
             RESTORE => {
                 self.editor.confirm = true;
@@ -1126,6 +1666,8 @@ impl LumeApp {
                 let custom = self.config.custom;
                 self.config = HomeConfig::first_use(&self.catalog);
                 self.config.custom = custom;
+                self.preview_accent = None;
+                self.refresh_theme();
                 self.editor.confirm = false;
                 self.pending_focus = Some(PendingFocus::Id(RESTORE));
                 return save;
@@ -1161,16 +1703,16 @@ impl LumeApp {
         }
         if (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id) {
             let offset = id - FAVORITE_BUTTON_BASE;
-            let (index, button) = ((offset / 3) as usize, offset % 3);
+            let (slot, button) = ((offset / 3) as usize, offset % 3);
             let changed = match button {
-                0 => self.config.move_favorite_left(index),
-                1 => self.config.move_favorite_right(index),
-                _ => self.config.remove_favorite(index),
+                0 => self.config.move_dock_slot_left(slot),
+                1 => self.config.move_dock_slot_right(slot),
+                _ => self.config.remove_dock_slot(slot),
             };
             if changed {
                 let target = match button {
-                    0 => FAVORITE_BUTTON_BASE + (index as u32 - 1) * 3,
-                    1 => FAVORITE_BUTTON_BASE + (index as u32 + 1) * 3 + 1,
+                    0 => FAVORITE_BUTTON_BASE + (slot as u32 - 1) * 3,
+                    1 => FAVORITE_BUTTON_BASE + (slot as u32 + 1) * 3 + 1,
                     _ => id,
                 };
                 self.pending_focus = Some(PendingFocus::Id(target));
@@ -1192,6 +1734,7 @@ impl LumeApp {
 
     /// "Done", and Back at the top level of the editor.
     pub(super) fn finish_editing(&mut self) -> Vec<Effect> {
+        self.set_preview_accent(None);
         self.screen = Screen::Main(Tab::Home);
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::FirstContent);
@@ -1222,6 +1765,7 @@ impl LumeApp {
             self.close_confirm();
             return vec![];
         }
+        self.set_preview_accent(None);
         if self.editor.from_home {
             return self.finish_editing();
         }
@@ -1351,7 +1895,13 @@ mod tests {
             ("FIRST_CARDS_DEPTH", FIRST_CARDS_DEPTH),
             ("BUTTON_MIN_WIDTH", BUTTON_MIN_WIDTH),
             ("BUTTONS_GAP", BUTTONS_GAP),
+            ("ACCENT_ROW_HEIGHT", ACCENT_ROW_HEIGHT),
+            ("SWATCH_SIZE", SWATCH_SIZE),
+            ("SWATCH_GAP", SWATCH_GAP),
             ("ROW_HEIGHT", ROW_HEIGHT),
+            ("EDITOR_ROW_GAP", EDITOR_ROW_GAP),
+            ("ROW_PADDING_X", ROW_PADDING_X),
+            ("OPTION_CHIP_GAP", OPTION_CHIP_GAP),
             ("ROW_GAP", ROW_GAP),
             ("HEADING_GAP", HEADING_GAP),
             ("CARDS_TO_CHIPS_GAP", CARDS_TO_CHIPS_GAP),

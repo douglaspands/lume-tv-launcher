@@ -5,6 +5,7 @@
 //! available.
 
 use lume_core::app::{Key, LumeApp};
+use lume_core::home::config::DockIconShape;
 use lume_desktop::demo::{self, Setup, SYNTHETIC_BANNER};
 use lume_desktop::screenshot;
 
@@ -43,7 +44,11 @@ fn render(width: u32, height: u32, keys: &[Key], round: bool) -> Option<Shot> {
         favorites: Some(3),
         ..Setup::default()
     });
-    app.config.round_favorites = round;
+    app.config.dock_shape = if round {
+        DockIconShape::Round
+    } else {
+        DockIconShape::Square
+    };
     match screenshot::render_app(width, height, &mut app, keys, None) {
         Ok(pixels) => Some(Shot {
             pixels,

@@ -206,7 +206,9 @@ impl Shell {
 
     /// Up to `limit` favorites (package and activity) that have no dock icon in the icon texture
     /// yet and that the platform has not already failed to load, in dock order. Dock cells of apps
-    /// that stopped being favorites are given back first. Only the favorites are ever asked for.
+    /// that stopped being favorites are given back first. Only the favorites are ever asked for,
+    /// and when the dock is in `Banner` (16:9) mode it reuses the tile banner atlas instead of
+    /// square dock cells, so nothing is requested here.
     pub fn dock_icons_wanted(
         &mut self,
         skip: &std::collections::HashSet<String>,
@@ -217,6 +219,9 @@ impl Shell {
         }
         let favorites = self.app.config.favorites.clone();
         self.app.icons.release_dock_except(&favorites);
+        if self.app.config.dock_shape == crate::home::config::DockIconShape::Banner {
+            return Vec::new();
+        }
         favorites
             .iter()
             .filter_map(|p| self.app.catalog.get(p))
@@ -536,10 +541,15 @@ impl Shell {
         for _ in 0..MAX_FRAME_PASSES {
             self.list.clear();
             text.begin_frame();
+            self.app.refresh_theme();
+            let theme = *self.app.active_theme();
+            let accent = self.app.active_accent();
             let mut painter = Painter {
                 list: &mut self.list,
                 text,
                 display,
+                theme: &theme,
+                accent,
             };
             self.app.draw(&mut painter, now_ms);
             if !text.end_frame() {
@@ -976,6 +986,12 @@ mod tests {
         // The ones the platform failed on are not asked for again.
         let failed = std::collections::HashSet::from([YOUTUBE.to_string()]);
         assert!(shell.dock_icons_wanted(&failed, 5).is_empty());
+
+        // In Banner mode, square dock icons are not requested: the dock reuses the 16:9 tile
+        // banners requested by `icons_wanted` (which already prioritizes favorites).
+        shell.app_mut_for_test().config.dock_shape = crate::home::config::DockIconShape::Banner;
+        assert!(shell.dock_icons_wanted(&none, 5).is_empty());
+        assert!(packages(shell.icons_wanted(&none, 5)).contains(&YOUTUBE.to_string()));
     }
 
     #[test]
