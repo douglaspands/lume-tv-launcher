@@ -923,3 +923,19 @@ Aplicar) e mais cinco trocas de papel de parede no editor:
 O autor fez o fluxo completo com o próprio celular (QR, edição na página, envio, Aplicar na TV) e confirmou que funciona;
 uma foto real dele ficou aplicada como "Minha imagem" na AIWA. O fluxo pelo computador (Chrome) foi feito nas duas TVs
 (`companion-page-test.mjs --live`), inclusive com HEIC decodificado pelo wasm servido pela TV.
+
+### Personalização de cores e estilos da tela inicial (release `152edbd-dirty`, 2026-11-20)
+
+Medida nas TVs de referência (**TCL 55C715** em `192.168.0.9:5555` e **AIWA SMART TV** Android 14 `low_ram` em `192.168.0.2:5555`) com `lume-152edbd-dirty-release-debugsigned.apk` (**22,30 MB**, limite 40 MB, `verify-apk.py` OK — incluindo logo SDF vazado, Splash imediato em T7, 3 formatos do dock e botão `"Todos os apps"` 3×3):
+
+| TV / Cenário | `Private Dirty` (sem GPU) | `PSS` total | Quadros `>= 33 ms` (`SurfaceFlinger`) |
+|---|---|---|---|
+| **TCL** — Início padrão (`Azul Lume`, `Com abas`, logo após instalar) | 21,5 MB *(antes: 19,8 MB)* | 51,2 MB *(45,2 MB)* | 2 / 118 (1,69%, máx. 49,5 ms na amostra curta) |
+| **TCL** — Segundo plano (YouTube aberto, 3 s) | 10,4 MB *(15,0 MB com Configurações)* | 24,3 MB | — |
+| **TCL** — Modo `Espiada` + cor `Esmeralda` (rolagem dock ↔ grade) | 14,8 MB | 25,6 MB | 7 / 117 (5,98%, máx. 34,3 ms — 1 vsync ao acordar do ocioso entre teclas) |
+| **AIWA** — Início padrão (`Azul Lume`, `Com abas`, logo após instalar) | **12,8 MB** (`24,0 MB` total − `11,2 MB` `GL mtrack`) | 39,4 MB | **1 / 108 (0,93%, máx. 33,2 ms)** |
+| **AIWA** — Segundo plano real (YouTube aberto, 4 s) | **2,8 MB** (`4,6 MB` total − `1,7 MB` `GL mtrack`) | 17,8 MB | — |
+
+- Sem alocação extra de memória ao trocar de cor, ativar `Espiada` ou usar o logo SDF vazado (`Private Dirty` em **12,8 MB** na AIWA e **14,8–21,5 MB** na TCL em primeiro plano, bem abaixo do orçamento de 32 MB; **2,8 MB** em segundo plano real na AIWA, bem abaixo de 10 MB).
+- Na AIWA, a navegação no Dock ficou em **0,93%** de quadros `>= 33 ms` (dentro do orçamento de `<= 1%`).
+- Pendente apenas rodar o smoke test adicional no emulador `tv_api28` (as duas TVs reais já foram instaladas e medidas).
