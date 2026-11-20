@@ -1,3 +1,6 @@
+# Local NOCOW cache directory (Rust target, tmp, scratch)
+cache/
+
 # Rust (Cargo.lock is tracked: this workspace ships an app)
 target/
 Cargo.lock.bak
