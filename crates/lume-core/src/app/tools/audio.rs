@@ -16,7 +16,7 @@ use crate::app::{Effect, Key, LumeApp};
 use crate::i18n::{Arg, StringId};
 use crate::render::{PatternOp, PixelRect, Rect};
 use crate::text::Align;
-use crate::theme::{Color, StateFlags, THEME};
+use crate::theme::{Color, StateFlags};
 use crate::ui::focus::FocusId;
 
 /// The panel at the right: the focused item's description and, during the sweep, its frequency.
@@ -216,7 +216,7 @@ impl LumeApp {
             } else {
                 continue;
             };
-            let style = p.focus_style(&THEME.settings_item, self.focus_progress(item.id()));
+            let style = p.focus_style(|t| &t.settings_item, self.focus_progress(item.id()));
             let inner = Rect::new(
                 rect.x + style.padding[3],
                 rect.y,
@@ -230,7 +230,7 @@ impl LumeApp {
         let focused = self.focused().and_then(Item::from_id).unwrap_or(Item::Left);
         let inner = draw_panel(p, common::panel_rect(PANEL_HEIGHT));
         panel_heading(p, inner, &t.get(focused.name()));
-        let body = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let body = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let text = Rect::new(inner.x, inner.y + TEXT_TOP, inner.w, body.line_height);
         wrapped_text(
             p,

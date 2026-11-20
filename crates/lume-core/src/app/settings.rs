@@ -11,7 +11,7 @@ use crate::render::Rect;
 use crate::stats;
 use crate::text::Align;
 use crate::theme::Paint;
-use crate::theme::{vars, ComputedStyle, StateFlags, THEME};
+use crate::theme::{vars, ComputedStyle, StateFlags};
 use crate::ui::focus::{Focusable, Row};
 
 /// Where the source code lives, shown on the About screen.
@@ -102,7 +102,7 @@ impl LumeApp {
         );
         for ((id, label), rect) in labels.iter().zip(&rects) {
             let progress = self.focus_progress(*id);
-            let style = p.focus_style(&THEME.settings_item, progress);
+            let style = p.focus_style(|t| &t.settings_item, progress);
             p.draw_box(*rect, &style);
             let inner = Rect::new(
                 rect.x + style.padding[3],
@@ -121,7 +121,7 @@ impl LumeApp {
             StringId::AboutVersion,
             &[Arg::Str(&lume_version::display())],
         );
-        let style = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let style = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let bottom = p.display.safe_area().bottom();
         let line = Rect::new(LEFT, bottom - 40.0, WIDTH, 24.0);
         p.text(&version, line, Align::End, &style);
@@ -132,10 +132,10 @@ impl LumeApp {
         let t = self.translator;
         let comma = t.language().starts_with("pt");
         let panel = Rect::new(PANEL_X, ITEMS_TOP, PANEL_WIDTH, PANEL_HEIGHT);
-        let style = p.style(&THEME.panel, StateFlags::NONE);
+        let style = p.style(|t| &t.panel, StateFlags::NONE);
         p.draw_box(panel, &style);
         let inner = Rect::new(panel.x + 32.0, panel.y + 24.0, panel.w - 64.0, 20.0);
-        let heading = p.style(&THEME.card_heading, StateFlags::NONE);
+        let heading = p.style(|t| &t.card_heading, StateFlags::NONE);
         p.text(&t.get(StringId::StatsTitle), inner, Align::Start, &heading);
 
         let stats = self.stats.as_ref();
@@ -175,7 +175,7 @@ impl LumeApp {
                 },
             ),
         ];
-        let label = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let label = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let mut value_style = label;
         value_style.color = vars::TEXT;
         value_style.font_weight = 700;
@@ -192,7 +192,7 @@ impl LumeApp {
             if let Some(fraction) = fraction {
                 let filled = Rect::new(bar.x, bar.y, (bar.w * fraction).max(8.0), bar.h);
                 p.list
-                    .fill(filled, vars::SHAPE_FULL, Paint::Solid(vars::PRIMARY));
+                    .fill(filled, vars::SHAPE_FULL, Paint::Solid(p.primary_on_dark()));
             }
         }
     }
@@ -226,7 +226,11 @@ impl LumeApp {
     }
 
     pub(super) fn back_from_settings(&mut self) {
-        self.screen = Screen::Main(Tab::Apps);
+        self.screen = if self.is_peek_mode() {
+            Screen::Main(Tab::Home)
+        } else {
+            Screen::Main(Tab::Apps)
+        };
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::Id(ids::GRID_SETTINGS));
     }
@@ -271,8 +275,8 @@ impl LumeApp {
 
         // Nothing is drawn until the platform has read the sheet (a turn of the loop).
         if let Some(info) = self.device_info.as_ref() {
-            let heading = p.style(&THEME.card_heading, StateFlags::NONE);
-            let label = p.style(&THEME.breadcrumb, StateFlags::NONE);
+            let heading = p.style(|t| &t.card_heading, StateFlags::NONE);
+            let label = p.style(|t| &t.breadcrumb, StateFlags::NONE);
             let mut value_style = label;
             value_style.color = vars::TEXT;
             value_style.font_weight = 700;
@@ -330,9 +334,9 @@ impl LumeApp {
 
         // Build the text, then limit the scrolling to its length.
         let lines = licenses::cached_lines();
-        let heading = p.style(&THEME.about_heading, StateFlags::NONE);
-        let body = p.style(&THEME.about_body, StateFlags::NONE);
-        let license = p.style(&THEME.about_license, StateFlags::NONE);
+        let heading = p.style(|t| &t.about_heading, StateFlags::NONE);
+        let body = p.style(|t| &t.about_body, StateFlags::NONE);
+        let license = p.style(|t| &t.about_license, StateFlags::NONE);
         let mut blocks: Vec<(std::borrow::Cow<'static, str>, &ComputedStyle)> = vec![
             (
                 t.format(
@@ -448,6 +452,7 @@ fn about_rows<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::theme::THEME;
 
     #[test]
     fn a_wrapped_about_paragraph_has_its_baselines_one_line_height_apart() {

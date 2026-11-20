@@ -17,3 +17,4 @@ pub const EYE: char = '\u{e0ba}';
 pub const EYE_OFF: char = '\u{e0bb}';
 pub const PHONE: char = '\u{e163}';
 pub const MINUS: char = '\u{e11c}';
+pub const LAYOUT_GRID: char = '\u{e0ff}';

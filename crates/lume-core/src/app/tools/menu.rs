@@ -7,7 +7,7 @@ use super::ToolKind;
 use crate::app::painter::Painter;
 use crate::app::{settings, Effect, LumeApp, PendingFocus, Screen};
 use crate::i18n::StringId;
-use crate::theme::{StateFlags, THEME};
+use crate::theme::StateFlags;
 
 /// The description panel, as tall as the statistics panel of the settings.
 pub(in crate::app) const MENU_PANEL_HEIGHT: f32 = 312.0;
@@ -62,7 +62,7 @@ impl LumeApp {
         let kind = index.map_or(ToolKind::Display, |i| ToolKind::ALL[i]);
         let inner = draw_panel(p, common::panel_rect(MENU_PANEL_HEIGHT));
         panel_heading(p, inner, &t.get(kind.name()));
-        let body = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let body = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let text = crate::render::Rect::new(inner.x, inner.y + 48.0, inner.w, body.line_height);
         wrapped_text(p, &t.get(kind.description()), text, body.line_height, &body);
 

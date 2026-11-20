@@ -42,8 +42,8 @@ pub const PROGRESS_EVERY: Duration = Duration::from_millis(250);
 /// The path of the wallpaper function.
 pub const WALLPAPER_PATH: &str = "/wallpaper/";
 
-/// Builds the page for an `Accept-Language` header.
-pub type PageBuilder = fn(&str) -> String;
+/// Builds the page for an `Accept-Language` header and active accent color.
+pub type PageBuilder = fn(&str, crate::theme::AccentColor) -> String;
 /// Reads a shared file of the page (`heic.js`, `heic.wasm`).
 pub type LibReader = fn(&str) -> Option<crate::memory::Buffer>;
 
@@ -137,6 +137,7 @@ pub struct Server {
 #[derive(Clone, Copy)]
 pub struct Content {
     pub page: PageBuilder,
+    pub accent: crate::theme::AccentColor,
     pub library: LibReader,
 }
 
@@ -435,7 +436,10 @@ fn handle(
             if context.code_matches(&head) {
                 context.send(Event::PageLoaded);
             }
-            let page = (context.content.page)(head.header("accept-language").unwrap_or(""));
+            let page = (context.content.page)(
+                head.header("accept-language").unwrap_or(""),
+                context.content.accent,
+            );
             respond(
                 stream,
                 "200 OK",
@@ -613,7 +617,7 @@ fn refuse_busy(listener: &TcpListener) {
 pub(crate) mod tests {
     use super::*;
 
-    fn page(language: &str) -> String {
+    fn page(language: &str, _accent: crate::theme::AccentColor) -> String {
         format!("<html>{language}</html>")
     }
 
@@ -626,7 +630,11 @@ pub(crate) mod tests {
             Ipv4Addr::LOCALHOST,
             0,
             code.to_string(),
-            Content { page, library },
+            Content {
+                page,
+                accent: crate::theme::AccentColor::default(),
+                library,
+            },
         )
         .unwrap()
     }

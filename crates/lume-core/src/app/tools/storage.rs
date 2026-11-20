@@ -14,7 +14,7 @@ use crate::app::{Effect, Key, LumeApp};
 use crate::i18n::{Arg, StringId};
 use crate::render::Rect;
 use crate::stats;
-use crate::theme::{StateFlags, THEME};
+use crate::theme::StateFlags;
 
 /// The size of the test file, written and read in 1 MB blocks.
 pub const TEST_MB: u32 = 64;
@@ -281,7 +281,7 @@ impl LumeApp {
             Phase::Cancelled => t.get(StringId::ToolStorageCancelled).into_owned(),
             Phase::Failed => t.get(StringId::ToolStorageFailed).into_owned(),
         };
-        let style = p.style(&THEME.breadcrumb, StateFlags::NONE);
+        let style = p.style(|t| &t.breadcrumb, StateFlags::NONE);
         let area = Rect::new(inner.x, panel.y + STATUS_TOP, inner.w, 2.0 * STATUS_PITCH);
         wrapped_text(p, &status, area, STATUS_PITCH, &style);
     }

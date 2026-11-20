@@ -43,12 +43,7 @@ fn the_mark_matches_the_design_file() {
     let mut backend = Gles2Backend::new(gl.glow()).expect("shaders");
     let mut list = DisplayList::new();
     // 168 logical units at 2 pixels each.
-    logo::draw_mark(
-        &mut list,
-        Rect::new(0.0, 0.0, 168.0, 168.0),
-        vars::ACCENT,
-        vars::BG,
-    );
+    logo::draw_mark(&mut list, Rect::new(0.0, 0.0, 168.0, 168.0), vars::ACCENT);
     let viewport = Viewport {
         width: SIZE,
         height: SIZE,
@@ -120,5 +115,49 @@ fn the_mark_matches_the_design_file() {
         fraction < 0.01,
         "{:.2}% of the logo pixels differ from the design",
         fraction * 100.0
+    );
+}
+
+#[test]
+fn the_l_and_dot_are_truly_transparent_cutouts() {
+    use lume_core::theme::Color;
+
+    const SIZE: u32 = 200;
+    let Ok(gl) = HeadlessGl::new(SIZE, SIZE) else {
+        eprintln!("skipped: no GL context");
+        return;
+    };
+    let mut backend = Gles2Backend::new(gl.glow()).expect("shaders");
+    let bg = Color::rgb(210, 45, 70);
+    let square = Color::rgb(77, 179, 255);
+    let mut list = DisplayList::new();
+    logo::draw_mark(&mut list, Rect::new(0.0, 0.0, 100.0, 100.0), square);
+    let viewport = Viewport {
+        width: SIZE,
+        height: SIZE,
+        scale: 2.0,
+        offset_x: 0.0,
+        offset_y: 0.0,
+        edge_softness: vars::EDGE_SOFTNESS,
+    };
+    backend.render(&viewport, bg, &Frame::build(&list));
+    let pixels = backend.read_pixels(SIZE, SIZE);
+    backend.destroy();
+
+    let pixel_at = |fx: f32, fy: f32| -> [u8; 3] {
+        let x = (fx * SIZE as f32) as usize;
+        let y = (fy * SIZE as f32) as usize;
+        let i = (y * SIZE as usize + x) * 4;
+        [pixels[i], pixels[i + 1], pixels[i + 2]]
+    };
+    // Center of the L's vertical stem, horizontal foot, and dot: must show `bg`, not an opaque glyph.
+    assert_eq!(pixel_at(0.3765, 0.455), [bg.r, bg.g, bg.b], "stem cutout");
+    assert_eq!(pixel_at(0.55, 0.641), [bg.r, bg.g, bg.b], "foot cutout");
+    assert_eq!(pixel_at(0.646, 0.372), [bg.r, bg.g, bg.b], "dot cutout");
+    // Inside the solid body of the rounded square: must show `square`.
+    assert_eq!(
+        pixel_at(0.18, 0.50),
+        [square.r, square.g, square.b],
+        "square body"
     );
 }

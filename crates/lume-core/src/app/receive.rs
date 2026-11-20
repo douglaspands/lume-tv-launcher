@@ -12,7 +12,7 @@ use crate::i18n::{Arg, StringId};
 use crate::icons;
 use crate::render::Rect;
 use crate::text::TextStyle;
-use crate::theme::{vars, Color, Paint, StateFlags, THEME};
+use crate::theme::{vars, AccentColor, Color, Paint, StateFlags};
 use crate::ui::focus::{FocusId, Focusable, Row};
 
 pub const CANCEL: FocusId = 9000;
@@ -40,9 +40,9 @@ pub(super) struct ReceiveState {
 }
 
 impl ReceiveState {
-    fn new(now_ms: u64) -> ReceiveState {
+    fn new(now_ms: u64, accent: AccentColor) -> ReceiveState {
         ReceiveState {
-            session: Session::open(now_ms),
+            session: Session::open_with_accent(now_ms, accent),
             qr: None,
         }
     }
@@ -62,7 +62,10 @@ impl LumeApp {
     /// Opens the Receive image screen: a new code and, with a network, the server.
     pub(super) fn open_receive(&mut self) {
         self.context_menu = None;
-        self.receive = Some(Box::new(ReceiveState::new(self.now_ms)));
+        self.receive = Some(Box::new(ReceiveState::new(
+            self.now_ms,
+            self.effective_accent(),
+        )));
         self.screen = Screen::ReceiveImage;
         self.scroll_to_top();
         self.pending_focus = Some(PendingFocus::Id(CANCEL));
@@ -204,7 +207,7 @@ impl LumeApp {
 
         // The panel: the steps, the address and the code, and the state at its base.
         let panel = Rect::new(PANEL_X, TOP, PANEL_RIGHT - PANEL_X, QR_SIDE);
-        let style = p.style(&THEME.panel, StateFlags::NONE);
+        let style = p.style(|t| &t.panel, StateFlags::NONE);
         p.draw_box(panel, &style);
         let x = panel.x + PANEL_PAD_X;
         let inner = panel.w - 2.0 * PANEL_PAD_X;
@@ -273,7 +276,7 @@ impl LumeApp {
                     cx,
                     label_y + 44.0,
                     &code_style,
-                    vars::PRIMARY,
+                    p.primary_on_dark(),
                 );
                 cx += p.text.measure(&letter, &code_style) + CODE_TRACKING;
             }
@@ -297,7 +300,7 @@ impl LumeApp {
 
         // The buttons: Cancel under the QR code; "Make a new code" once the server is off for good.
         let button_y = TOP + QR_SIDE + BUTTON_GAP;
-        let button_style = p.style(&THEME.button, StateFlags::NONE);
+        let button_style = p.style(|t| &t.button, StateFlags::NONE);
         let cancel_label = t.get(StringId::EditorCancel).into_owned();
         let cancel_w = (p.measure(&cancel_label, &button_style) + 56.0).max(BUTTON_MIN_WIDTH);
         let cancel = Rect::new(LEFT, button_y, cancel_w, BUTTON_HEIGHT);
@@ -362,15 +365,15 @@ impl LumeApp {
     /// The state line at the base of the panel, and its color.
     pub(super) fn receive_status_text(&self, session: &Session, now_ms: u64) -> (String, Color) {
         let t = self.translator;
+        let primary = self.active_accent().primary;
         match session.status() {
             Status::NoNetwork => (
                 t.get(StringId::ReceiveNoNetworkHint).into_owned(),
                 vars::TEXT_MUTED,
             ),
-            Status::Waiting if session.connected(now_ms) => (
-                t.get(StringId::ReceiveConnected).into_owned(),
-                vars::PRIMARY,
-            ),
+            Status::Waiting if session.connected(now_ms) => {
+                (t.get(StringId::ReceiveConnected).into_owned(), primary)
+            }
             Status::Waiting => match session.countdown(now_ms) {
                 Some(left) => {
                     let time = super::tools::common::format_remaining(left * 1000);
@@ -383,12 +386,9 @@ impl LumeApp {
             },
             Status::Receiving(percent) => (
                 t.format(StringId::ReceiveReceiving, &[Arg::Int(i64::from(percent))]),
-                vars::PRIMARY,
+                primary,
             ),
-            Status::Verifying => (
-                t.get(StringId::ReceiveVerifying).into_owned(),
-                vars::PRIMARY,
-            ),
+            Status::Verifying => (t.get(StringId::ReceiveVerifying).into_owned(), primary),
             Status::Refused(reason) => {
                 let id = match reason {
                     Reject::TooBig => StringId::CompanionErrBig,

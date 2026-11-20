@@ -18,8 +18,10 @@ fn wallpaper_frame_of(
             list: scene.list,
             text: scene.text,
             display: *scene.display,
+            theme: &lume_core::theme::THEME,
+            accent: lume_core::theme::AccentColor::default().palette(),
         };
-        painter.wallpaper_at(id, false, 1.0);
+        painter.wallpaper_at(id, 0.0, 1.0);
     });
     match result {
         Ok(pixels) => Some(pixels),
@@ -63,6 +65,8 @@ fn dimmed_with_and_without_dither(width: u32, height: u32) -> Option<(Vec<u8>, V
             list: scene.list,
             text: scene.text,
             display: *scene.display,
+            theme: &lume_core::theme::THEME,
+            accent: lume_core::theme::AccentColor::default().palette(),
         };
         painter.wallpaper(true);
     });

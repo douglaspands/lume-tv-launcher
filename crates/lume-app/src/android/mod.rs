@@ -20,7 +20,7 @@ use lume_core::memory::Buffer;
 use lume_core::render::Backend;
 use lume_core::shell::protocol::Changed;
 use lume_core::shell::Shell;
-use lume_core::theme::{vars, Color};
+use lume_core::theme::Color;
 use std::collections::HashSet;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -685,11 +685,7 @@ impl Runtime {
         if let Some(text) = self.shell.text_engine() {
             graphics.backend().sync_text_atlas(text);
         }
-        let background = match lume_core::theme::THEME.app.base.background {
-            Some(lume_core::theme::Paint::Solid(color)) => color,
-            _ => vars::BG,
-        };
-        let _: Color = background;
+        let background: Color = self.shell.app().clear_color();
         graphics.backend().render(&viewport, background, &frame);
         let swapped = graphics.egl.swap_buffers();
         // A frame that takes this long is a visible stall: logged, with what the backend was doing.

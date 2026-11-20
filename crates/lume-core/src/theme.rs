@@ -49,9 +49,198 @@ impl Color {
         Color { r, g, b, a: 255 }
     }
 
+    pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Color {
+        Color { r, g, b, a }
+    }
+
     /// Straight (non-premultiplied) RGBA as floats from 0.0 to 1.0.
     pub fn to_f32(self) -> [f32; 4] {
         [self.r, self.g, self.b, self.a].map(|c| f32::from(c) / 255.0)
+    }
+}
+
+/// Curated accent color presets for `--primary` and the matching Splash screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AccentColor {
+    #[default]
+    Blue,
+    Aurora,
+    Emerald,
+    Amber,
+    Coral,
+    Rose,
+    Violet,
+    Red,
+    White,
+    Black,
+}
+
+/// Resolved runtime colors derived from an [`AccentColor`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AccentPalette {
+    pub primary: Color,
+    pub on_primary: Color,
+    /// T7 dark surface used as the Splash screen background.
+    pub splash_bg: Color,
+    /// Focused fill on light cards (`.menu-item:focus`, `.menu-button:focus`, etc.).
+    pub menu_focus_bg: Color,
+    /// Focused text color on light cards.
+    pub menu_focus_fg: Color,
+    /// Optional subtle outer ring for dark-on-dark focus legibility (`Black` only).
+    pub contrast_ring: Option<Color>,
+    /// CSS hex representation of `primary` (for the companion web page).
+    pub primary_hex: &'static str,
+}
+
+impl AccentColor {
+    /// All curated accent presets in display order.
+    pub const ALL: [AccentColor; 10] = [
+        AccentColor::Blue,
+        AccentColor::Aurora,
+        AccentColor::Emerald,
+        AccentColor::Amber,
+        AccentColor::Coral,
+        AccentColor::Rose,
+        AccentColor::Violet,
+        AccentColor::Red,
+        AccentColor::White,
+        AccentColor::Black,
+    ];
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            AccentColor::Blue => "blue",
+            AccentColor::Aurora => "aurora",
+            AccentColor::Emerald => "emerald",
+            AccentColor::Amber => "amber",
+            AccentColor::Coral => "coral",
+            AccentColor::Rose => "rose",
+            AccentColor::Violet => "violet",
+            AccentColor::Red => "red",
+            AccentColor::White => "white",
+            AccentColor::Black => "black",
+        }
+    }
+
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "blue" => Some(AccentColor::Blue),
+            "aurora" => Some(AccentColor::Aurora),
+            "emerald" => Some(AccentColor::Emerald),
+            "amber" => Some(AccentColor::Amber),
+            "coral" => Some(AccentColor::Coral),
+            "rose" => Some(AccentColor::Rose),
+            "violet" => Some(AccentColor::Violet),
+            "red" => Some(AccentColor::Red),
+            "white" => Some(AccentColor::White),
+            "black" => Some(AccentColor::Black),
+            _ => None,
+        }
+    }
+
+    pub const fn palette(self) -> AccentPalette {
+        const DARK_ON_PRIMARY: Color = Color::rgb(0x0C, 0x17, 0x1F);
+        const LIGHT_ON_PRIMARY: Color = Color::rgb(0xF1, 0xF4, 0xF9);
+
+        let (primary, on_primary, splash_bg, primary_hex) = match self {
+            AccentColor::Blue => (
+                Color::rgb(0x4D, 0xB3, 0xFF),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x0C, 0x17, 0x1F),
+                "#4DB3FF",
+            ),
+            AccentColor::Aurora => (
+                Color::rgb(0x00, 0xC0, 0xB2),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x07, 0x1B, 0x1A),
+                "#00C0B2",
+            ),
+            AccentColor::Emerald => (
+                Color::rgb(0x57, 0xC0, 0x71),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x09, 0x1A, 0x10),
+                "#57C071",
+            ),
+            AccentColor::Amber => (
+                Color::rgb(0xEC, 0x9A, 0x00),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x1C, 0x14, 0x06),
+                "#EC9A00",
+            ),
+            AccentColor::Coral => (
+                Color::rgb(0xFF, 0x81, 0x63),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x1E, 0x10, 0x0C),
+                "#FF8163",
+            ),
+            AccentColor::Rose => (
+                Color::rgb(0xFA, 0x7A, 0xBC),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x1D, 0x0E, 0x17),
+                "#FA7ABC",
+            ),
+            AccentColor::Violet => (
+                Color::rgb(0xAC, 0x96, 0xFF),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x13, 0x0F, 0x21),
+                "#AC96FF",
+            ),
+            AccentColor::Red => (
+                Color::rgb(0xFF, 0x54, 0x49),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x1F, 0x0B, 0x0A),
+                "#FF5449",
+            ),
+            AccentColor::White => (
+                Color::rgb(0xF1, 0xF4, 0xF9),
+                DARK_ON_PRIMARY,
+                Color::rgb(0x14, 0x16, 0x19),
+                "#F1F4F9",
+            ),
+            AccentColor::Black => (
+                Color::rgb(0x11, 0x15, 0x1A),
+                LIGHT_ON_PRIMARY,
+                Color::rgb(0x07, 0x09, 0x0C),
+                "#11151A",
+            ),
+        };
+
+        let (menu_focus_bg, menu_focus_fg) = match self {
+            AccentColor::White => (Color::rgb(0x1D, 0x27, 0x30), LIGHT_ON_PRIMARY),
+            _ => (primary, on_primary),
+        };
+
+        let contrast_ring = match self {
+            AccentColor::Black => Some(Color::rgba(255, 255, 255, 115)),
+            _ => None,
+        };
+
+        AccentPalette {
+            primary,
+            on_primary,
+            splash_bg,
+            menu_focus_bg,
+            menu_focus_fg,
+            contrast_ring,
+            primary_hex,
+        }
+    }
+
+    pub const fn title_string_id(self) -> crate::i18n::StringId {
+        use crate::i18n::StringId;
+        match self {
+            AccentColor::Blue => StringId::AccentBlue,
+            AccentColor::Aurora => StringId::AccentAurora,
+            AccentColor::Emerald => StringId::AccentEmerald,
+            AccentColor::Amber => StringId::AccentAmber,
+            AccentColor::Coral => StringId::AccentCoral,
+            AccentColor::Rose => StringId::AccentRose,
+            AccentColor::Violet => StringId::AccentViolet,
+            AccentColor::Red => StringId::AccentRed,
+            AccentColor::White => StringId::AccentWhite,
+            AccentColor::Black => StringId::AccentBlack,
+        }
     }
 }
 
@@ -363,6 +552,54 @@ impl ComponentTheme {
 include!(concat!(env!("OUT_DIR"), "/theme_generated.rs"));
 
 impl Theme {
+    /// Returns a copy of `self` with every accent-dependent component updated for `accent`.
+    /// Pure value copy with zero heap allocations.
+    pub fn with_accent(&self, accent: AccentColor) -> Theme {
+        fn set_outline_color(style: &mut Style, color: Color) {
+            if let Some(outline) = &mut style.outline {
+                outline.color = color;
+            }
+        }
+
+        let palette = accent.palette();
+        let mut theme = *self;
+
+        set_outline_color(&mut theme.icon_button.focus, palette.primary);
+
+        theme.button.focus.background = Some(Paint::Solid(palette.primary));
+        theme.button.focus.color = Some(palette.on_primary);
+        set_outline_color(&mut theme.button.focus, palette.primary);
+
+        set_outline_color(&mut theme.button_secondary.focus, palette.primary);
+        set_outline_color(&mut theme.button_danger.focus, palette.primary);
+        set_outline_color(&mut theme.tile.focus, palette.primary);
+
+        theme.settings_item.focus.background = Some(Paint::Solid(palette.primary));
+        theme.settings_item.focus.color = Some(palette.on_primary);
+        set_outline_color(&mut theme.settings_item.focus, palette.primary);
+
+        set_outline_color(&mut theme.editor_row.focus, palette.primary);
+
+        theme.chip.active.background = Some(Paint::Solid(palette.primary));
+        theme.chip.active.color = Some(palette.on_primary);
+        set_outline_color(&mut theme.chip.focus, palette.primary);
+
+        // Light-card components use `menu_focus_bg` / `menu_focus_fg` so `White` keeps contrast.
+        theme.menu_item.focus.background = Some(Paint::Solid(palette.menu_focus_bg));
+        theme.menu_item.focus.color = Some(palette.menu_focus_fg);
+        theme.menu_button.focus.background = Some(Paint::Solid(palette.menu_focus_bg));
+        theme.menu_button.focus.color = Some(palette.menu_focus_fg);
+        theme.menu_button_danger.focus.background = Some(Paint::Solid(palette.menu_focus_bg));
+        theme.menu_button_danger.focus.color = Some(palette.menu_focus_fg);
+
+        theme
+    }
+
+    /// Returns the default compiled-in theme adapted to `accent`.
+    pub fn for_accent(accent: AccentColor) -> Theme {
+        THEME.with_accent(accent)
+    }
+
     /// Resolves a component's style. Text properties not set by the component
     /// are inherited from `.app`.
     pub fn resolve(&self, component: &ComponentTheme, state: StateFlags) -> ComputedStyle {
@@ -1078,5 +1315,145 @@ mod tests {
             let viewport = crate::display::Display::new(width, height).viewport();
             assert_eq!(viewport.edge_softness, vars::EDGE_SOFTNESS);
         }
+    }
+
+    #[test]
+    fn accent_color_round_trips_all_presets() {
+        assert_eq!(AccentColor::default(), AccentColor::Blue);
+        assert_eq!(AccentColor::ALL.len(), 10);
+        let mut string_ids = Vec::with_capacity(AccentColor::ALL.len());
+        for accent in AccentColor::ALL {
+            assert_eq!(AccentColor::from_str(accent.as_str()), Some(accent));
+            let palette = accent.palette();
+            assert!(
+                palette.primary_hex.starts_with('#') && palette.primary_hex.len() == 7,
+                "{accent:?}: {}",
+                palette.primary_hex
+            );
+            let id = accent.title_string_id();
+            assert!(
+                !string_ids.contains(&id),
+                "duplicate StringId for {accent:?}"
+            );
+            string_ids.push(id);
+        }
+        assert_eq!(AccentColor::from_str("unknown"), None);
+        assert_eq!(AccentColor::from_str(""), None);
+    }
+
+    #[test]
+    fn accent_palettes_meet_wcag_contrast() {
+        fn blend_over(fg: Color, bg: Color) -> Color {
+            let alpha = f32::from(fg.a) / 255.0;
+            let mix = |f: u8, b: u8| -> u8 {
+                (f32::from(f) * alpha + f32::from(b) * (1.0 - alpha))
+                    .round()
+                    .clamp(0.0, 255.0) as u8
+            };
+            Color::rgb(mix(fg.r, bg.r), mix(fg.g, bg.g), mix(fg.b, bg.b))
+        }
+
+        let dark_surfaces = [
+            ("bg", vars::BG),
+            ("surface", vars::SURFACE),
+            ("surface-row", vars::SURFACE_ROW),
+            ("surface-focus", vars::SURFACE_FOCUS),
+            ("control", vars::CONTROL),
+        ];
+
+        for accent in AccentColor::ALL {
+            let p = accent.palette();
+            let text_ratio = contrast_ratio(p.on_primary, p.primary);
+            assert!(
+                text_ratio >= 4.5,
+                "{accent:?} on_primary/primary contrast {text_ratio:.2}:1 < 4.5:1"
+            );
+            let menu_ratio = contrast_ratio(p.menu_focus_fg, p.menu_focus_bg);
+            assert!(
+                menu_ratio >= 4.5,
+                "{accent:?} menu_focus_fg/menu_focus_bg contrast {menu_ratio:.2}:1 < 4.5:1"
+            );
+            for (surface_name, bg) in dark_surfaces {
+                let effective_ring = match p.contrast_ring {
+                    Some(ring) => blend_over(ring, bg),
+                    None => p.primary,
+                };
+                let ring_ratio = contrast_ratio(effective_ring, bg);
+                assert!(
+                    ring_ratio >= 3.0,
+                    "{accent:?} focus ring on --{surface_name} contrast {ring_ratio:.2}:1 < 3.0:1"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theme_with_accent_updates_primary_and_light_card_components() {
+        assert_eq!(Theme::for_accent(AccentColor::Blue), THEME);
+
+        let white = Theme::for_accent(AccentColor::White);
+        let wp = AccentColor::White.palette();
+        assert_eq!(
+            white.resolve(&white.button, StateFlags::FOCUS).background,
+            Some(Paint::Solid(wp.primary))
+        );
+        assert_eq!(
+            white.resolve(&white.button, StateFlags::FOCUS).color,
+            wp.on_primary
+        );
+        assert_eq!(
+            white
+                .resolve(&white.settings_item, StateFlags::FOCUS)
+                .background,
+            Some(Paint::Solid(wp.primary))
+        );
+        assert_eq!(
+            white.resolve(&white.chip, StateFlags::ACTIVE).background,
+            Some(Paint::Solid(wp.primary))
+        );
+        for component in [
+            &white.icon_button,
+            &white.button,
+            &white.button_secondary,
+            &white.button_danger,
+            &white.tile,
+            &white.settings_item,
+            &white.editor_row,
+            &white.chip,
+        ] {
+            let outline = white.resolve(component, StateFlags::FOCUS).outline.unwrap();
+            assert_eq!(outline.color, wp.primary);
+        }
+        for menu_component in [
+            &white.menu_item,
+            &white.menu_button,
+            &white.menu_button_danger,
+        ] {
+            let style = white.resolve(menu_component, StateFlags::FOCUS);
+            assert_eq!(
+                style.background,
+                Some(Paint::Solid(Color::rgb(0x1D, 0x27, 0x30)))
+            );
+            assert_eq!(style.color, Color::rgb(0xF1, 0xF4, 0xF9));
+        }
+
+        let black = Theme::for_accent(AccentColor::Black);
+        let bp = AccentColor::Black.palette();
+        assert_eq!(bp.on_primary, Color::rgb(0xF1, 0xF4, 0xF9));
+        assert_eq!(bp.contrast_ring, Some(Color::rgba(255, 255, 255, 115)));
+        for component in [
+            &black.button,
+            &black.settings_item,
+            &black.menu_item,
+            &black.menu_button,
+            &black.menu_button_danger,
+        ] {
+            let style = black.resolve(component, StateFlags::FOCUS);
+            assert_eq!(style.background, Some(Paint::Solid(bp.primary)));
+            assert_eq!(style.color, Color::rgb(0xF1, 0xF4, 0xF9));
+        }
+        let chip_active = black.resolve(&black.chip, StateFlags::ACTIVE);
+        assert_eq!(chip_active.background, Some(Paint::Solid(bp.primary)));
+        assert_eq!(chip_active.color, Color::rgb(0xF1, 0xF4, 0xF9));
     }
 }

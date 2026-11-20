@@ -13,7 +13,7 @@ use crate::app::{Key, LumeApp, PendingFocus};
 use crate::i18n::{Arg, StringId};
 use crate::render::{PatternOp, PixelRect, Rect};
 use crate::text::Align;
-use crate::theme::{vars, Color, StateFlags, THEME};
+use crate::theme::{vars, Color, StateFlags};
 use crate::ui::animation::FRAME_MS;
 use crate::ui::focus::FocusId;
 
@@ -217,7 +217,7 @@ impl LumeApp {
                 ));
 
                 // The text travels at the same speed, half a screen ahead of the block.
-                let mut style = p.style(&THEME.page_title, StateFlags::NONE);
+                let mut style = p.style(|t| &t.page_title, StateFlags::NONE);
                 style.color = Color::WHITE;
                 let sample = t.get(StringId::ToolPictureMotionSample);
                 let scale = f64::from(p.display.scale);
@@ -241,7 +241,7 @@ impl LumeApp {
                     StringId::ToolPictureMotionStatus,
                     &[Arg::Str(&speed), Arg::Int(i64::from(motion.dropped))],
                 );
-                let mut status_style = p.style(&THEME.breadcrumb, StateFlags::NONE);
+                let mut status_style = p.style(|t| &t.breadcrumb, StateFlags::NONE);
                 status_style.color = vars::TEXT;
                 let visible = p.display.visible_rect();
                 p.text(

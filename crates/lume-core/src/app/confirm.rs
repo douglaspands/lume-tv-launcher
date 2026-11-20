@@ -11,7 +11,7 @@ use super::{Effect, LumeApp, PendingFocus, Screen};
 use crate::i18n::StringId;
 use crate::render::Rect;
 use crate::text::TextStyle;
-use crate::theme::{vars, StateFlags, THEME};
+use crate::theme::{vars, StateFlags};
 use crate::ui::focus::{FocusId, Focusable, Row};
 use crate::wallpaper::custom::{self, Applied};
 use crate::wallpaper::{Image, WallpaperId};
@@ -201,7 +201,7 @@ impl LumeApp {
             CARD_WIDTH,
             PAD_Y + BUTTON_HEIGHT + PAD_Y,
         );
-        let style = p.style(&THEME.panel, StateFlags::NONE);
+        let style = p.style(|t| &t.panel, StateFlags::NONE);
         p.draw_box(card, &style);
         let y = card.y + PAD_Y;
         let apply_label = t.get(StringId::ConfirmApply).into_owned();
@@ -242,7 +242,7 @@ impl LumeApp {
 }
 
 fn button_width(p: &mut Painter, label: &str) -> f32 {
-    let style = p.style(&THEME.button, StateFlags::NONE);
+    let style = p.style(|t| &t.button, StateFlags::NONE);
     (p.measure(label, &style) + 2.0 * BUTTON_PAD_X)
         .max(BUTTON_MIN_WIDTH)
         .ceil()

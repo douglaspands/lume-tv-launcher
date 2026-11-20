@@ -6,7 +6,7 @@ pub const RECT_VERTEX: &str = r#"#version 100
 attribute vec4 a_pos_local; // xy: canvas position, zw: position relative to the center
 attribute vec4 a_shape;     // xy: half size, z: radius, w: ring width
 attribute vec4 a_misc;      // x: softness, yz: gradient axis, w: is gradient
-attribute vec4 a_stops;     // xyz: gradient stop positions
+attribute vec4 a_stops;     // xyz: gradient stop positions (or x: logo mark size), w: is logo mark
 attribute vec4 a_c0;
 attribute vec4 a_c1;
 attribute vec4 a_c2;
@@ -67,6 +67,17 @@ float dither() {
 
 void main() {
     float d = round_rect_distance(v_local.xy, v_shape.xy, v_shape.z);
+    if (v_stops.w > 0.5) {
+        // Subtract the L (vertical bar + horizontal bar) and dot from the rounded shape so they
+        // are truly transparent (cut out) in a single SDF quad. Proportions match `logo.rs`.
+        float size = v_stops.x;
+        vec2 p = v_local.xy / size + 0.5;
+        float d_stem = round_rect_distance(p - vec2(0.3765, 0.455), vec2(0.064, 0.250), 0.064);
+        float d_foot = round_rect_distance(p - vec2(0.51025, 0.641), vec2(0.19775, 0.064), 0.064);
+        float d_dot = length(p - vec2(0.646, 0.372)) - 0.0744;
+        float d_cut = min(min(d_stem, d_foot), d_dot) * size;
+        d = max(d, -d_cut);
+    }
     float unit = v_local.z; // logical units of the edge ramp
     float alpha;
     if (v_misc.x > 0.0) {

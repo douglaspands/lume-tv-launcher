@@ -79,10 +79,15 @@ impl Rig {
         for _ in 0..4 {
             list.clear();
             self.text.begin_frame();
+            self.app.refresh_theme();
+            let theme = *self.app.active_theme();
+            let accent = self.app.active_accent();
             let mut painter = Painter {
                 list: &mut list,
                 text: &mut self.text,
                 display: self.display,
+                theme: &theme,
+                accent,
             };
             self.app.draw(&mut painter, self.now);
             if !self.text.end_frame() {
@@ -411,8 +416,9 @@ fn removing_an_installed_app_updates_the_screens() {
 // ---- settings and the home screen editor ---------------------------------------------------
 
 use super::editor::{
-    ADD_APP_BASE, CONFIRM_CANCEL, CONFIRM_RESTORE, FAVORITE_BUTTON_BASE, RESTORE, ROUND_FAVORITES,
-    WALLPAPER_BASE,
+    ACCENT_BASE, ADD_APP_BASE, CONFIRM_CANCEL, CONFIRM_RESTORE, FAVORITE_BUTTON_BASE,
+    NAV_ALIGN_CENTER, NAV_ALIGN_LEFT, NAV_MODE_DOCK, NAV_MODE_PEEK, NAV_MODE_SLIDE, NAV_TABS_OFF,
+    NAV_TABS_ON, RESTORE, SHAPE_BANNER, SHAPE_ROUND, SHAPE_SQUARE, WALLPAPER_BASE,
 };
 
 fn open_settings(rig: &mut Rig) {
@@ -812,8 +818,16 @@ fn the_editor_scrolls_to_keep_the_focus_visible() {
         rect.bottom() - rig.app.scroll_y <= 720.0,
         "the focused button is on screen"
     );
-    // Back to the first favorite: the page returns to the top.
+    // Back to the first favorite: keeps it visible on screen.
     focus_on(&mut rig, FAVORITE_BUTTON_BASE + 1);
+    rig.advance(1000);
+    let fav_rect = rig.app.focus.current().unwrap().rect;
+    assert!(
+        fav_rect.y - rig.app.scroll_y >= 0.0 && fav_rect.bottom() - rig.app.scroll_y <= 720.0,
+        "the first favorite button is on screen"
+    );
+    // Back to the Appearance panel: the page returns to the top.
+    focus_on(&mut rig, SHAPE_ROUND);
     rig.advance(1000);
     assert_eq!(rig.app.scroll_y, 0.0);
 }
@@ -836,30 +850,131 @@ fn texts_in_the_editor_follow_the_language() {
 }
 
 #[test]
-fn round_favorites_toggles_with_ok_and_emits_save_config() {
+fn dock_shape_chips_update_config_emit_save_and_align_on_ruler() {
+    use crate::home::config::DockIconShape;
+
     let mut rig = Rig::new();
     open_editor(&mut rig);
-    rig.press(Key::Down);
-    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
-    assert!(rig.app.config.round_favorites, "round is the default");
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down]);
+    assert_eq!(rig.focused(), Some(SHAPE_ROUND));
+    assert_eq!(
+        rig.app.config.dock_shape,
+        DockIconShape::Round,
+        "round is the default"
+    );
 
+    // Check right-alignment to x = 1160 on the 4-unit ruler.
+    let shape_row = &rig.app.focus.rows()[4];
+    assert_eq!(
+        shape_row.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![SHAPE_ROUND, SHAPE_SQUARE, SHAPE_BANNER]
+    );
+    assert_eq!(shape_row.items.last().unwrap().rect.right(), 1160.0);
+    for item in &shape_row.items {
+        assert_eq!(item.rect.h, 40.0);
+        super::assert_on_ruler(&[
+            ("shape.x", item.rect.x),
+            ("shape.y", item.rect.y),
+            ("shape.w", item.rect.w),
+            ("shape.h", item.rect.h),
+        ]);
+    }
+
+    // Pressing OK on the already-active chip is a no-op.
+    assert!(rig.press(Key::Ok).is_empty());
+
+    // Select Square.
+    rig.press(Key::Right);
+    assert_eq!(rig.focused(), Some(SHAPE_SQUARE));
     let effects = rig.press(Key::Ok);
     assert_eq!(effects, [Effect::SaveConfig]);
-    assert!(!rig.app.config.round_favorites);
+    assert_eq!(rig.app.config.dock_shape, DockIconShape::Square);
 
+    // Select Banner (16:9).
+    rig.press(Key::Right);
+    assert_eq!(rig.focused(), Some(SHAPE_BANNER));
     let effects = rig.press(Key::Ok);
     assert_eq!(effects, [Effect::SaveConfig]);
-    assert!(rig.app.config.round_favorites);
+    assert_eq!(rig.app.config.dock_shape, DockIconShape::Banner);
+
+    // Select Round again.
+    rig.press_all(&[Key::Left, Key::Left]);
+    assert_eq!(rig.focused(), Some(SHAPE_ROUND));
+    let effects = rig.press(Key::Ok);
+    assert_eq!(effects, [Effect::SaveConfig]);
+    assert_eq!(rig.app.config.dock_shape, DockIconShape::Round);
 }
 
 #[test]
-fn restore_defaults_resets_round_favorites_to_true() {
+fn restore_defaults_resets_dock_shape_to_round() {
+    use crate::home::config::DockIconShape;
+
     let mut rig = Rig::new();
-    rig.app.config.round_favorites = false;
+    rig.app.config.dock_shape = DockIconShape::Banner;
     open_editor(&mut rig);
     press_on(&mut rig, RESTORE);
     press_on(&mut rig, CONFIRM_RESTORE);
-    assert!(rig.app.config.round_favorites);
+    assert_eq!(rig.app.config.dock_shape, DockIconShape::Round);
+}
+
+#[test]
+fn dock_banner_mode_draws_tile_banners_and_adapts_all_apps_item() {
+    use crate::app_icons::Art;
+    use crate::home::config::{DockIconShape, TablessMode};
+
+    let mut rig = Rig::new();
+    rig.app.config.tabs_visible = false;
+    rig.app.config.tabless_mode = TablessMode::Dock;
+    rig.app.config.dock_shape = DockIconShape::Banner;
+    // Reserve ONLY tile banners (no square dock icons) for the first favorite.
+    let first_pkg = rig.app.config.favorites[0].clone();
+    rig.app.icons.reserve(&first_pkg, Art::Banner);
+    assert!(rig.app.icons.has(&first_pkg));
+    assert!(!rig.app.icons.has_dock(&first_pkg));
+
+    let list = rig.frame();
+    // The banner UV is drawn on the dock even though no square dock icon was loaded.
+    let banner_uv = rig.app.icons.uv(&first_pkg).unwrap();
+    let drew_banner = list.cmds().iter().any(|c| match c {
+        Cmd::Image(img) => {
+            (img.uv.x - banner_uv.x).abs() < 1e-4 && (img.uv.y - banner_uv.y).abs() < 1e-4
+        }
+        _ => false,
+    });
+    assert!(
+        drew_banner,
+        "Banner dock mode should reuse the tile banner atlas"
+    );
+
+    // In all 3 shapes, DOCK_ALL_APPS is focusable with the right aspect ratio.
+    for shape in [
+        DockIconShape::Round,
+        DockIconShape::Square,
+        DockIconShape::Banner,
+    ] {
+        rig.app.config.dock_shape = shape;
+        rig.frame();
+        let all_apps_rect = rig
+            .app
+            .focus
+            .rows()
+            .iter()
+            .flat_map(|r| &r.items)
+            .find(|i| i.id == ids::DOCK_ALL_APPS)
+            .expect("DOCK_ALL_APPS in dock row")
+            .rect;
+        if shape == DockIconShape::Banner {
+            assert!(
+                all_apps_rect.w > all_apps_rect.h * 1.5,
+                "Banner DOCK_ALL_APPS should be 16:9: {all_apps_rect:?}"
+            );
+        } else {
+            assert!(
+                (all_apps_rect.w - all_apps_rect.h).abs() < 1e-3,
+                "Round/Square DOCK_ALL_APPS should be square: {all_apps_rect:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -880,13 +995,22 @@ fn editor_fits_six_cards_per_line_with_no_horizontal_overflow() {
         rows[0].items.len(),
         crate::wallpaper::WallpaperId::ALL.len() + 1
     );
-    // Row 1 is ROUND_FAVORITES (1 item)
-    assert_eq!(rows[1].items.len(), 1);
-    assert_eq!(rows[1].items[0].id, ROUND_FAVORITES);
-    // Row 2 is the first line of 6 cards * 3 buttons = 18 buttons
-    assert_eq!(rows[2].items.len(), 18);
-    // Row 3 is the second line of 6 cards * 3 buttons = 18 buttons
-    assert_eq!(rows[3].items.len(), 18);
+    // Row 1 is the 10 accent color swatches
+    assert_eq!(rows[1].items.len(), crate::theme::AccentColor::ALL.len());
+    assert_eq!(rows[1].items[0].id, ACCENT_BASE);
+    // Row 2 is Level 1 navigation (Com abas | Sem abas)
+    assert_eq!(rows[2].items.len(), 2);
+    assert_eq!(rows[2].items[0].id, NAV_TABS_ON);
+    // Row 3 is Level 2 navigation (À esquerda | Centralizadas)
+    assert_eq!(rows[3].items.len(), 2);
+    assert_eq!(rows[3].items[0].id, NAV_ALIGN_LEFT);
+    // Row 4 is favorites dock shape (Redondo | Quadrado | Retangular)
+    assert_eq!(rows[4].items.len(), 3);
+    assert_eq!(rows[4].items[0].id, SHAPE_ROUND);
+    // Row 5 is the first line of 6 cards * 3 buttons = 18 buttons
+    assert_eq!(rows[5].items.len(), 18);
+    // Row 6 is the second line of 6 cards * 3 buttons = 18 buttons
+    assert_eq!(rows[6].items.len(), 18);
 }
 
 fn images(list: &DisplayList) -> usize {
@@ -1218,15 +1342,20 @@ fn the_focused_gear_has_a_blue_ring() {
 impl Rig {
     /// Where the label of `tab` starts in the top bar.
     fn app_tab_text_x(&mut self, tab: Tab) -> f32 {
+        let theme = *self.app.active_theme();
+        let accent = self.app.active_accent();
         let tabs = topbar::BarLayout::new(
             &mut Painter {
                 list: &mut DisplayList::new(),
                 text: &mut self.text,
                 display: self.display,
+                theme: &theme,
+                accent,
             },
             &self.app.translator.get(crate::i18n::StringId::TabHome),
             &self.app.translator.get(crate::i18n::StringId::TabApps),
             &self.app.clock,
+            self.app.config.tabs_align,
         );
         tabs.text[tab as usize].0
     }
@@ -1237,15 +1366,21 @@ fn down_from_the_favorites_goes_to_done_and_restore_is_to_its_left() {
     let mut rig = Rig::new();
     open_editor(&mut rig);
     assert_eq!(rig.focused(), Some(WALLPAPER_BASE));
-    // Down goes to the round favorites switch.
+    // Down steps through accent swatches, Level 1 nav, Level 2 nav, and round favorites.
     rig.press(Key::Down);
-    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
+    assert_eq!(rig.focused(), Some(ACCENT_BASE));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(NAV_TABS_ON));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(NAV_ALIGN_LEFT));
+    rig.press(Key::Down);
+    assert_eq!(rig.focused(), Some(SHAPE_ROUND));
     // Down goes to the favorite cards.
     rig.press(Key::Down);
     assert!(
         rig.focused()
             .is_some_and(|id| (FAVORITE_BUTTON_BASE..ADD_APP_BASE).contains(&id)),
-        "the cards come after round favorites"
+        "the cards come after favorites shape"
     );
     // Down from the cards goes to the "Add app" chips.
     rig.press(Key::Down);
@@ -1274,9 +1409,9 @@ fn from_an_empty_home_the_add_favorites_item_opens_the_editor_at_the_favorites()
     assert_eq!(rig.app.screen(), &Screen::Editor);
     // The focus starts on active wallpaper card.
     assert_eq!(rig.focused(), Some(WALLPAPER_BASE));
-    // Down goes to the round favorites switch.
-    rig.press(Key::Down);
-    assert_eq!(rig.focused(), Some(ROUND_FAVORITES));
+    // Down through accent, Level 1 nav, Level 2 nav to favorites shape chips.
+    rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down]);
+    assert_eq!(rig.focused(), Some(SHAPE_ROUND));
     // Down through chips: lands on "Restore defaults".
     rig.press_all(&[Key::Down, Key::Down, Key::Down, Key::Down]);
     assert_eq!(rig.focused(), Some(RESTORE));
@@ -1372,10 +1507,14 @@ fn on_other_proportions_the_wallpaper_covers_the_whole_surface_without_stretchin
         let display = Display::new(w, h);
         let mut list = DisplayList::new();
         let mut text = TextEngine::new(display.scale);
+        let accent = crate::theme::AccentColor::default();
+        let theme = crate::theme::Theme::for_accent(accent);
         let mut painter = Painter {
             list: &mut list,
             text: &mut text,
             display,
+            theme: &theme,
+            accent: accent.palette(),
         };
         painter.wallpaper(false);
         let Some(crate::render::Cmd::Wallpaper(quad)) = list.cmds().first() else {
@@ -1476,15 +1615,20 @@ fn text_on_the_dimmed_screens_has_4_5_to_1_over_the_brightest_part_of_the_wallpa
 #[ignore = "the wallpapers no longer carry the top darkening (author's decision, 2026-10-21; see CLAUDE.md): the top bar text does not reach 4.5:1 over the bright ones; see the wallpapers-full-hd change"]
 fn the_top_bar_texts_have_4_5_to_1_over_the_undimmed_wallpaper_on_home() {
     let mut rig = Rig::new();
+    let theme = *rig.app.active_theme();
+    let accent = rig.app.active_accent();
     let tabs = topbar::BarLayout::new(
         &mut Painter {
             list: &mut DisplayList::new(),
             text: &mut rig.text,
             display: rig.display,
+            theme: &theme,
+            accent,
         },
         &rig.app.translator.get(crate::i18n::StringId::TabHome),
         &rig.app.translator.get(crate::i18n::StringId::TabApps),
         &rig.app.clock,
+        rig.app.config.tabs_align,
     );
     let (home, apps) = (tabs.rect(Tab::Home), tabs.rect(Tab::Apps));
     let tab_area = Rect::new(home.x, home.y, apps.right() - home.x, home.h);
@@ -2151,13 +2295,16 @@ fn the_name_under_the_focused_tile_is_white_and_the_others_are_muted() {
     let focused = rig.app.focus_progress(rig.focused().unwrap());
     assert_eq!(focused, 1.0);
     let mut style = |progress: f32| {
+        let theme = *rig.app.active_theme();
+        let accent = rig.app.active_accent();
         let p = Painter {
             list: &mut DisplayList::new(),
             text: &mut rig.text,
             display: rig.display,
+            theme: &theme,
+            accent,
         };
-        p.focus_style(&crate::theme::THEME.tile_label, progress)
-            .color
+        p.focus_style(|t| &t.tile_label, progress).color
     };
     assert_eq!(style(0.0), crate::theme::vars::TEXT_MUTED);
     assert_eq!(style(1.0), crate::theme::vars::TEXT);
@@ -2784,7 +2931,7 @@ fn splash_logo(list: &DisplayList) -> Option<RectCmd> {
 /// The alpha the logo's square is painted with (0 to 255).
 fn logo_alpha(list: &DisplayList) -> Option<u8> {
     match splash_logo(list)?.kind {
-        RectKind::Fill(Paint::Solid(color)) => Some(color.a),
+        RectKind::LogoMark { color, .. } => Some(color.a),
         _ => None,
     }
 }
@@ -2844,13 +2991,117 @@ fn the_splash_is_only_the_logo_centered_on_the_background() {
     assert!(half > 0 && half < 255, "{half}");
     rig.now += vars::SPLASH_LOGO_IN.duration_ms as u64;
     let list = rig.frame();
-    // The four shapes of the mark and nothing else: no wallpaper, no screen, nothing under the
+    // The single SDF quad of the mark and nothing else: no wallpaper, no screen, nothing under the
     // logo in the band kept for a loading indicator.
-    assert_eq!(list.len(), 4, "{:?}", list.cmds());
+    assert_eq!(list.len(), 1, "{:?}", list.cmds());
     let logo = splash_logo(&list).expect("the logo");
     assert_eq!(logo.rect.center(), (640.0, 360.0));
     assert_eq!(logo_alpha(&list), Some(255));
-    assert!(matches!(logo.kind, RectKind::Fill(Paint::Solid(c)) if c == vars::PRIMARY));
+    assert!(matches!(logo.kind, RectKind::LogoMark { color, .. } if color == vars::PRIMARY));
+}
+
+#[test]
+fn splash_background_starts_immediately_at_t7_and_disappears_in_normal() {
+    use crate::theme::AccentColor;
+
+    let accent = AccentColor::Emerald;
+    let palette = accent.palette();
+    let mut rig = Rig::new();
+    rig.app.config.accent_color = accent;
+    rig.app.refresh_theme();
+
+    // First frame of the splash immediately shows the active accent's T7 background (never blue).
+    let visible = rig.display.visible_rect();
+    let first = come_back(&mut rig);
+    assert!(rig.app.in_splash());
+    assert_eq!(rig.app.clear_color(), palette.splash_bg);
+    let has_full_screen_fill = |list: &DisplayList| {
+        list.cmds().iter().find_map(|cmd| match cmd {
+            Cmd::Rect(r)
+                if r.rect == visible && matches!(r.kind, RectKind::Fill(Paint::Solid(_))) =>
+            {
+                let RectKind::Fill(Paint::Solid(c)) = r.kind else {
+                    unreachable!()
+                };
+                Some(c)
+            }
+            _ => None,
+        })
+    };
+    assert_eq!(
+        has_full_screen_fill(&first),
+        Some(palette.splash_bg),
+        "first splash frame immediately uses active accent T7 background"
+    );
+
+    // At the end of --splash-logo-in, the opaque T7 splash background and active-color logo show.
+    rig.now += vars::SPLASH_LOGO_IN.duration_ms as u64;
+    let settled = rig.frame();
+    assert_eq!(has_full_screen_fill(&settled), Some(palette.splash_bg));
+    let logo = splash_logo(&settled).expect("splash logo");
+    assert!(
+        matches!(logo.kind, RectKind::LogoMark { color, .. } if color == palette.primary),
+        "splash logo uses active primary"
+    );
+
+    // Once reveal finishes and Phase::Normal is reached, zero full-screen splash fill remains.
+    load_dock_icons(&mut rig);
+    load_grid_tiles(&mut rig);
+    rig.advance(hold_ms());
+    assert!(rig.app.is_revealing());
+    rig.advance(vars::SPLASH_REVEAL_COLD.duration_ms as u64 + 100);
+    assert!(!rig.app.in_splash() && !rig.app.is_revealing());
+    let normal = rig.frame();
+    assert_eq!(
+        has_full_screen_fill(&normal),
+        None,
+        "no full-screen splash fill in Phase::Normal"
+    );
+}
+
+#[test]
+fn splash_with_black_accent_draws_subtle_light_halo_around_logo() {
+    use crate::theme::AccentColor;
+
+    let mut rig = Rig::new();
+    rig.app.config.accent_color = AccentColor::Black;
+    rig.app.refresh_theme();
+    come_back(&mut rig);
+    rig.now += vars::SPLASH_LOGO_IN.duration_ms as u64;
+    let list = rig.frame();
+
+    let expected_halo = AccentColor::Black.palette().contrast_ring.unwrap();
+    let has_halo = list.cmds().iter().any(|cmd| {
+        matches!(
+            cmd,
+            Cmd::Rect(r) if matches!(r.kind, RectKind::Ring { color, .. } if color == expected_halo)
+        )
+    });
+    assert!(
+        has_halo,
+        "Black splash must draw a subtle light halo behind the logo"
+    );
+}
+
+#[test]
+fn preview_accent_overrides_active_theme_and_logo_until_cleared() {
+    use crate::theme::AccentColor;
+
+    let mut rig = Rig::new();
+    rig.app.set_preview_accent(Some(AccentColor::Coral));
+    assert_eq!(rig.app.effective_accent(), AccentColor::Coral);
+    let coral = AccentColor::Coral.palette().primary;
+    let list = rig.frame();
+    let has_coral_logo = list.cmds().iter().any(|cmd| {
+        matches!(
+            cmd,
+            Cmd::Rect(r) if matches!(r.kind, RectKind::LogoMark { color, .. } if color == coral)
+        )
+    });
+    assert!(has_coral_logo, "topbar logo should reflect preview accent");
+
+    rig.app.set_preview_accent(None);
+    assert_eq!(rig.app.effective_accent(), AccentColor::Blue);
 }
 
 #[test]
@@ -4031,5 +4282,510 @@ mod tools_base {
             deadline.is_none_or(|d| d >= rig.now + 1000),
             "the menu at rest only waits for the clock: {deadline:?}"
         );
+    }
+}
+
+/// Tests for top bar alignment/visibility and the three tabless navigation modes (Tasks 3.1-3.4).
+mod nav_modes {
+    use super::*;
+    use crate::app::context_menu::MenuAction;
+    use crate::home::config::{TablessMode, TabsAlign};
+    use crate::render::{Cmd, Frame, Program, RectKind};
+
+    fn rig_with_mode(tabs_visible: bool, tabs_align: TabsAlign, tabless_mode: TablessMode) -> Rig {
+        let mut rig = Rig::new();
+        rig.app.config.tabs_visible = tabs_visible;
+        rig.app.config.tabs_align = tabs_align;
+        rig.app.config.tabless_mode = tabless_mode;
+        rig.frame();
+        rig
+    }
+
+    #[test]
+    fn tabless_topbar_enters_inputs_or_gear_and_disables_tab_switching() {
+        // Without inputs: Up from dock lands on GEAR; Left/Right stays on Home.
+        let mut rig = rig_with_mode(false, TabsAlign::Left, TablessMode::Slide);
+        rig.app.inputs_available = false;
+        rig.frame();
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(ids::GEAR));
+        rig.press_all(&[Key::Left, Key::Right]);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::GEAR));
+
+        // With inputs: Up from dock lands on INPUTS; Right moves to GEAR.
+        rig.press(Key::Down);
+        rig.app.inputs_available = true;
+        rig.frame();
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(ids::INPUTS));
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(ids::GEAR));
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+    }
+
+    #[test]
+    fn centered_tabs_still_switch_screens_horizontally() {
+        let mut rig = rig_with_mode(true, TabsAlign::Center, TablessMode::Slide);
+        let home_x = rig.app_tab_text_x(Tab::Home);
+        assert!(
+            home_x > 400.0 && home_x < 640.0,
+            "centered Home tab should sit near canvas center, got {home_x}"
+        );
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(ids::TAB_HOME));
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(ids::TAB_APPS));
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+    }
+
+    #[test]
+    fn slide_mode_down_enters_apps_and_up_or_back_returns_to_previous_favorite() {
+        let mut rig = rig_with_mode(false, TabsAlign::Left, TablessMode::Slide);
+        // Move to 2nd favorite in the dock.
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
+
+        // Down transitions to Apps grid focusing 1st tile with SlideTransition animation.
+        rig.press(Key::Down);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+        assert_eq!(rig.focused(), Some(ids::GRID_BASE));
+
+        // Up on 1st row of grid returns to Home focusing previous favorite.
+        rig.press(Key::Up);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
+
+        // Back on grid also returns to Home focusing previous favorite.
+        rig.press(Key::Down);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+        rig.press(Key::Down); // 2nd row
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
+
+        // Home while visible returns to 1st dock item.
+        rig.press(Key::Down);
+        rig.press(Key::Home);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+    }
+
+    #[test]
+    fn slide_mode_return_point_restores_apps_grid() {
+        let mut rig = rig_with_mode(false, TabsAlign::Left, TablessMode::Slide);
+        rig.press(Key::Down);
+        rig.press(Key::Right);
+        let tile = rig.focused().unwrap();
+        let effects = rig.press(Key::Ok);
+        assert!(effects.iter().any(|e| matches!(e, Effect::OpenApp { .. })));
+
+        rig.app.went_to_background();
+        rig.app.came_to_foreground();
+        rig.press(Key::Home);
+        rig.app.cut_splash();
+        rig.frame();
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+        assert_eq!(rig.focused(), Some(tile));
+    }
+
+    #[test]
+    fn peek_mode_unified_navigation_progressive_dim_and_batching() {
+        let mut rig = rig_with_mode(false, TabsAlign::Left, TablessMode::Peek);
+        // At rest: Home screen, dock focused, scroll_y == 0, <= 1 text batch in grid clip.
+        let rest_list = rig.frame();
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE));
+        assert_eq!(rig.app.scroll_y, 0.0);
+        let rest_frame = Frame::build(&rest_list);
+        let rest_text_batches = rest_frame
+            .batches
+            .iter()
+            .filter(|b| b.program == Program::Text && b.clip.is_some())
+            .count();
+        assert!(
+            rest_text_batches <= 1,
+            "expected <= 1 text batch in peek rest grid clip, got {rest_text_batches}"
+        );
+
+        // Move to 2nd favorite, then press Down to scroll into the grid.
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
+        rig.press(Key::Down);
+        rig.advance(400);
+        let scrolled_list = rig.frame();
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::GRID_BASE));
+        assert!(
+            rig.app.scroll_y >= crate::app::home::PEEK_GRID_MIN_SCROLL,
+            "expected scroll_y >= {}, got {}",
+            crate::app::home::PEEK_GRID_MIN_SCROLL,
+            rig.app.scroll_y
+        );
+
+        // Verify <= 1 text batch in scrolled grid clip and NO full-screen translucent overlay.
+        let scrolled_frame = Frame::build(&scrolled_list);
+        let scrolled_text_batches = scrolled_frame
+            .batches
+            .iter()
+            .filter(|b| b.program == Program::Text && b.clip.is_some())
+            .count();
+        assert!(
+            scrolled_text_batches <= 1,
+            "expected <= 1 text batch in scrolled peek grid clip, got {scrolled_text_batches}"
+        );
+        let has_fullscreen_translucent = scrolled_list.cmds().iter().any(|cmd| {
+            matches!(
+                cmd,
+                Cmd::Rect(r)
+                    if r.rect.w >= 1279.0
+                        && r.rect.h >= 719.0
+                        && matches!(r.kind, RectKind::Fill(crate::theme::Paint::Solid(c)) if c.a > 0 && c.a < 255)
+            )
+        });
+        assert!(
+            !has_fullscreen_translucent,
+            "Peek mode must never draw a full-screen translucent overlay"
+        );
+
+        // Up from 1st grid row returns to previous favorite and scrolls back to top.
+        rig.press(Key::Up);
+        rig.advance(400);
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
+        assert_eq!(rig.app.scroll_y, 0.0);
+
+        // Back from grid also returns to previous favorite at top.
+        rig.press(Key::Down);
+        rig.press(Key::Down);
+        rig.advance(400);
+        rig.press(Key::Back);
+        rig.advance(400);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::FAVORITE_BASE + 1));
+        assert_eq!(rig.app.scroll_y, 0.0);
+    }
+
+    #[test]
+    fn peek_mode_back_from_settings_return_point_and_splash_images() {
+        let mut rig = rig_with_mode(false, TabsAlign::Left, TablessMode::Peek);
+
+        // splash_images includes visible peek tiles at scroll_y == 0.
+        rig.app.came_to_foreground();
+        rig.frame();
+        assert!(
+            !rig.app.splash_missing_tiles().is_empty(),
+            "Peek splash must preload visible tiles from GRID_TOP_PEEK"
+        );
+        rig.app.cut_splash();
+        rig.frame();
+
+        // Open Settings via Lume tile in Peek mode and press Back: returns to Home focusing Lume.
+        assert!(rig.app.focus_for_test(ids::GRID_SETTINGS));
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::Settings);
+        rig.press(Key::Back);
+        rig.advance(400);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::GRID_SETTINGS));
+        assert!(rig.app.scroll_y >= crate::app::home::PEEK_GRID_MIN_SCROLL);
+
+        // ReturnPoint restores Peek grid focus and scroll_y.
+        rig.press(Key::Right);
+        let tile = rig.focused().unwrap();
+        let saved_scroll = rig.app.scroll_y;
+        let effects = rig.press(Key::Ok);
+        assert!(effects.iter().any(|e| matches!(e, Effect::OpenApp { .. })));
+
+        rig.app.went_to_background();
+        rig.app.came_to_foreground();
+        rig.press(Key::Home);
+        rig.app.cut_splash();
+        rig.frame();
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(tile));
+        assert!((rig.app.scroll_y - saved_scroll).abs() < 1e-2);
+    }
+
+    #[test]
+    fn dock_mode_opens_apps_returns_to_all_apps_and_reorders_without_remove() {
+        let mut rig = rig_with_mode(false, TabsAlign::Left, TablessMode::Dock);
+        rig.app.inputs_available = true;
+        rig.frame();
+
+        let fav_count = rig.app.config.favorites.len();
+        assert_eq!(rig.app.dock_items().len(), fav_count + 1);
+        assert_eq!(rig.app.dock_items().last().unwrap().id, ids::DOCK_ALL_APPS);
+
+        // Focus DOCK_ALL_APPS, open context menu: ONLY Move, no RemoveFromHome / AppInfo.
+        assert!(rig.app.focus_for_test(ids::DOCK_ALL_APPS));
+        rig.frame();
+        rig.press(Key::Menu);
+        let actions: Vec<MenuAction> = rig
+            .app
+            .context_menu()
+            .unwrap()
+            .items
+            .iter()
+            .map(|i| i.action)
+            .collect();
+        assert_eq!(actions, vec![MenuAction::Move]);
+
+        // Reorder DOCK_ALL_APPS one place left and confirm with OK.
+        rig.press(Key::Ok);
+        assert!(rig.app.moving_dock_all_apps());
+        rig.press(Key::Left);
+        let effects = rig.press(Key::Ok);
+        assert!(effects.contains(&Effect::SaveConfig));
+        assert_eq!(rig.app.config.all_apps_dock_index, Some(fav_count - 1));
+        assert_eq!(rig.focused(), Some(ids::DOCK_ALL_APPS));
+
+        // OK on DOCK_ALL_APPS opens Apps grid on 1st tile; Up on 1st row goes to INPUTS.
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+        assert_eq!(rig.focused(), Some(ids::GRID_BASE));
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(ids::INPUTS));
+
+        // ReturnPoint from Apps grid restores Apps grid.
+        rig.press(Key::Down);
+        let tile = rig.focused().unwrap();
+        let effects = rig.press(Key::Ok);
+        assert!(effects.iter().any(|e| matches!(e, Effect::OpenApp { .. })));
+        rig.app.went_to_background();
+        rig.app.came_to_foreground();
+        rig.press(Key::Home);
+        rig.app.cut_splash();
+        rig.frame();
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Apps));
+        assert_eq!(rig.focused(), Some(tile));
+
+        // Back on Apps grid returns to Home focusing DOCK_ALL_APPS.
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::Main(Tab::Home));
+        assert_eq!(rig.focused(), Some(ids::DOCK_ALL_APPS));
+    }
+
+    #[test]
+    fn editor_accent_swatch_live_preview_confirm_and_revert() {
+        use crate::theme::AccentColor;
+
+        let mut rig = Rig::new();
+        open_editor(&mut rig);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Blue);
+        assert_eq!(rig.app.effective_accent(), AccentColor::Blue);
+
+        // Down from wallpaper lands on the active (Blue) swatch.
+        rig.press(Key::Down);
+        assert_eq!(rig.focused(), Some(ACCENT_BASE));
+        assert_eq!(rig.app.effective_accent(), AccentColor::Blue);
+
+        // Right twice previews Emerald immediately without saving.
+        rig.press_all(&[Key::Right, Key::Right]);
+        assert_eq!(rig.focused(), Some(ACCENT_BASE + 2));
+        assert_eq!(rig.app.effective_accent(), AccentColor::Emerald);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Blue);
+        assert_eq!(
+            rig.app.active_accent().primary,
+            AccentColor::Emerald.palette().primary
+        );
+
+        // Leaving the swatch row via Down without OK reverts to Blue.
+        rig.press(Key::Down);
+        assert_eq!(rig.focused(), Some(NAV_TABS_ON));
+        assert_eq!(rig.app.effective_accent(), AccentColor::Blue);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Blue);
+
+        // Returning Up lands on Blue; moving Right to Coral and pressing Back reverts too.
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(ACCENT_BASE));
+        rig.press_all(&[Key::Right, Key::Right, Key::Right, Key::Right]);
+        assert_eq!(rig.app.effective_accent(), AccentColor::Coral);
+        rig.press(Key::Back);
+        assert_eq!(rig.app.screen(), &Screen::Settings);
+        assert_eq!(rig.app.effective_accent(), AccentColor::Blue);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Blue);
+
+        // Re-open editor, navigate to Emerald, and confirm with OK.
+        rig.press(Key::Ok);
+        assert_eq!(rig.app.screen(), &Screen::Editor);
+        rig.press(Key::Down);
+        rig.press_all(&[Key::Right, Key::Right]);
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Emerald);
+        assert_eq!(rig.app.effective_accent(), AccentColor::Emerald);
+
+        // Leaving the swatch row after OK keeps Emerald.
+        rig.press(Key::Down);
+        assert_eq!(rig.app.effective_accent(), AccentColor::Emerald);
+
+        // Verify all 10 swatches are on the 4-unit ruler and right-aligned to x = 1160.
+        let rows = rig.app.focus.rows();
+        let last_swatch = rows[1].items.last().unwrap().rect;
+        assert_eq!(last_swatch.right(), 1160.0);
+        for item in &rows[1].items {
+            super::super::assert_on_ruler(&[
+                ("swatch.x", item.rect.x),
+                ("swatch.y", item.rect.y),
+                ("swatch.w", item.rect.w),
+                ("swatch.h", item.rect.h),
+            ]);
+        }
+    }
+
+    #[test]
+    fn editor_conditional_navigation_two_levels_and_restore_defaults() {
+        use crate::theme::AccentColor;
+
+        let mut rig = Rig::new();
+        open_editor(&mut rig);
+
+        // Default: Com abas + À esquerda.
+        assert!(rig.app.config.tabs_visible);
+        assert_eq!(rig.app.config.tabs_align, TabsAlign::Left);
+
+        // Navigate to Level 1 (NAV_TABS_ON) and verify Level 2 shows alignment options.
+        rig.press_all(&[Key::Down, Key::Down]);
+        assert_eq!(rig.focused(), Some(NAV_TABS_ON));
+        let level2_ids: Vec<_> = rig.app.focus.rows()[3].items.iter().map(|i| i.id).collect();
+        assert_eq!(level2_ids, vec![NAV_ALIGN_LEFT, NAV_ALIGN_CENTER]);
+
+        // Select Centralizadas in Level 2.
+        rig.press(Key::Down);
+        assert_eq!(rig.focused(), Some(NAV_ALIGN_LEFT));
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(NAV_ALIGN_CENTER));
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert_eq!(rig.app.config.tabs_align, TabsAlign::Center);
+        assert_eq!(rig.focused(), Some(NAV_ALIGN_CENTER));
+
+        // Move Up to Level 1, switch to Sem abas: focus stays on NAV_TABS_OFF and Level 2
+        // immediately switches to Slide / Peek / Dock.
+        rig.press(Key::Up);
+        assert_eq!(rig.focused(), Some(NAV_TABS_ON));
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(NAV_TABS_OFF));
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert!(!rig.app.config.tabs_visible);
+        assert_eq!(rig.focused(), Some(NAV_TABS_OFF));
+        let level2_ids: Vec<_> = rig.app.focus.rows()[3].items.iter().map(|i| i.id).collect();
+        assert_eq!(
+            level2_ids,
+            vec![NAV_MODE_SLIDE, NAV_MODE_PEEK, NAV_MODE_DOCK]
+        );
+
+        // Verify right-alignment to x = 1160 on the 4-unit ruler for both navigation rows.
+        for row_idx in [2, 3] {
+            let row = &rig.app.focus.rows()[row_idx];
+            assert_eq!(row.items.last().unwrap().rect.right(), 1160.0);
+            for item in &row.items {
+                super::super::assert_on_ruler(&[
+                    ("chip.x", item.rect.x),
+                    ("chip.y", item.rect.y),
+                    ("chip.w", item.rect.w),
+                    ("chip.h", item.rect.h),
+                ]);
+            }
+        }
+
+        // Select Espiada in Level 2 and Coral accent color.
+        rig.press(Key::Down);
+        assert_eq!(rig.focused(), Some(NAV_MODE_SLIDE));
+        rig.press(Key::Right);
+        assert_eq!(rig.focused(), Some(NAV_MODE_PEEK));
+        let effects = rig.press(Key::Ok);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert_eq!(rig.app.config.tabless_mode, TablessMode::Peek);
+
+        press_on(&mut rig, ACCENT_BASE + 4);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Coral);
+
+        // Restore defaults resets accent color, tabs_visible, tabs_align, tabless_mode, and
+        // all_apps_dock_index.
+        rig.app.config.all_apps_dock_index = Some(1);
+        press_on(&mut rig, RESTORE);
+        let effects = press_on(&mut rig, CONFIRM_RESTORE);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert_eq!(rig.app.config.accent_color, AccentColor::Blue);
+        assert_eq!(rig.app.effective_accent(), AccentColor::Blue);
+        assert!(rig.app.config.tabs_visible);
+        assert_eq!(rig.app.config.tabs_align, TabsAlign::Left);
+        assert_eq!(rig.app.config.tabless_mode, TablessMode::Slide);
+        assert_eq!(rig.app.config.all_apps_dock_index, None);
+    }
+
+    #[test]
+    fn editor_dock_mode_all_apps_card_reorder_non_removable_and_12_limit() {
+        let mut rig = Rig::new();
+        let catalog = many_apps(14);
+        rig.app.catalog = catalog.clone();
+        // Start with 11 favorites (one below MAX_FAVORITES = 12).
+        rig.app.config.favorites = catalog
+            .apps()
+            .iter()
+            .take(11)
+            .map(|a| a.package.clone())
+            .collect();
+        open_editor(&mut rig);
+
+        // Enable Sem abas + No Dock.
+        press_on(&mut rig, NAV_TABS_OFF);
+        press_on(&mut rig, NAV_MODE_DOCK);
+        assert!(rig.app.config.has_dock_all_apps());
+        assert_eq!(rig.app.config.dock_slot_count(), 12);
+        assert_eq!(rig.app.config.effective_all_apps_dock_index(), 11);
+
+        // The "Todos os apps" card is at slot 11 (last slot): left enabled, right & remove disabled.
+        let is_enabled = |rig: &Rig, id: FocusId| {
+            rig.app
+                .focus
+                .rows()
+                .iter()
+                .flat_map(|r| &r.items)
+                .any(|i| i.id == id && i.enabled)
+        };
+        let all_apps_slot = 11u32;
+        let left_btn = FAVORITE_BUTTON_BASE + all_apps_slot * 3;
+        let right_btn = left_btn + 1;
+        let remove_btn = left_btn + 2;
+        assert!(is_enabled(&rig, left_btn), "can move Todos os apps left");
+        assert!(
+            !is_enabled(&rig, right_btn),
+            "at last slot, cannot move right"
+        );
+        assert!(
+            !is_enabled(&rig, remove_btn),
+            "remove button on Todos os apps is disabled"
+        );
+        assert!(!rig.app.focus.focus(remove_btn));
+
+        // Move "Todos os apps" left from slot 11 to slot 10; persists and tracks focus.
+        let effects = press_on(&mut rig, left_btn);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert_eq!(rig.app.config.all_apps_dock_index, Some(10));
+        assert_eq!(rig.focused(), Some(FAVORITE_BUTTON_BASE + 10 * 3));
+        // Now at slot 10, both left and right are enabled, and remove is still disabled.
+        assert!(is_enabled(&rig, FAVORITE_BUTTON_BASE + 10 * 3));
+        assert!(is_enabled(&rig, FAVORITE_BUTTON_BASE + 10 * 3 + 1));
+        assert!(!is_enabled(&rig, FAVORITE_BUTTON_BASE + 10 * 3 + 2));
+
+        // With 11 favorites + "Todos os apps", adding a 12th favorite still works!
+        assert!(!rig.app.config.favorites_full());
+        let effects = press_on(&mut rig, ADD_APP_BASE);
+        assert_eq!(effects, [Effect::SaveConfig]);
+        assert_eq!(rig.app.config.favorites.len(), 12);
+        assert!(rig.app.config.favorites_full());
+        assert_eq!(rig.app.config.dock_slot_count(), 13);
+        // Further "Add app" chips are now disabled.
+        assert!(rig
+            .app
+            .focus
+            .rows()
+            .iter()
+            .flat_map(|r| &r.items)
+            .filter(|i| (ADD_APP_BASE..CONFIRM_RESTORE).contains(&i.id))
+            .all(|i| !i.enabled));
     }
 }

@@ -7,7 +7,7 @@ use super::{ids, Effect, LumeApp, Tab};
 use crate::i18n::StringId;
 use crate::render::Rect;
 use crate::text::Align;
-use crate::theme::{vars, Paint, StateFlags, THEME};
+use crate::theme::{vars, Paint, StateFlags};
 use crate::ui::focus::{Focusable, Row};
 
 pub(super) const COLUMNS: usize = 6;
@@ -17,17 +17,20 @@ pub(super) const TILE_WIDTH: f32 = (WIDTH - (COLUMNS as f32 - 1.0) * GAP) / COLU
 pub(super) const TILE_HEIGHT: f32 = TILE_WIDTH * 9.0 / 16.0;
 /// Distance between the tops of two grid rows: the tile and its name below it.
 pub(super) const ROW_PITCH: f32 = 148.0;
-const TITLE_BASELINE: f32 = 116.0;
-const GRID_TOP: f32 = 144.0;
-const BOTTOM_PADDING: f32 = 40.0;
-const CLIP_TOP: f32 = 76.0;
-const VIEW_TOP: f32 = 88.0;
+pub(super) const TITLE_BASELINE: f32 = 116.0;
+pub(super) const GRID_TOP: f32 = 144.0;
+/// Content coordinates of the Apps section in Peek mode (below the dock at y = 524..620).
+pub(super) const TITLE_BASELINE_PEEK: f32 = 656.0;
+pub(super) const GRID_TOP_PEEK: f32 = 672.0;
+pub(super) const BOTTOM_PADDING: f32 = 40.0;
+pub(super) const CLIP_TOP: f32 = 76.0;
+pub(super) const VIEW_TOP: f32 = 88.0;
 
 /// One cell of the grid.
 pub(super) struct Cell {
     pub id: u32,
     pub package: Option<String>,
-    rect: Rect,
+    pub(super) rect: Rect,
     label: String,
     color: crate::theme::Color,
 }
@@ -39,6 +42,10 @@ pub(super) fn view_bottom(p: &Painter) -> f32 {
 
 impl LumeApp {
     pub(super) fn grid_cells(&self) -> Vec<Cell> {
+        self.grid_cells_at(GRID_TOP)
+    }
+
+    pub(super) fn grid_cells_at(&self, grid_top: f32) -> Vec<Cell> {
         let lume_label = "Lume";
         let lume_key = crate::catalog::normalize::sort_key(lume_label);
         let apps = self.catalog.apps();
@@ -52,7 +59,7 @@ impl LumeApp {
             let (row, column) = (index / COLUMNS, index % COLUMNS);
             Rect::new(
                 topbar::MARGIN + column as f32 * (TILE_WIDTH + GAP),
-                GRID_TOP + row as f32 * ROW_PITCH,
+                grid_top + row as f32 * ROW_PITCH,
                 TILE_WIDTH,
                 TILE_HEIGHT,
             )
@@ -73,7 +80,7 @@ impl LumeApp {
             package: None,
             rect: tile_rect(insert_at),
             label: lume_label.into(),
-            color: vars::PRIMARY,
+            color: self.active_accent().primary,
         });
 
         for (offset, app) in apps[insert_at..].iter().enumerate() {
@@ -97,9 +104,15 @@ impl LumeApp {
             &self.translator.get(StringId::TabHome),
             &self.translator.get(StringId::TabApps),
             &self.clock,
+            self.config.tabs_align,
         );
 
-        let mut rows = vec![topbar::row(&tabs, Tab::Apps, self.inputs_available)];
+        let mut rows = vec![topbar::row(
+            &tabs,
+            Tab::Apps,
+            self.inputs_available,
+            self.config.tabs_visible,
+        )];
         for (index, line) in cells.chunks(COLUMNS).enumerate() {
             let mut row = Row::new(line.iter().map(|c| Focusable::new(c.id, c.rect)).collect());
             if index == 0 {
@@ -130,12 +143,38 @@ impl LumeApp {
             self.scroll_to(0.0);
         }
         let scroll_y = self.current_scroll_y();
+        self.draw_grid_clipped(p, &cells, TITLE_BASELINE, scroll_y);
+
+        self.fade_tab_content(p);
+        let progress = |id: u32| self.focus_progress(id);
+        TopBar {
+            tabs: &tabs,
+            active: Tab::Apps,
+            tabs_visible: self.config.tabs_visible,
+            home_label: &self.translator.get(StringId::TabHome),
+            apps_label: &self.translator.get(StringId::TabApps),
+            clock: &self.clock,
+            inputs: self.inputs_available,
+            focus: &progress,
+        }
+        .draw(p);
+    }
+
+    /// Draws the section title and the 6-column apps grid in 3 separate passes (boxes -> images ->
+    /// text) inside the viewport clip (`CLIP_TOP..view_bottom`), keeping at most 1 text batch.
+    pub(super) fn draw_grid_clipped(
+        &mut self,
+        p: &mut Painter,
+        cells: &[Cell],
+        title_baseline: f32,
+        scroll_y: f32,
+    ) {
         // The menu goes next to the tile as it looks with the focus: grown, with its ring around it.
-        let focused = p.focus_style(&THEME.tile, 1.0);
+        let focused = p.focus_style(|t| &t.tile, 1.0);
         let ring = focused
             .outline
             .map_or(0.0, |o| o.width + focused.outline_offset);
-        for cell in &cells {
+        for cell in cells {
             let drawn = cell
                 .rect
                 .translate(0.0, -scroll_y)
@@ -157,7 +196,7 @@ impl LumeApp {
             .iter()
             .map(|cell| {
                 let rect = cell.rect.translate(0.0, -scroll_y);
-                let mut style = p.focus_style(&THEME.tile, self.focus_progress(cell.id));
+                let mut style = p.focus_style(|t| &t.tile, self.focus_progress(cell.id));
                 style.background = Some(Paint::Solid(cell.color));
                 (cell, rect, style)
             })
@@ -168,7 +207,17 @@ impl LumeApp {
 
         // 1st pass: Boxes and logo mark (all Rects!)
         for (cell, rect, style) in &tiles {
-            if self.tile_has_image(cell.package.as_deref(), false) {
+            if cell.package.is_none() {
+                // lume's own tile: a 16:9 rounded rectangle in the active primary color with the
+                // L and dot truly cut out (transparent) in the center, in one SDF quad.
+                let mut frame_style = *style;
+                frame_style.background = None;
+                p.draw_box(*rect, &frame_style);
+                let tile = rect.scaled_about_center(style.scale);
+                let radius = style.border_radius * style.scale;
+                let side = tile.h * 0.72;
+                crate::logo::draw_mark_in_rect(p.list, tile, radius, side, p.primary());
+            } else if self.tile_has_image(cell.package.as_deref(), false) {
                 // The image pass draws the tile color with the image, under one edge, and the
                 // outline runs under that edge until the image is opaque: the image is clipped
                 // half a ramp in and fades over one more, and the outline has its own half ramp,
@@ -176,22 +225,9 @@ impl LumeApp {
                 let mut style = *style;
                 style.background = None;
                 let under = 2.0 * vars::EDGE_SOFTNESS / p.display.scale;
-                p.list.draw_box_under(*rect, &style, under);
+                p.draw_box_under(*rect, &style, under);
             } else {
                 p.draw_box(*rect, style);
-            }
-            if cell.package.is_none() {
-                // lume's own tile: the whole tile is the logo color, with the L centered. The mark's
-                // square has the tile's color, so only the L shows and the tile stays a rectangle.
-                let tile = rect.scaled_about_center(style.scale);
-                let side = tile.h * 0.72;
-                let mark = Rect::new(
-                    tile.x + (tile.w - side) / 2.0,
-                    tile.y + (tile.h - side) / 2.0,
-                    side,
-                    side,
-                );
-                crate::logo::draw_mark(p.list, mark, vars::PRIMARY, vars::BG);
             }
         }
 
@@ -201,13 +237,13 @@ impl LumeApp {
         }
 
         // 3rd pass: Title and text labels
-        let title_style = p.style(&THEME.section_title, StateFlags::NONE);
+        let title_style = p.style(|t| &t.section_title, StateFlags::NONE);
         let title = self.translator.get(StringId::AppsTitle);
         p.text.draw(
             p.list,
             &title,
             topbar::MARGIN,
-            TITLE_BASELINE - scroll_y,
+            title_baseline - scroll_y,
             &Painter::text_style(&title_style),
             title_style.color,
         );
@@ -216,7 +252,7 @@ impl LumeApp {
             if cell.package.is_some() {
                 self.draw_tile_name(p, cell.package.as_deref(), &cell.label, *rect, style, false);
             }
-            let label_style = p.focus_style(&THEME.tile_label, self.focus_progress(cell.id));
+            let label_style = p.focus_style(|t| &t.tile_label, self.focus_progress(cell.id));
             p.text(
                 &cell.label,
                 Rect::new(rect.x, rect.bottom() + 8.0, rect.w, 24.0),
@@ -225,25 +261,17 @@ impl LumeApp {
             );
         }
         p.list.pop_clip();
-
-        self.fade_tab_content(p);
-        let progress = |id: u32| self.focus_progress(id);
-        TopBar {
-            tabs: &tabs,
-            active: Tab::Apps,
-            home_label: &self.translator.get(StringId::TabHome),
-            apps_label: &self.translator.get(StringId::TabApps),
-            clock: &self.clock,
-            inputs: self.inputs_available,
-            focus: &progress,
-        }
-        .draw(p);
     }
 
     /// The apps whose tiles are at least partly in the grid's view (from below the top bar to
-    /// `bottom`) with the grid scrolled by `scroll_y`.
-    pub(super) fn visible_grid_packages(&self, bottom: f32, scroll_y: f32) -> Vec<String> {
-        self.grid_cells()
+    /// `bottom`) with the grid starting at `grid_top` and scrolled by `scroll_y`.
+    pub(super) fn visible_grid_packages_at(
+        &self,
+        grid_top: f32,
+        bottom: f32,
+        scroll_y: f32,
+    ) -> Vec<String> {
+        self.grid_cells_at(grid_top)
             .into_iter()
             .filter(|cell| {
                 let rect = cell.rect.translate(0.0, -scroll_y);
@@ -290,6 +318,8 @@ mod tests {
             ("ROW_PITCH", ROW_PITCH),
             ("TITLE_BASELINE", TITLE_BASELINE),
             ("GRID_TOP", GRID_TOP),
+            ("TITLE_BASELINE_PEEK", TITLE_BASELINE_PEEK),
+            ("GRID_TOP_PEEK", GRID_TOP_PEEK),
             ("BOTTOM_PADDING", BOTTOM_PADDING),
             ("CLIP_TOP", CLIP_TOP),
             ("VIEW_TOP", VIEW_TOP),
@@ -369,10 +399,15 @@ mod tests {
             for _ in 0..4 {
                 list.clear();
                 text.begin_frame();
+                app.refresh_theme();
+                let theme = *app.active_theme();
+                let accent = app.active_accent();
                 let mut painter = Painter {
                     list: &mut list,
                     text,
                     display,
+                    theme: &theme,
+                    accent,
                 };
                 app.draw(&mut painter, now_ms);
                 if !text.end_frame() {

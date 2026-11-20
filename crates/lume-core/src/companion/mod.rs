@@ -80,9 +80,10 @@ fn read_library(name: &str) -> Option<crate::memory::Buffer> {
     None
 }
 
-fn content() -> server::Content {
+fn content(accent: crate::theme::AccentColor) -> server::Content {
     server::Content {
         page: page::render,
+        accent,
         library: read_library,
     }
 }
@@ -209,18 +210,39 @@ pub struct Session {
     applied_until: Option<u64>,
     interfaces: InterfaceProvider,
     preferred_port: u16,
+    accent: crate::theme::AccentColor,
     /// Listens on this address whatever the interfaces say (tests on loopback).
     bind_override: Option<Ipv4Addr>,
 }
 
 impl Session {
-    /// Opens the session at `now_ms`: a new code and, with a network, the server.
+    /// Opens the session at `now_ms` with the active accent color: a new code and, with a network,
+    /// the server.
+    pub fn open_with_accent(now_ms: u64, accent: crate::theme::AccentColor) -> Session {
+        Session::open_with_config(now_ms, interfaces, PREFERRED_PORT, accent)
+    }
+
+    /// Opens the session at `now_ms` with the default accent color.
     pub fn open(now_ms: u64) -> Session {
-        Session::open_with(now_ms, interfaces, PREFERRED_PORT)
+        Session::open_with_accent(now_ms, crate::theme::AccentColor::default())
     }
 
     /// Like [`Session::open`] with the interfaces and port given (tests).
     pub fn open_with(now_ms: u64, interfaces: InterfaceProvider, preferred_port: u16) -> Session {
+        Session::open_with_config(
+            now_ms,
+            interfaces,
+            preferred_port,
+            crate::theme::AccentColor::default(),
+        )
+    }
+
+    fn open_with_config(
+        now_ms: u64,
+        interfaces: InterfaceProvider,
+        preferred_port: u16,
+        accent: crate::theme::AccentColor,
+    ) -> Session {
         let mut session = Session {
             server: None,
             status: Status::NoNetwork,
@@ -235,6 +257,7 @@ impl Session {
             applied_until: None,
             interfaces,
             preferred_port,
+            accent,
             bind_override: None,
         };
         session.start(now_ms);
@@ -259,7 +282,12 @@ impl Session {
             self.network_check_ms = now_ms + NETWORK_RETRY_MS;
             return;
         };
-        match server::start(ip, self.preferred_port, self.code.clone(), content()) {
+        match server::start(
+            ip,
+            self.preferred_port,
+            self.code.clone(),
+            content(self.accent),
+        ) {
             Ok(server) => {
                 self.address = Some((ip, server.port()));
                 log::info!("companion: listening on {ip}:{}", server.port());

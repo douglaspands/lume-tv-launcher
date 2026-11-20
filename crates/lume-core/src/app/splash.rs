@@ -14,7 +14,7 @@
 use super::painter::{fade, Painter};
 use super::{apps, Anim, LumeApp, Screen, Tab};
 use crate::render::Rect;
-use crate::theme::{vars, Curve, Transition};
+use crate::theme::{vars, Color, Curve, Paint, Transition};
 use crate::ui::animation::ease;
 use std::collections::HashSet;
 
@@ -197,6 +197,42 @@ impl LumeApp {
         stage(WALLPAPER_IN, self.reveal())
     }
 
+    /// The Splash background color for this frame: starts immediately at `accent.splash_bg` (T7)
+    /// from the first frame (never flashing `#0C171F`), and blends toward `vars::BG` only as the
+    /// wallpaper reveals.
+    pub(super) fn splash_bg_color(&self, p: &Painter) -> Color {
+        crate::ui::style::mix_color(p.accent().splash_bg, vars::BG, self.wallpaper_reveal())
+    }
+
+    /// The clear color for the framebuffer: during the Splash and its reveal, uses the active
+    /// accent's `splash_bg` (T7) blended toward `vars::BG` as the wallpaper enters, so the very
+    /// first GL frame never flashes `#0C171F`. Outside the Splash, returns `vars::BG`.
+    pub fn clear_color(&self) -> Color {
+        if self.phase == Phase::Normal || self.wallpaper_reveal() >= 1.0 {
+            vars::BG
+        } else {
+            crate::ui::style::mix_color(
+                self.active_accent().splash_bg,
+                vars::BG,
+                self.wallpaper_reveal(),
+            )
+        }
+    }
+
+    /// Draws the Splash T7 background as an opaque fill before the wallpaper and logo, ONLY while
+    /// the splash is active and `wallpaper_reveal() < 1.0` (zero overdraw in `Phase::Normal` and
+    /// for `Blue`, whose T7 equals the cleared `vars::BG`).
+    pub(super) fn draw_splash_background(&self, p: &mut Painter) {
+        if self.phase == Phase::Normal || self.wallpaper_reveal() >= 1.0 {
+            return;
+        }
+        let bg = self.splash_bg_color(p);
+        if bg == vars::BG {
+            return;
+        }
+        p.list.fill(p.display.visible_rect(), 0.0, Paint::Solid(bg));
+    }
+
     /// Called at the start of a frame: the splash notes its first frame (where the logo starts to
     /// fade in), and the reveal ends.
     pub(super) fn splash_frame_start(&mut self, now_ms: u64) {
@@ -304,17 +340,24 @@ impl LumeApp {
     /// the tiles the Apps grid shows (where it was scrolled to, when it is the screen behind; its
     /// first screen otherwise, which is what a move to the Apps tab shows).
     fn splash_images(&self, p: &Painter) -> Vec<Image> {
-        let scroll_y = if self.screen == Screen::Main(Tab::Apps) {
-            self.scroll_y
+        let (grid_top, scroll_y) = if self.screen == Screen::Main(Tab::Apps) {
+            (apps::GRID_TOP, self.scroll_y)
+        } else if self.is_peek_mode() {
+            (apps::GRID_TOP_PEEK, self.scroll_y)
         } else {
-            0.0
+            (apps::GRID_TOP, 0.0)
+        };
+        let dock_image = if self.dock_uses_banners() {
+            Image::Tile
+        } else {
+            Image::Dock
         };
         let dock = self
             .dock_items()
             .into_iter()
-            .filter_map(|item| item.package.map(Image::Dock));
+            .filter_map(|item| item.package.map(dock_image));
         let tiles = self
-            .visible_grid_packages(apps::view_bottom(p), scroll_y)
+            .visible_grid_packages_at(grid_top, apps::view_bottom(p), scroll_y)
             .into_iter()
             .map(Image::Tile);
         dock.chain(tiles).collect()
@@ -345,12 +388,17 @@ impl LumeApp {
             size,
             size,
         );
-        crate::logo::draw_mark(
-            p.list,
-            logo,
-            fade(vars::PRIMARY, opacity),
-            fade(vars::BG, opacity),
-        );
+        if let Some(ring_color) = p.accent().contrast_ring {
+            let corner = 0.30 * size;
+            let halo_width = 2.0;
+            p.list.ring(
+                logo.grow(halo_width),
+                corner + halo_width,
+                halo_width,
+                fade(ring_color, opacity),
+            );
+        }
+        crate::logo::draw_mark(p.list, logo, fade(p.primary(), opacity));
         let visible = p.display.visible_rect();
         let status = Rect::new(
             visible.x,
@@ -381,5 +429,47 @@ mod tests {
         assert_eq!(waiting.progress(), 0.25);
         waiting.ready = 4;
         assert_eq!(waiting.progress(), 1.0);
+    }
+
+    #[test]
+    fn clear_color_uses_active_splash_bg_from_first_frame_and_returns_to_bg_in_normal() {
+        use crate::app::LumeApp;
+        use crate::catalog::Catalog;
+        use crate::clock::WallClock;
+        use crate::home::config::HomeConfig;
+        use crate::i18n::Translator;
+        use crate::theme::AccentColor;
+        use crate::usage::UsageHistory;
+
+        let catalog = Catalog::from_discovered(&[], "app.lume.tv");
+        let mut config = HomeConfig::first_use(&catalog);
+        config.accent_color = AccentColor::Emerald;
+        let clock = WallClock {
+            unix_secs: 0,
+            utc_offset_secs: 0,
+            is_24h: true,
+        };
+        let mut app = LumeApp::new(
+            catalog,
+            UsageHistory::default(),
+            config,
+            Translator::new(&["en"]),
+            clock,
+        );
+
+        // Cold start: clear_color is immediately Emerald's T7 splash_bg (never #0C171F).
+        app.came_to_foreground();
+        assert!(app.in_splash());
+        assert_eq!(app.clear_color(), AccentColor::Emerald.palette().splash_bg);
+
+        // Cutting the splash returns to Phase::Normal and vars::BG.
+        app.cut_splash();
+        assert!(!app.in_splash());
+        assert_eq!(app.clear_color(), vars::BG);
+
+        // Warm return: immediately Emerald's T7 splash_bg again.
+        app.came_to_foreground();
+        assert!(app.in_splash());
+        assert_eq!(app.clear_color(), AccentColor::Emerald.palette().splash_bg);
     }
 }
