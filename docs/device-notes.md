@@ -939,3 +939,28 @@ Medida nas TVs de referência (**TCL 55C715** em `192.168.0.9:5555` e **AIWA SMA
 - Sem alocação extra de memória ao trocar de cor, ativar `Espiada` ou usar o logo SDF vazado (`Private Dirty` em **12,8 MB** na AIWA e **14,8–21,5 MB** na TCL em primeiro plano, bem abaixo do orçamento de 32 MB; **2,8 MB** em segundo plano real na AIWA, bem abaixo de 10 MB).
 - Na AIWA, a navegação no Dock ficou em **0,93%** de quadros `>= 33 ms` (dentro do orçamento de `<= 1%`).
 - Pendente apenas rodar o smoke test adicional no emulador `tv_api28` (as duas TVs reais já foram instaladas e medidas).
+
+
+## Change `personalizacao-cores-e-inicio`: medição nas duas TVs (2026-11-20, tarefa 5.2)
+
+APK de release `e56b710-dirty` (22,30 MB; `verify-apk.py` passou, limite de 40 MB), instalado limpo em cada TV. Medido com
+`scripts/measure-tv.sh <serial> <apk>` (novo): Private Dirty da linha TOTAL do `dumpsys meminfo`, 4 rodadas de 12 teclas
+(0,4 s entre elas, `--latency-clear` antes de cada uma, passada de aquecimento sem contagem) no dock e na grade, e o segundo
+plano com as Configurações do Android aberta por cima. O emulador Android TV 9 ficou de fora por decisão do autor.
+O dock tinha só os favoritos do primeiro uso (5 na TCL); **não foi medido com 13 itens nem o modo Espiada**.
+
+| Medida | TCL (branch) | TCL (`v0.9.0`, `main`) | AIWA (branch) | Limite |
+|---|---|---|---|---|
+| Private Dirty, primeiro plano (45 s) | 14,8 MB | 15,0 MB | 24,5 MB | 32 MB |
+| Private Dirty, segundo plano (8 s) | 15,7 MB | 16,0 MB | 25,7 MB | 10 MB |
+| Dock, quadros de 33 ms ou mais | 9,40% (44 de 468) | 9,85% (46 de 467) | 9,32% (44 de 472) | 1% |
+| Grade, quadros de 33 ms ou mais | 11,31% (57 de 504) | 11,31% (57 de 504) | 8,73% (44 de 504) | 1% |
+
+- A change **não causou** a diferença: a `v0.9.0` na TCL dá o mesmo resultado (dock 9,85% e grade 11,31%).
+- O primeiro plano passa nas duas TVs. Segundo plano (acima de 10 MB) e quadros (acima de 1%) **não passam**, nas duas TVs e
+  também na `v0.9.0`. Não são comparáveis às medições de 2026-10-21 (dock 0 de 454): mudaram o app, o estado da TV
+  (reinstalada, não ligada havia horas) e o método (este conta intervalos de 33 ms ou mais entre apresentações reais).
+- O padrão é regular, quase 11 quadros por rodada em todos os casos, o que sugere artefato do método ou do relógio, a
+  investigar. Segundo plano: confirmar se a linha TOTAL do `meminfo` inclui o Graphics, que a spec manda excluir.
+- Pendências para a branch de tuning (decisão do autor de não otimizar nesta change): origem dos quadros de 33 ms,
+  Private Dirty em segundo plano e uma medição com 13 favoritos e modo Espiada.
