@@ -13,9 +13,13 @@
 #   - o dock precisa ter os favoritos desejados (13 itens para a tarefa 5.2); confira em home.png;
 #   - a TV precisa estar acordada. O script abre o Lume, mas não troca o launcher da TV de volta.
 #
+# Os quadros contam só intervalos de 33 a 200 ms; o Private Dirty desconta GL/EGL mtrack.
+#
 # O script desinstala o app antes (a chave de assinatura muda a cada build), instala o APK, define o
 # Lume como launcher e grava, na pasta de saída: summary.txt (resultados e vereditos), home.png,
 # grid.png e os timestamps brutos de cada rodada (frames-*.txt).
+#
+# SKIP_NAV=1 pula dock e grade (só memória); BG_APP e BG_WAIT ajustam o app e a espera do segundo plano.
 #
 # Método: em cada fase (dock e grade) há uma passada de aquecimento, sem contagem (carga de ícones
 # logo após a instalação), e depois ROUNDS rodadas medidas de KEYS_PER_ROUND teclas, com o buffer
@@ -50,15 +54,19 @@ ROUNDS=4
 KEYS_PER_ROUND=12
 KEY_GAP=0.4
 FRAME_MS=33
+IDLE_MS=200   # intervalos maiores são o app parado entre teclas, não quadros perdidos
 LIMIT_FRAMES_PCT=1
 
 say() { echo "$*" | tee -a "$SUMMARY"; }
 tap_key() { "${ADB[@]}" shell input keyevent "$1" >/dev/null 2>&1; sleep "$KEY_GAP"; }
 
-# Linha TOTAL do dumpsys meminfo: $2 = PSS, $3 = Private Dirty (KB).
+# Linha TOTAL do dumpsys meminfo: "PSS PrivateDirty" em KB. O Private Dirty do orçamento
+# desconta as linhas "GL mtrack" e "EGL mtrack" (memória gráfica contada pelo driver).
 meminfo_total() {
-    "${ADB[@]}" shell dumpsys meminfo "$PKG" 2>/dev/null | tr -d '\r' \
-        | awk '/^ *TOTAL +[0-9]/ {print $2, $3; exit}'
+    "${ADB[@]}" shell dumpsys meminfo "$PKG" 2>/dev/null | tr -d '\r' | awk '
+        /^ *TOTAL +[0-9]/ && !t { pss = $2; dirty = $3; t = 1 }
+        /GL mtrack +[0-9]/ { gl += $4 }
+        END { if (t) print pss, dirty - gl }'
 }
 
 # A camada do Lume muda depois de reinstalar: escolhe a que tem apresentações reais.
@@ -74,17 +82,23 @@ find_layer() {
     if [ -n "$best" ]; then LAYER="$best"; fi
 }
 
-# Quadros do SurfaceFlinger: conta intervalos entre apresentações reais >= FRAME_MS.
-# Imprime "perdidos total" e grava os timestamps brutos no arquivo $1.
+# Quadros do SurfaceFlinger: conta intervalos entre apresentações reais de FRAME_MS ou mais e menos
+# de IDLE_MS (acima disso o laço está parado entre as teclas e não pede quadros, como a spec manda).
+# Imprime "perdidos total" (total já sem os intervalos de repouso) e grava os timestamps brutos em $1.
 frame_stats() {
     local raw="$1"
     "${ADB[@]}" shell dumpsys SurfaceFlinger --latency "$LAYER" 2>/dev/null | tr -d '\r' > "$raw"
-    awk -v th="$FRAME_MS" '
+    awk -v th="$FRAME_MS" -v idle="$IDLE_MS" '
         NR > 1 && NF == 3 && $2 > 0 && $2 < 9e18 { t[++n] = $2 }
         END {
-            over = 0
-            for (i = 2; i <= n; i++) if ((t[i] - t[i - 1]) / 1e6 >= th) over++
-            print over + 0, (n > 0 ? n - 1 : 0)
+            over = 0; total = 0
+            for (i = 2; i <= n; i++) {
+                g = (t[i] - t[i - 1]) / 1e6
+                if (g >= idle) continue
+                total++
+                if (g >= th) over++
+            }
+            print over + 0, total
         }' "$raw"
 }
 
@@ -170,6 +184,7 @@ read -r pss dirty < <(meminfo_total)
 FG_DIRTY="${dirty:-nan}"
 say "Primeiro plano parado (45 s): Private Dirty ${dirty:-?} KB, PSS ${pss:-?} KB"
 
+if [ "${SKIP_NAV:-0}" != "1" ]; then
 # 3. Dock (foco começa no dock): direita 6 vezes e volta 6. Aquece, depois mede.
 say "Dock (aquecimento sem contagem, depois medido):"
 find_layer
@@ -187,10 +202,22 @@ find_layer
 warm_pass "$KEY_RIGHT" "$KEY_RIGHT" "$KEY_DOWN" "$KEY_LEFT" "$KEY_LEFT" "$KEY_UP"
 find_layer
 run_stage grade "$KEY_RIGHT" "$KEY_RIGHT" "$KEY_DOWN" "$KEY_LEFT" "$KEY_LEFT" "$KEY_UP"
+else
+    TOTAL_PCT_dock=nan
+    TOTAL_PCT_grade=nan
+fi
 
-# 5. Segundo plano: abre as Configurações do Android e mede o Lume sem foco.
-"${ADB[@]}" shell am start -a android.settings.SETTINGS >/dev/null 2>&1
-sleep 8
+# 5. Segundo plano: abre um app pesado por cima (BG_APP, padrão o YouTube da TV; sem ele, as
+#    Configurações do Android) e mede o Lume sem foco. Um app pesado faz o Lume liberar memória.
+BG_APP="${BG_APP:-com.google.android.youtube.tv}"
+if "${ADB[@]}" shell pm list packages 2>/dev/null | tr -d '\r' | grep -qx "package:$BG_APP"; then
+    "${ADB[@]}" shell monkey -p "$BG_APP" -c android.intent.category.LEANBACK_LAUNCHER 1 >/dev/null 2>&1
+    say "Segundo plano com: $BG_APP"
+else
+    "${ADB[@]}" shell am start -a android.settings.SETTINGS >/dev/null 2>&1
+    say "Segundo plano com: Configurações do Android ($BG_APP não instalado)"
+fi
+sleep "${BG_WAIT:-6}"
 read -r pss dirty < <(meminfo_total)
 if [ -z "${dirty:-}" ]; then
     BG_DIRTY="nan"
