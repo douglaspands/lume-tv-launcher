@@ -939,3 +939,27 @@ Medida nas TVs de referência (**TCL 55C715** em `192.168.0.9:5555` e **AIWA SMA
 - Sem alocação extra de memória ao trocar de cor, ativar `Espiada` ou usar o logo SDF vazado (`Private Dirty` em **12,8 MB** na AIWA e **14,8–21,5 MB** na TCL em primeiro plano, bem abaixo do orçamento de 32 MB; **2,8 MB** em segundo plano real na AIWA, bem abaixo de 10 MB).
 - Na AIWA, a navegação no Dock ficou em **0,93%** de quadros `>= 33 ms` (dentro do orçamento de `<= 1%`).
 - Pendente apenas rodar o smoke test adicional no emulador `tv_api28` (as duas TVs reais já foram instaladas e medidas).
+
+
+## Change `personalizacao-cores-e-inicio`: medição nas duas TVs (2026-11-20, tarefa 5.2)
+
+APK de release `e56b710-dirty` (22,30 MB; `verify-apk.py` passou, limite de 40 MB), instalado limpo em cada TV. Medido com
+`scripts/measure-tv.sh <serial> <apk>` (novo): Private Dirty da linha TOTAL do `dumpsys meminfo` **descontando `GL mtrack`/`EGL mtrack`**;
+4 rodadas de 12 teclas (0,4 s entre elas, `--latency-clear` antes de cada uma, passada de aquecimento sem contagem) no dock e na
+grade, contando só intervalos de 33 a 200 ms entre apresentações reais (acima disso o app está parado entre as teclas); segundo
+plano com o YouTube da TV aberto por cima (6 s). O emulador Android TV 9 ficou de fora por decisão do autor. O dock tinha só os
+favoritos do primeiro uso (5 na TCL): **não foi medido com 13 itens nem o modo Espiada**.
+
+| Medida | TCL | AIWA | Limite |
+|---|---|---|---|
+| Private Dirty, primeiro plano (45 s parado) | 15,0 MB | 13,1 MB | 32 MB |
+| Private Dirty, segundo plano (YouTube aberto) | 9,3 MB | 8,5 MB | 10 MB |
+| Dock, quadros de 33 ms ou mais | 0,24% (1 de 419) | 0,00% (0 de 427) | 1% |
+| Grade, quadros de 33 ms ou mais | **3,49% (16 de 459)** | 0,00% (0 de 460) | 1% |
+
+- Só a **grade da TCL passa do limite**, e a `v0.9.0` (a `main`) dá o mesmo na TCL: dock 0,47% (2 de 423) e grade 2,83% (13 de 460).
+  Não é regressão desta change; fica como ponto de partida para a branch de tuning.
+- Correções de método durante a medição: a primeira versão do script contava o repouso entre as teclas (11 intervalos de ~400 ms por
+  rodada) como quadros perdidos, não descontava o `GL mtrack` e usava as Configurações como app de segundo plano (que não faz o Lume
+  liberar memória); os números dessa primeira rodada (dock ~9%, segundo plano acima de 15 MB) eram artefato e foram descartados.
+- Pendências: grade da TCL acima de 1%, medição com 13 favoritos e modo Espiada.
